@@ -403,3 +403,26 @@ export class GitHub {
     ]);
   }
 }
+
+export type GitHubApi = Pick<
+  GitHub,
+  | "listIssues"
+  | "getIssue"
+  | "listOpenPRs"
+  | "subIssues"
+  | "branchLastCommitAt"
+  | "setStatus"
+  | "addToProject"
+  | "comment"
+  | "addLabels"
+  | "removeLabels"
+  | "assign"
+  | "unassign"
+  | "editBody"
+  | "closeIssue"
+  | "mergePR"
+  | "createIssue"
+  | "addSubIssue"
+  | "viewerLogin"
+  | "dryRun"
+>;
