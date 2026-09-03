@@ -1,13 +1,66 @@
-import type { Action, Snapshot } from "./types.ts";
+import { fixRound, openClaim } from "./ledger.ts";
+import { MAX_FIX_ROUNDS } from "./pick.ts";
+import type { Action, Issue, PullRequest, Snapshot } from "./types.ts";
 
-export function mergeActions(_s: Snapshot): Action[] {
-  return [];
+export const VALIDATOR_EXEMPT_AREAS = ["area:infra", "area:db", "area:shared"];
+
+export function validatorRequired(labels: string[]): boolean {
+  const areas = labels.filter((l) => l.startsWith("area:"));
+  return areas.length === 0 || areas.some((a) => !VALIDATOR_EXEMPT_AREAS.includes(a));
 }
 
-export function skipValidatorActions(_s: Snapshot): Action[] {
-  return [];
+export function mergeDecision(
+  pr: PullRequest,
+  issue: Issue,
+): { ok: true } | { ok: false; reason: string } {
+  if (pr.isDraft) return { ok: false, reason: "draft" };
+  if (issue.status !== "In Review") return { ok: false, reason: `issue status ${issue.status}` };
+  if (pr.checks !== "success") return { ok: false, reason: `checks ${pr.checks}` };
+  if (!pr.labels.includes("reviewer:approved"))
+    return { ok: false, reason: "no reviewer:approved" };
+  if (!pr.labels.includes("validator:passed") && !pr.labels.includes("validator:skipped"))
+    return { ok: false, reason: "no validator result" };
+  return { ok: true };
 }
 
-export function blockActions(_s: Snapshot): Action[] {
-  return [];
+function pairs(s: Snapshot): Array<{ pr: PullRequest; issue: Issue }> {
+  return s.prs.flatMap((pr) => {
+    const issue = s.issues.find((i) => i.number === pr.issue);
+    return issue ? [{ pr, issue }] : [];
+  });
+}
+
+export function mergeActions(s: Snapshot): Action[] {
+  return pairs(s)
+    .filter(({ pr, issue }) => mergeDecision(pr, issue).ok)
+    .map(({ pr, issue }) => ({ type: "merge", pr: pr.number, issue: issue.number }));
+}
+
+export function skipValidatorActions(s: Snapshot): Action[] {
+  return pairs(s)
+    .filter(
+      ({ pr, issue }) =>
+        issue.status === "In Review" &&
+        pr.labels.includes("reviewer:approved") &&
+        !pr.labels.some((l) => l.startsWith("validator:")) &&
+        !validatorRequired(issue.labels),
+    )
+    .map(({ pr, issue }) => ({ type: "skip_validator", pr: pr.number, issue: issue.number }));
+}
+
+export function blockActions(s: Snapshot): Action[] {
+  return pairs(s)
+    .filter(
+      ({ pr, issue }) =>
+        issue.status === "In Review" &&
+        !issue.labels.includes("blocked") &&
+        !openClaim(issue.comments) &&
+        (pr.labels.includes("reviewer:changes") || pr.labels.includes("validator:failed")) &&
+        fixRound(issue.comments) >= MAX_FIX_ROUNDS,
+    )
+    .map(({ issue }) => ({
+      type: "block",
+      issue: issue.number,
+      reason: `reviewer/validator requested changes after ${MAX_FIX_ROUNDS} fix rounds`,
+    }));
 }
