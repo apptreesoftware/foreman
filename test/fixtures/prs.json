@@ -1,0 +1,15 @@
+[
+  {
+    "number": 150,
+    "title": "feat(infra): example PR for fixture purposes",
+    "body": "Closes #125\n\n## What changed\n- Example fixture PR body used because the live repo had no open PRs at recording time.\n\n## How it was tested\n- N/A (hand-written fixture)\n",
+    "headRefName": "feat/125-example",
+    "labels": [{ "name": "reviewer:approved" }],
+    "isDraft": false,
+    "statusCheckRollup": [
+      { "status": "COMPLETED", "conclusion": "SUCCESS" },
+      { "status": "IN_PROGRESS", "conclusion": null }
+    ],
+    "updatedAt": "2026-09-03T20:00:00Z"
+  }
+]

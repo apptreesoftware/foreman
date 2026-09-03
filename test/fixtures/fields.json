@@ -1,0 +1,65 @@
+{
+  "fields": [
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv8Y", "name": "Title", "type": "ProjectV2Field" },
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv8c", "name": "Assignees", "type": "ProjectV2Field" },
+    {
+      "id": "PVTSSF_lAHOAIlXYM4BiXbzzhhPv8g",
+      "name": "Status",
+      "options": [
+        { "id": "0fb8d25a", "name": "Backlog" },
+        { "id": "ecfa474b", "name": "Ready" },
+        { "id": "e4a38f53", "name": "In Progress" },
+        { "id": "15859a08", "name": "In Review" },
+        { "id": "7af3cdd6", "name": "Done" }
+      ],
+      "type": "ProjectV2SingleSelectField"
+    },
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv8k", "name": "Labels", "type": "ProjectV2Field" },
+    {
+      "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv8o",
+      "name": "Linked pull requests",
+      "type": "ProjectV2Field"
+    },
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv8s", "name": "Milestone", "type": "ProjectV2Field" },
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv8w", "name": "Repository", "type": "ProjectV2Field" },
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv84", "name": "Reviewers", "type": "ProjectV2Field" },
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv88", "name": "Parent issue", "type": "ProjectV2Field" },
+    {
+      "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv9A",
+      "name": "Sub-issues progress",
+      "type": "ProjectV2Field"
+    },
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv9E", "name": "Created", "type": "ProjectV2Field" },
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv9I", "name": "Updated", "type": "ProjectV2Field" },
+    { "id": "PVTF_lAHOAIlXYM4BiXbzzhhPv9M", "name": "Closed", "type": "ProjectV2Field" },
+    {
+      "id": "PVTSSF_lAHOAIlXYM4BiXbzzhhPv9Q",
+      "name": "Phase",
+      "options": [
+        { "id": "fa44972a", "name": "0" },
+        { "id": "b409d31e", "name": "1" },
+        { "id": "ac6c3d49", "name": "2" },
+        { "id": "89a4454c", "name": "3" },
+        { "id": "c10dfa96", "name": "4" },
+        { "id": "75d31fe1", "name": "5" },
+        { "id": "72aa66ea", "name": "6" },
+        { "id": "556c10ed", "name": "7" },
+        { "id": "1954bf8e", "name": "8" },
+        { "id": "82ade4e3", "name": "9" },
+        { "id": "c8fd3c14", "name": "10" }
+      ],
+      "type": "ProjectV2SingleSelectField"
+    },
+    {
+      "id": "PVTSSF_lAHOAIlXYM4BiXbzzhhPv-M",
+      "name": "Size",
+      "options": [
+        { "id": "03615e99", "name": "S" },
+        { "id": "d2e32ad6", "name": "M" },
+        { "id": "9b7c651a", "name": "L" }
+      ],
+      "type": "ProjectV2SingleSelectField"
+    }
+  ],
+  "totalCount": 15
+}
