@@ -62,7 +62,7 @@ export interface Snapshot {
 }
 
 export type Action =
-  | { type: "resume"; issue: number; role: Role; sessionId: string; pr: number | null }
+  | { type: "resume"; issue: number; role: Role; sessionId: string | null; pr: number | null }
   | { type: "merge"; pr: number; issue: number }
   | { type: "skip_validator"; pr: number; issue: number }
   | { type: "claim"; issue: number; role: Role; pr: number | null; round: number }
