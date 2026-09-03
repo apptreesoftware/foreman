@@ -1,0 +1,12 @@
+{
+  "repo": "matthewtsmith/tone_tonic",
+  "project": 2,
+  "host": "matthew-mbp",
+  "repoDir": "~/Projects/musicworld",
+  "workDir": "~/tone_tonic-work",
+  "pollSeconds": 120,
+  "maxSessionsPerDay": 20,
+  "maxTurns": 200,
+  "wallClockMinutes": 90,
+  "slackUser": "matthew"
+}
