@@ -71,4 +71,12 @@ describe(".claude/headless-settings.json headless allowlist", () => {
     expect(allow).not.toContain("Bash(env)");
     expect(allow.some((r) => r.startsWith("Bash(gh api"))).toBe(false);
   });
+  it("protects only foreman.json under ~/.tone_tonic, not the whole directory", () => {
+    expect(deny).toContain("Bash(cat ~/.tone_tonic/foreman.json*)");
+    expect(deny).toContain("Bash(cp ~/.tone_tonic/foreman.json*)");
+    expect(deny).toContain("Bash(mv ~/.tone_tonic/foreman.json*)");
+    expect(deny).not.toContain("Bash(cat ~/.tone_tonic*)");
+    expect(deny).not.toContain("Bash(cp ~/.tone_tonic*)");
+    expect(deny).not.toContain("Bash(mv ~/.tone_tonic*)");
+  });
 });
