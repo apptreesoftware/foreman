@@ -112,3 +112,19 @@ describe("prioritize / pick", () => {
   });
   it("pick returns null on an empty snapshot", () => expect(pick(snapshot())).toBeNull());
 });
+
+describe("jobCandidates respects validatorRequired", () => {
+  it("offers no validate job for an approved PR on an infra-only issue", () => {
+    const infra = issue({ number: 30, status: "In Review", labels: ["phase:1", "area:infra"] });
+    const s = snapshot({
+      issues: [infra],
+      prs: [pr({ issue: 30, labels: ["reviewer:approved"] })],
+    });
+    expect(jobCandidates(s)).toEqual([]);
+  });
+  it("still offers validate for an approved PR on a web issue", () => {
+    const web = issue({ number: 31, status: "In Review", labels: ["phase:1", "area:web"] });
+    const s = snapshot({ issues: [web], prs: [pr({ issue: 31, labels: ["reviewer:approved"] })] });
+    expect(jobCandidates(s)[0]?.kind).toBe("validate");
+  });
+});

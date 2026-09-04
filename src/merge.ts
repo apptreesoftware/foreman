@@ -1,13 +1,8 @@
 import { fixRound, openClaim } from "./ledger.ts";
-import { MAX_FIX_ROUNDS } from "./pick.ts";
+import { MAX_FIX_ROUNDS, validatorRequired } from "./pick.ts";
 import type { Action, Issue, PullRequest, Snapshot } from "./types.ts";
 
-export const VALIDATOR_EXEMPT_AREAS = ["area:infra", "area:db", "area:shared"];
-
-export function validatorRequired(labels: string[]): boolean {
-  const areas = labels.filter((l) => l.startsWith("area:"));
-  return areas.length === 0 || areas.some((a) => !VALIDATOR_EXEMPT_AREAS.includes(a));
-}
+export { VALIDATOR_EXEMPT_AREAS, validatorRequired } from "./pick.ts";
 
 export function mergeDecision(
   pr: PullRequest,

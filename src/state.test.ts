@@ -36,3 +36,17 @@ describe("plan", () => {
     expect(plan(snapshot())).toEqual([{ type: "idle", reason: "nothing eligible" }]);
   });
 });
+
+describe("plan with an approved infra-only PR", () => {
+  it("skips the validator and does not claim a validate job in the same iteration", () => {
+    const infra = issue({ number: 40, status: "In Review", labels: ["phase:1", "area:infra"] });
+    const actions = plan(
+      snapshot({
+        issues: [infra],
+        prs: [pr({ number: 9, issue: 40, labels: ["reviewer:approved"] })],
+      }),
+    );
+    expect(actions).toContainEqual({ type: "skip_validator", pr: 9, issue: 40 });
+    expect(actions.some((a) => a.type === "claim")).toBe(false);
+  });
+});

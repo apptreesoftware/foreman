@@ -13,6 +13,13 @@ export interface Candidate {
 }
 
 export const MAX_FIX_ROUNDS = 2;
+export const VALIDATOR_EXEMPT_AREAS = ["area:infra", "area:db", "area:shared"];
+
+/** True when the issue touches anything beyond infra/db/shared (no area label ⇒ required). */
+export function validatorRequired(labels: string[]): boolean {
+  const areas = labels.filter((l) => l.startsWith("area:"));
+  return areas.length === 0 || areas.some((a) => !VALIDATOR_EXEMPT_AREAS.includes(a));
+}
 const UNPHASED = 99;
 
 export function issuePhase(i: Issue): number {
@@ -69,7 +76,7 @@ export function jobCandidates(s: Snapshot): Candidate[] {
       const round = fixRound(i.comments) + 1;
       if (round <= MAX_FIX_ROUNDS) out.push({ kind: "fix", round, ...base });
     } else if (!has("reviewer:approved")) out.push({ kind: "review", round: 1, ...base });
-    else if (!has("validator:passed") && !has("validator:skipped"))
+    else if (!has("validator:passed") && !has("validator:skipped") && validatorRequired(i.labels))
       out.push({ kind: "validate", round: 1, ...base });
   }
   return out;
