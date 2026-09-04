@@ -524,6 +524,7 @@ describe("runForever backoff", () => {
       runForever(ctx({}), {
         iterate: async () => {
           if (outcomes[n++] === "fail") throw new Error("gh: API rate limit exceeded");
+          return { dispatched: false };
         },
         sleep: async (ms) => {
           seconds.push(ms / 1000);
@@ -588,6 +589,58 @@ describe("model", () => {
     const argv = await dispatchWith("sonnet");
     expect(argv).toContain("--model sonnet");
     expect(argv).not.toContain("--model opus");
+  });
+});
+
+describe("runForever after a session", () => {
+  // Same driver as the backoff suite, but each iteration also reports whether it dispatched.
+  async function delaysFor(outcomes: ("dispatched" | "quiet" | "fail")[]): Promise<number[]> {
+    const seconds: number[] = [];
+    let n = 0;
+    const stop = new Error("stop");
+    await expect(
+      runForever(ctx({}), {
+        iterate: async () => {
+          const o = outcomes[n++];
+          if (o === "fail") throw new Error("gh: API rate limit exceeded");
+          return { dispatched: o === "dispatched" };
+        },
+        sleep: async (ms) => {
+          seconds.push(ms / 1000);
+          if (n >= outcomes.length) throw stop;
+        },
+      }),
+    ).rejects.toThrow("stop");
+    return seconds;
+  }
+
+  it("ticks again immediately after an iteration that started a session", async () => {
+    expect(await delaysFor(["dispatched", "quiet"])).toEqual([0, 300]);
+  });
+
+  it("still sleeps the poll interval when nothing was eligible", async () => {
+    expect(await delaysFor(["quiet", "quiet"])).toEqual([300, 300]);
+  });
+
+  it("keeps the failure backoff when an iteration after a dispatch throws", async () => {
+    expect(await delaysFor(["dispatched", "fail"])).toEqual([0, 600]);
+  });
+
+  it("records the shortened wait in nextTickAt", async () => {
+    const st = memState();
+    const ac = new AbortController();
+    await runForever(ctx({ signal: ac.signal, state: st.store }), {
+      iterate: async () => {
+        ac.abort();
+        return { dispatched: true };
+      },
+      sleep: async () => {
+        throw new Error("should not sleep");
+      },
+    });
+    expect(Date.parse(st.get().nextTickAt as string)).toBe(
+      Date.parse(st.get().lastTickAt as string),
+    );
   });
 });
 
@@ -708,6 +761,7 @@ describe("runForever stop", () => {
       iterate: async () => {
         iterations++;
         ac.abort();
+        return { dispatched: false };
       },
       sleep: async () => {
         throw new Error("should not sleep");
@@ -721,7 +775,10 @@ describe("runForever stop", () => {
     const ac = new AbortController();
     let locked = 0;
     await runForever(ctx({ signal: ac.signal }), {
-      iterate: async () => ac.abort(),
+      iterate: async () => {
+        ac.abort();
+        return { dispatched: false };
+      },
       sleep: async () => {},
       lock: async (fn) => {
         locked++;

@@ -6,6 +6,11 @@ import { ActivitySchema } from "./stream.ts";
 export const StopModeSchema = z.enum(["stop", "abort"]);
 export type StopMode = z.infer<typeof StopModeSchema>;
 
+/**
+ * Order is the wait list's rank: what stops this Mac acting at all comes first, then the live
+ * blockers on work in flight, and last `phase_gate` — a background label gate on a phase that has
+ * not started, which must never headline the Now card ahead of a real blocker (#206).
+ */
 export const WAIT_KINDS = [
   "stop",
   "preflight",
@@ -16,6 +21,7 @@ export const WAIT_KINDS = [
   "review_cycle",
   "dependency",
   "other_host",
+  "phase_gate",
 ] as const;
 export const WaitItemSchema = z.object({
   kind: z.enum(WAIT_KINDS),

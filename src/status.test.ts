@@ -69,6 +69,27 @@ describe("describeStatus", () => {
     expect(formatStatus(overridden)).toContain("model  sonnet (override; foreman.json says opus)");
     expect(formatStatus(fromConfig)).toContain("model  opus");
   });
+  it("reports nowPhase: session, between_ticks, ticking, idle", () => {
+    const sleeping = {
+      ...state(),
+      lastTickAt: "2026-09-04T05:09:00.000Z",
+      nextTickAt: "2026-09-04T05:14:00.000Z",
+      lastPlan: ["claim#143"],
+    };
+    expect(describeStatus(input({ state: { ...sleeping, current } })).nowPhase).toBe("session");
+    expect(describeStatus(input({ state: sleeping })).nowPhase).toBe("between_ticks");
+    // The next tick is due, so the daemon is inside an iteration rather than asleep.
+    expect(
+      describeStatus(input({ state: { ...sleeping, nextTickAt: "2026-09-04T05:09:30.000Z" } }))
+        .nowPhase,
+    ).toBe("ticking");
+    expect(
+      describeStatus(input({ state: { ...sleeping, lastPlan: ["idle(nothing eligible)"] } }))
+        .nowPhase,
+    ).toBe("idle");
+    // A daemon that is not running has no tick coming, whatever the last plan said.
+    expect(describeStatus(input({ state: sleeping, pidAlive: () => false })).nowPhase).toBe("idle");
+  });
   it("STOPPED when exitedAt is set and the pid is dead", () => {
     const r = describeStatus(
       input({ state: { ...state(), exitedAt: now }, pidAlive: () => false }),
@@ -125,6 +146,37 @@ describe("formatStatus", () => {
     expect(text).toContain("12m of 90m");
     expect(text).toContain("ORPHAN child 200 still running for #146");
     expect(text).toContain("next   plan#10");
+  });
+  it("says between ticks, with the next tick time, while asleep with work planned", () => {
+    const text = formatStatus(
+      describeStatus(
+        input({
+          state: {
+            ...state(),
+            lastTickAt: "2026-09-04T05:09:00.000Z",
+            nextTickAt: "2026-09-04T05:14:00.000Z",
+            lastPlan: ["claim#143"],
+          },
+        }),
+      ),
+    );
+    expect(text).toContain("now    between ticks · next 05:14:00Z");
+    expect(text).not.toContain("now    idle");
+  });
+  it("says idle only when the last plan found nothing eligible", () => {
+    const text = formatStatus(
+      describeStatus(
+        input({
+          state: {
+            ...state(),
+            lastTickAt: "2026-09-04T05:09:00.000Z",
+            nextTickAt: "2026-09-04T05:14:00.000Z",
+            lastPlan: ["idle(nothing eligible)"],
+          },
+        }),
+      ),
+    );
+    expect(text).toContain("now    idle");
   });
   it("hints when there is no state file", () => {
     const text = formatStatus(describeStatus(input({ state: null })));

@@ -81,6 +81,7 @@
   .tag { font: 500 10.5px var(--mono); letter-spacing: .05em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: var(--panel-2); color: var(--ink-2); white-space: nowrap; }
   .tag.bad, .tag.stop, .tag.preflight { background: var(--bad-soft); color: var(--bad); }
   .tag.human, .tag.cap, .tag.paused { background: var(--warn-soft); color: var(--warn); }
+  .tag.phase_gate { background: var(--warn-soft); color: var(--warn); opacity: .7; }
   .tag.ci, .tag.review_cycle { background: var(--accent-soft); color: var(--accent); }
   .feed { background: var(--panel); border: 1px solid var(--line); font: 12.5px/1.5 var(--mono); max-height: 320px; overflow: auto; }
   .feed .row { display: grid; grid-template-columns: 62px max-content minmax(0, 1fr); gap: 10px; padding: 4px 12px; border-bottom: 1px solid var(--line); }
@@ -161,8 +162,15 @@
     const c = r.current;
     if (!c) {
       const first = r.board?.waiting?.[0];
+      // "idle" is reserved for a tick that found nothing eligible; between a finished session and
+      // the next tick the daemon is asleep on a schedule, and says so.
+      const phase = r.nowPhase === "between_ticks"
+        ? { label: "between ticks", sub: `next ${t(r.tick?.nextAt)}` }
+        : r.nowPhase === "ticking"
+          ? { label: "ticking", sub: `since ${t(r.tick?.lastAt)}` }
+          : { label: "idle", sub: `since ${t(r.tick?.lastAt)}` };
       el.className = "now idle";
-      el.innerHTML = `<div class="title"><span class="role">idle</span><span class="sub">since ${t(r.tick?.lastAt)}</span></div>${first ? `<div class="kv"><span>first wait: <b>${esc(first.detail)}</b></span></div>` : ""}${r.daemon !== "RUNNING" ? `<div class="kv"><span>daemon <b>${esc(r.daemon)}</b></span></div>` : ""}`;
+      el.innerHTML = `<div class="title"><span class="role">${phase.label}</span><span class="sub">${phase.sub}</span></div>${first ? `<div class="kv"><span>first wait: <b>${esc(first.detail)}</b></span></div>` : ""}${r.daemon !== "RUNNING" ? `<div class="kv"><span>daemon <b>${esc(r.daemon)}</b></span></div>` : ""}`;
       return;
     }
     const a = c.activity;

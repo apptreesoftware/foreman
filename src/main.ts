@@ -166,7 +166,7 @@ try {
     lock: (fn) => lock.run(fn),
     iterate: async (c) => {
       await ensureLogin(c);
-      await runOnce(c);
+      return runOnce(c);
     },
   });
 } catch (err) {

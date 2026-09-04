@@ -13,6 +13,14 @@ import { liveWaits } from "./waiting.ts";
 
 export type DaemonState = "RUNNING" | "STOPPED" | "CRASHED" | "UNKNOWN";
 
+/**
+ * What the daemon is doing right now, as opposed to "is a session recorded this instant". Between
+ * a session ending and the next tick the foreman sleeps `pollSeconds`, which used to read as
+ * "idle" even with work queued; `idle` is now reserved for a tick that found nothing eligible
+ * (#206).
+ */
+export type NowPhase = "session" | "ticking" | "between_ticks" | "idle";
+
 export interface StatusInput {
   state: ForemanState | null;
   now: string;
@@ -37,6 +45,7 @@ export interface StatusReport {
   uptimeMinutes: number | null;
   launchdInstalled: boolean;
   stopPresent: boolean;
+  nowPhase: NowPhase;
   /** What the next session will run as, where it came from, and the page's one-click choices. */
   model: {
     current: string;
@@ -74,6 +83,23 @@ export const RECENT_LIMIT = 5;
 
 const minutesBetween = (a: string, b: string) =>
   Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 60_000));
+
+/** A planned action that is not `idle(...)` means the last tick had real work to do. */
+const hadWork = (lastPlan: string[] | null) => (lastPlan ?? []).some((a) => !a.startsWith("idle("));
+
+function nowPhaseOf(
+  daemon: DaemonState,
+  hasSession: boolean,
+  nextTickAt: string | null,
+  lastPlan: string[] | null,
+  now: string,
+): NowPhase {
+  if (hasSession) return "session";
+  // A daemon that is not RUNNING has no tick coming, whatever the last plan said.
+  if (daemon !== "RUNNING" || !nextTickAt) return "idle";
+  if (Date.parse(nextTickAt) <= Date.parse(now)) return "ticking";
+  return hadWork(lastPlan) ? "between_ticks" : "idle";
+}
 
 export function describeStatus(i: StatusInput): StatusReport {
   const s = i.state;
@@ -118,6 +144,13 @@ export function describeStatus(i: StatusInput): StatusReport {
     uptimeMinutes: s && daemon === "RUNNING" ? minutesBetween(s.startedAt, i.now) : null,
     launchdInstalled: i.launchdInstalled,
     stopPresent: i.stopPresent,
+    nowPhase: nowPhaseOf(
+      daemon,
+      current !== null,
+      s?.nextTickAt ?? null,
+      s?.lastPlan ?? null,
+      i.now,
+    ),
     model: {
       current: s?.model ?? i.configModel,
       configured: i.configModel,
@@ -199,7 +232,10 @@ export function formatStatus(r: StatusReport): string {
       lines.push(
         `STALLED  no output for ${mins(c.silentMinutes)} (limit ${c.limitMinutes}m; ctl stop to interrupt)`,
       );
-  } else if (r.daemon === "RUNNING") lines.push("now    idle");
+  } else if (r.nowPhase === "between_ticks")
+    lines.push(`now    between ticks · next ${hhmm(r.tick?.nextAt ?? null)}`);
+  else if (r.nowPhase === "ticking") lines.push("now    ticking");
+  else if (r.daemon === "RUNNING") lines.push("now    idle");
   if (r.orphan) lines.push(`ORPHAN child ${r.orphan.pid} still running for #${r.orphan.issue}`);
   if (r.unfinished)
     lines.push(

@@ -17,6 +17,7 @@ const report: StatusReport = {
   uptimeMinutes: 3,
   launchdInstalled: false,
   stopPresent: false,
+  nowPhase: "idle",
   model: { current: "opus", configured: "opus", source: "config", choices: MODEL_CHOICES },
   tick: null,
   current: null,
@@ -199,5 +200,11 @@ describe("web.html", () => {
     expect(html).toContain("window.confirm(`Run foreman sessions as ");
     expect(html).toContain('data-model="');
     expect(html).toContain('fetch("/api/model"');
+  });
+  it("renders the Now card from nowPhase, not from the absence of a session", () => {
+    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+    expect(html).toContain('r.nowPhase === "between_ticks"');
+    expect(html).toContain('label: "between ticks"');
+    expect(html).toContain(".tag.phase_gate");
   });
 });

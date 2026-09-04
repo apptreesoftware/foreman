@@ -195,4 +195,15 @@ describe("describeWaiting", () => {
       "dependency:#4",
     ]);
   });
+  it("ranks the background planner gate below every live blocker", () => {
+    const i1 = issue({ number: 1, status: "In Review" });
+    const dep = issue({ number: 3, status: "In Progress" });
+    const i4 = issue({ number: 4, body: "## Depends on\n#3\n\n## Spec\ndocs/x.md" });
+    const s = snapshot({
+      issues: [i1, dep, i4],
+      prs: [pr({ number: 11, issue: 1, checks: "pending" })],
+      epics: [epic({ number: 10, labels: ["epic", "phase:1"] })],
+    });
+    expect(kinds(s)).toEqual(["ci:PR #11", "dependency:#4", "phase_gate:epic #10"]);
+  });
 });

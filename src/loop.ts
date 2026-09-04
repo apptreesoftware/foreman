@@ -632,7 +632,21 @@ export async function execute(
   }
 }
 
-export async function runOnce(ctx: Ctx): Promise<void> {
+/** Action types whose `execute` "stop" means a `claude -p` session was actually started. */
+const SESSION_ACTIONS: ReadonlySet<Action["type"]> = new Set([
+  "claim",
+  "resume",
+  "reclaim",
+  "phase_close",
+  "plan",
+]);
+
+export interface TickOutcome {
+  /** True when this tick started a session, so the next one need not wait out `pollSeconds`. */
+  dispatched: boolean;
+}
+
+export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   const pre = await preflight(ctx.cfg, {
     env: process.env,
     exec: ctx.exec,
@@ -642,7 +656,7 @@ export async function runOnce(ctx: Ctx): Promise<void> {
   ctx.state?.patch({ lastPreflight: { ok: pre.ok, reason: pre.ok ? null : pre.reason } });
   if (!pre.ok) {
     log("warn", "preflight failed; sleeping", { reason: pre.reason });
-    return;
+    return { dispatched: false };
   }
   // Free `rateLimit` reads around the tick's two phases, so the page can say whether the hourly
   // GraphQL budget went on the loop's own reads, the session it dispatched, or something else.
@@ -665,12 +679,18 @@ export async function runOnce(ctx: Ctx): Promise<void> {
   });
   ctx.state?.patch({ lastPlan: names, board });
   const afterReads = await graphqlBudget(ctx.exec);
+  let dispatched = false;
   for (const a of actions) {
     if (ctx.signal.aborted) {
       log("info", "stopping before next action", { next: a.type });
       break;
     }
-    if ((await execute(a, ctx, snapshot)) === "stop") break;
+    if ((await execute(a, ctx, snapshot)) === "stop") {
+      // A dry run reports "stop" for the same actions without spawning anything, so it must not
+      // shorten the next wait — otherwise `runForever --dry-run` becomes a hot loop.
+      dispatched = !ctx.dryRun && SESSION_ACTIONS.has(a.type);
+      break;
+    }
   }
   const budget = budgetUpdate(
     ctx.state?.get().budget ?? null,
@@ -686,6 +706,7 @@ export async function runOnce(ctx: Ctx): Promise<void> {
       betweenTicks: budget.betweenTicks,
     });
   }
+  return { dispatched };
 }
 
 /**
@@ -702,7 +723,7 @@ export function backoffSeconds(pollSeconds: number, consecutiveFailures: number)
 
 export interface LoopDeps {
   sleep?: (ms: number) => Promise<void>;
-  iterate?: (ctx: Ctx) => Promise<void>;
+  iterate?: (ctx: Ctx) => Promise<TickOutcome>;
   /** Serialises ticks with the web page's on-demand `next`; identity when absent. */
   lock?: <T>(fn: () => Promise<T>) => Promise<T>;
 }
@@ -714,8 +735,9 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
   let consecutiveFailures = 0;
   for (;;) {
     if (ctx.signal.aborted) return;
+    let dispatched = false;
     try {
-      await lock(() => iterate(ctx));
+      dispatched = (await lock(() => iterate(ctx))).dispatched;
       consecutiveFailures = 0;
     } catch (err) {
       consecutiveFailures++;
@@ -725,13 +747,21 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
         nextAttemptSeconds: backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures),
       });
     }
-    const delayMs = backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures) * 1000;
+    // A tick that dispatched has already spent minutes inside the session it started and has
+    // proved there is work on the board, so waiting out another `pollSeconds` is dead time (#207).
+    // A tick that found nothing eligible still sleeps the interval, and a failure still backs off.
+    const delaySeconds =
+      dispatched && consecutiveFailures === 0
+        ? 0
+        : backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures);
+    if (delaySeconds === 0) log("info", "session dispatched; ticking again immediately");
+    const at = ctx.now();
     ctx.state?.patch({
-      lastTickAt: ctx.now(),
-      nextTickAt: new Date(Date.now() + delayMs).toISOString(),
+      lastTickAt: at,
+      nextTickAt: new Date(Date.parse(at) + delaySeconds * 1000).toISOString(),
       consecutiveFailures,
     });
     if (ctx.signal.aborted) return;
-    await sleep(delayMs);
+    await sleep(delaySeconds * 1000);
   }
 }

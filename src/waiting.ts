@@ -96,7 +96,7 @@ export function describeWaiting(s: Snapshot, i: WaitingInput): WaitItem[] {
       .sort((a, b) => a.phase - b.phase)[0];
     if (next)
       out.push({
-        kind: "human",
+        kind: "phase_gate",
         subject: `epic #${next.number}`,
         detail: `epic #${next.number} awaits agent-ready before the planner runs`,
         since: byNumber.get(next.number)?.updatedAt ?? null,
