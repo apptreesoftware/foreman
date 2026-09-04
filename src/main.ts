@@ -10,7 +10,7 @@ import { launchdInstalled } from "./launchd-status.ts";
 import { log } from "./log.ts";
 import { buildSnapshot, ensureLogin, realCtx, runForever, runOnce } from "./loop.ts";
 import { describeNext } from "./next.ts";
-import { applyOwnerAction } from "./owner.ts";
+import { applyOwnerAction, applyOwnerActionToBoard } from "./owner.ts";
 import { checkEnv, preflight } from "./preflight.ts";
 import { readSessions } from "./sessions.ts";
 import { initialState, StateStore } from "./state-file.ts";
@@ -136,6 +136,11 @@ const web = await startWebServer({
   owner: async (epic, action) => {
     const message = await applyOwnerAction(gh, epic, action);
     log("info", "owner action", { epic, action });
+    // The board is only rebuilt by a tick, and a tick that dispatched a session does not return
+    // for up to wallClockMinutes, so reflect the gate locally instead of leaving the page
+    // offering a button that has already been pressed (#204).
+    const board = store.get().board;
+    if (board) store.patch({ board: applyOwnerActionToBoard(board, epic, action) });
     // The board is rebuilt per tick, so wake the loop instead of leaving the page stale for a
     // whole poll interval. The tick that follows also acts on the label just written.
     controller.wake();

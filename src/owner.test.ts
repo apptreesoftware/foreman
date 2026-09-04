@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { epic, issue, snapshot } from "../test/helpers.ts";
-import { applyOwnerAction, ownerItems } from "./owner.ts";
+import { applyOwnerAction, applyOwnerActionToBoard, ownerItems } from "./owner.ts";
 
 const e = (over = {}) => epic({ number: 200, phase: 2, labels: ["epic", "phase:2"], ...over });
 const snap = (epics: ReturnType<typeof epic>[]) =>
@@ -95,5 +95,58 @@ describe("applyOwnerAction", () => {
       "addLabels issue 26 foreman:pause",
       "removeLabels issue 26 foreman:pause",
     ]);
+  });
+});
+
+describe("applyOwnerActionToBoard", () => {
+  const board = {
+    at: "2026-09-04T18:21:00Z",
+    waiting: [
+      {
+        kind: "human" as const,
+        subject: "epic #124",
+        detail: "epic #124 awaits owner sign-off",
+        since: null,
+      },
+      { kind: "ci" as const, subject: "PR #197", detail: "PR #197 checks pending", since: null },
+    ],
+    pipeline: [],
+    owner: [
+      {
+        epic: 124,
+        title: "Phase 0.5",
+        phase: 0,
+        detail: "d",
+        actions: ["sign_off" as const, "pause" as const],
+      },
+      {
+        epic: 26,
+        title: "Phase 2",
+        phase: 2,
+        detail: "d",
+        actions: ["start_planning" as const, "pause" as const],
+      },
+    ],
+    explain: [],
+    prs: [],
+  };
+
+  it("drops the epic and its waiting item on sign-off", () => {
+    const b = applyOwnerActionToBoard(board, 124, "sign_off");
+    expect(b.owner.map((o) => o.epic)).toEqual([26]);
+    expect(b.waiting.map((w) => w.subject)).toEqual(["PR #197"]);
+  });
+  it("drops just the action performed, keeping the row", () => {
+    const b = applyOwnerActionToBoard(board, 26, "start_planning");
+    expect(b.owner.find((o) => o.epic === 26)?.actions).toEqual(["pause"]);
+  });
+  it("swaps pause for resume", () => {
+    const paused = applyOwnerActionToBoard(board, 26, "pause");
+    expect(paused.owner.find((o) => o.epic === 26)?.actions).toContain("unpause");
+    const resumed = applyOwnerActionToBoard(paused, 26, "unpause");
+    expect(resumed.owner.find((o) => o.epic === 26)?.actions).toContain("pause");
+  });
+  it("leaves other epics alone and tolerates an unknown epic", () => {
+    expect(applyOwnerActionToBoard(board, 999, "pause")).toEqual(board);
   });
 });

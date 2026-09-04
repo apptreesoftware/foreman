@@ -1,4 +1,4 @@
-import type { OwnerAction, OwnerItem } from "./state-file.ts";
+import type { Board, OwnerAction, OwnerItem } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
 
 /** The subset of the GitHub client an owner action needs; keeps the apply step easy to test. */
@@ -40,6 +40,34 @@ export function ownerItems(s: Snapshot): OwnerItem[] {
         actions,
       };
     });
+}
+
+/**
+ * Applies a just-performed gate to the stored board, so the page stops offering it immediately.
+ * A tick that dispatched a session does not return for up to `wallClockMinutes`, and the board
+ * is only rebuilt inside a tick — without this the epic keeps its button for an hour after the
+ * label landed on GitHub (#204). The next real tick recomputes everything from the snapshot.
+ */
+export function applyOwnerActionToBoard(board: Board, epic: number, action: OwnerAction): Board {
+  if (!board.owner.some((o) => o.epic === epic)) return board;
+  const subject = `epic #${epic}`;
+  return {
+    ...board,
+    // Sign-off closes the epic, so its row goes; the rest lose only the action just performed,
+    // and pause/resume swap for each other.
+    owner: board.owner.flatMap((o) => {
+      if (o.epic !== epic) return [o];
+      if (action === "sign_off") return [];
+      const actions = o.actions
+        .filter((a) => a !== action)
+        .concat(action === "pause" ? ["unpause"] : action === "unpause" ? ["pause"] : []);
+      return [{ ...o, actions, detail: "" }];
+    }),
+    waiting:
+      action === "sign_off" || action === "approve_plan"
+        ? board.waiting.filter((w) => w.subject !== subject)
+        : board.waiting,
+  };
 }
 
 export async function applyOwnerAction(
