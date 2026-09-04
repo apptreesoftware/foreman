@@ -93,6 +93,8 @@ function ctx(over: Partial<Ctx>): Ctx {
     dryRun: false,
     stateDir: "/tmp/tt-test",
     readFile: () => null,
+    planFiles: async () => [],
+    readPlanFile: async () => null,
     login: "matthewtsmith",
     ensureWorktree: async () => "/work/1",
     removeWorktree: async () => {},
@@ -336,13 +338,41 @@ describe("execute", () => {
     expect(calls).toContain("setStatus PVTI_200 In Review");
     expect(calls).toContain("addLabels issue 200 needs-owner");
   });
-  it("apply_plan with no issues file just records plan applied", async () => {
+  it("apply_plan leaves the epic alone when the plan is not on origin/main yet", async () => {
     const { gh, calls } = fakeGh([
       issue({ number: 200, labels: ["epic", "phase:2", "plan-approved"] }),
     ]);
-    const r = await execute({ type: "apply_plan", epic: 200 }, ctx({ gh, readFile: () => null }));
+    const r = await execute(
+      { type: "apply_plan", epic: 200 },
+      ctx({ gh, planFiles: async () => [], readPlanFile: async () => null }),
+    );
     expect(r).toBe("continue");
-    expect(calls).toContain(`comment issue 200 ${fmt.planApplied("mac-a")} (no issues file)`);
+    // No `plan applied` comment: planApplied() would read it as done and the epic would never
+    // get its tasks. The next tick retries instead (#189).
+    expect(calls).toEqual([]);
+  });
+  it("apply_plan fetches origin before reading the plan", async () => {
+    const gitCalls: string[][] = [];
+    const { gh } = fakeGh([
+      issue({
+        number: 200,
+        labels: ["epic", "phase:2", "plan-approved"],
+        body: "## Spec\ndocs/superpowers/specs/2026-09-03-phase-02-x-design.md",
+      }),
+    ]);
+    await execute(
+      { type: "apply_plan", epic: 200 },
+      ctx({
+        gh,
+        exec: async (_c, args) => {
+          gitCalls.push(args);
+          return { code: 0, stdout: "", stderr: "" };
+        },
+        planFiles: async () => [],
+        readPlanFile: async () => null,
+      }),
+    );
+    expect(gitCalls[0]).toEqual(["-C", "/repo", "fetch", "origin", "--prune"]);
   });
   it("apply_plan creates and updates tasks then labels them agent-ready", async () => {
     const existing = issue({ number: 201, labels: ["phase:2"], status: "Backlog" });
@@ -365,8 +395,8 @@ describe("execute", () => {
       { type: "apply_plan", epic: 200 },
       ctx({
         gh,
-        readFile: (p) => (p.endsWith("plan.issues.json") ? file : null),
-        listPlanFiles: () => ["docs/superpowers/plans/2026-09-10-phase-02-plan.issues.json"],
+        planFiles: async () => ["docs/superpowers/plans/2026-09-10-phase-02-plan.issues.json"],
+        readPlanFile: async (p) => (p.endsWith("plan.issues.json") ? file : null),
       }),
     );
     expect(calls).toContain("editBody 201 b1");
@@ -377,6 +407,44 @@ describe("execute", () => {
     expect(calls).toContain(`comment issue 200 ${fmt.planApplied("mac-a")}`);
     expect(calls).toContain("removeLabels issue 200 needs-owner");
     expect(calls).toContain("setStatus PVTI_200 In Progress");
+  });
+  it("apply_plan reads the board once, not once per task", async () => {
+    const { gh } = fakeGh([
+      issue({
+        number: 200,
+        labels: ["epic", "phase:2", "plan-approved"],
+        body: "## Spec\ndocs/superpowers/specs/2026-09-03-phase-02-x-design.md",
+      }),
+      issue({ number: 201, labels: ["phase:2"] }),
+      issue({ number: 202, labels: ["phase:2"] }),
+      issue({ number: 203, labels: ["phase:2"] }),
+    ]);
+    let listCalls = 0;
+    const counting = {
+      ...gh,
+      listIssues: async (...a: Parameters<typeof gh.listIssues>) => {
+        listCalls += 1;
+        return gh.listIssues(...a);
+      },
+    };
+    const file = JSON.stringify({
+      epic: 200,
+      tasks: [201, 202, 203].map((n) => ({
+        number: n,
+        title: `t${n}`,
+        body: `b${n}`,
+        labels: ["phase:2"],
+      })),
+    });
+    await execute(
+      { type: "apply_plan", epic: 200 },
+      ctx({
+        gh: counting,
+        planFiles: async () => ["docs/superpowers/plans/2026-09-10-phase-02-plan.issues.json"],
+        readPlanFile: async () => file,
+      }),
+    );
+    expect(listCalls).toBe(1);
   });
   it("dry-run writes nothing and does not spawn", async () => {
     const { gh, calls } = fakeGh([issue({ number: 1 })]);

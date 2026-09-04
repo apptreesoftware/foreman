@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { cp } from "node:fs/promises";
 import { join } from "node:path";
 import { describeBoard } from "./board.ts";
@@ -28,6 +28,7 @@ import {
   parseSpecPath,
   planIssuesPath,
 } from "./phase.ts";
+import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts";
 import { preflight } from "./preflight.ts";
 import { ledgerInterrupt } from "./release.ts";
 import { appendSession, readSessions, todayStats } from "./sessions.ts";
@@ -51,7 +52,10 @@ export interface Ctx {
   copyDir: (src: string, dest: string) => Promise<void>;
   login: string;
   readFile: (absPath: string) => string | null;
-  listPlanFiles?: () => string[]; // repo-relative *.issues.json paths
+  /** Repo-relative `*.issues.json` paths on `origin/main`. */
+  planFiles: () => Promise<string[]>;
+  /** Content of a repo-relative path on `origin/main`, or null when it is not there. */
+  readPlanFile: (repoRelPath: string) => Promise<string | null>;
   ensureWorktree: (
     cfg: ForemanConfig,
     issue: number,
@@ -90,14 +94,8 @@ export function realCtx(
     },
     login,
     readFile: (p) => (existsSync(p) ? readFileSync(p, "utf8") : null),
-    listPlanFiles: () => {
-      const dir = join(cfg.repoDir, "docs", "superpowers", "plans");
-      return existsSync(dir)
-        ? readdirSync(dir)
-            .filter((f) => f.endsWith(".issues.json"))
-            .map((f) => `docs/superpowers/plans/${f}`)
-        : [];
-    },
+    planFiles: () => listPlanFilesOnMain(realExec, cfg.repoDir),
+    readPlanFile: (p) => readPlanFileOnMain(realExec, cfg.repoDir, p),
     ensureWorktree: realEnsureWorktree,
     removeWorktree: realRemoveWorktree,
     transcriptExists: (w, s) => existsSync(transcriptPath(w, s)),
@@ -438,16 +436,31 @@ async function applyPlan(ctx: Ctx, epicNumber: number): Promise<void> {
   const specPath = parseSpecPath(epic.body) ?? "";
   const nn =
     /phase-(\d\d)/.exec(specPath)?.[1] ?? /phase-(\d\d)/.exec(planIssuesPath(specPath, "x"))?.[1];
-  const file = (ctx.listPlanFiles?.() ?? [])
+  // Nothing else in the daemon refreshes repoDir, so a plan PR merged minutes ago is only
+  // visible after this fetch; a failed fetch falls back to the last known origin/main (#189).
+  if (!(await fetchOrigin(ctx.exec, cfg.repoDir)))
+    log("warn", "fetch failed; reading the plan from the last known origin/main", {
+      epic: epicNumber,
+    });
+  const file = (await ctx.planFiles())
     .filter((f) => nn && f.includes(`phase-${nn}-plan.issues.json`))
     .sort()
     .at(-1);
-  const text = file ? ctx.readFile(join(cfg.repoDir, file)) : null;
+  const text = file ? await ctx.readPlanFile(file) : null;
   if (!text) {
-    await gh.comment("issue", epicNumber, `${fmt.planApplied(cfg.host)} (no issues file)`);
+    // Deliberately no `plan applied` comment: planApplied() reads that as done and the epic
+    // would never get its tasks. Leave the epic untouched so the next tick retries.
+    log("warn", "approved plan file not on origin/main; retrying next tick", {
+      epic: epicNumber,
+      phase: nn ?? null,
+    });
     return;
   }
   const planFile = PlanIssuesSchema.parse(JSON.parse(text));
+  // One board read for the whole plan. This used to be one `listIssues` per task, which is a
+  // `gh project item-list` each time; a twenty-task plan tripped GitHub's rate limiter, the
+  // tick failed, and the retry started the same storm again.
+  const itemIds = new Map((await gh.listIssues("open")).map((i) => [i.number, i.itemId]));
   for (const t of planFile.tasks) {
     let number = t.number;
     if (number) await gh.editBody(number, t.body);
@@ -456,8 +469,7 @@ async function applyPlan(ctx: Ctx, epicNumber: number): Promise<void> {
       await gh.addSubIssue(epicNumber, number);
     }
     await gh.addLabels("issue", number, [...t.labels, "agent-ready"]);
-    const existing = (await gh.listIssues("open")).find((i) => i.number === number);
-    const itemId = existing?.itemId ?? (await gh.addToProject(number));
+    const itemId = itemIds.get(number) ?? (await gh.addToProject(number));
     await gh.setStatus(itemId, "Ready");
   }
   // The plan is applied, so the epic is no longer waiting on the owner: clear the gate that
