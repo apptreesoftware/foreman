@@ -59,3 +59,38 @@ describe("state file", () => {
     });
   });
 });
+
+describe("schema v1 additions", () => {
+  it("reads a pre-#178 state file: activity and board default to null", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tt-state-"));
+    const old = {
+      ...initialState({
+        pid: 1,
+        host: "h",
+        configPath: "/c",
+        dryRun: false,
+        startedAt: "2026-09-04T00:00:00.000Z",
+      }),
+      current: {
+        issue: 1,
+        title: "t",
+        role: "builder",
+        pr: null,
+        round: 1,
+        attempt: 1,
+        sessionId: "s",
+        resume: false,
+        worktree: "/w",
+        branch: "b",
+        childPid: null,
+        startedAt: "2026-09-04T00:00:00.000Z",
+        deadlineAt: "2026-09-04T01:00:00.000Z",
+      },
+    } as Record<string, unknown>;
+    delete old.board;
+    writeFileSync(join(dir, "state.json"), JSON.stringify(old));
+    const s = readState(dir);
+    expect(s?.board).toBeNull();
+    expect(s?.current?.activity).toBeNull();
+  });
+});

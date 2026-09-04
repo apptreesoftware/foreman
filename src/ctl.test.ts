@@ -19,6 +19,7 @@ const current = {
   childPid: 200,
   startedAt: "2026-09-04T05:00:00.000Z",
   deadlineAt: "2026-09-04T06:30:00.000Z",
+  activity: null,
 };
 
 function deps(over: Partial<CtlDeps> & { alive?: number[] } = {}) {

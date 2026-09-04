@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,7 @@ import type { Exec } from "./exec.ts";
 import type { GitHubApi } from "./github.ts";
 import { fmt } from "./ledger.ts";
 import {
+  ACTIVITY_FLUSH_MS,
   type Ctx,
   ensureLogin,
   execute,
@@ -605,5 +606,86 @@ describe("runOnce abort mid-plan", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "tt-loop-abort-"));
     await runOnce(ctx({ gh, exec, signal: ac.signal, stateDir }));
     expect(merged).toEqual([10]);
+  });
+});
+
+describe("live activity", () => {
+  const toolLine = (id: string, file: string) =>
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        id,
+        content: [{ type: "tool_use", id: `t_${id}`, name: "Read", input: { file_path: file } }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+      parent_tool_use_id: null,
+      timestamp: "2026-09-04T13:27:20.000Z",
+    });
+  const result = JSON.stringify({
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    num_turns: 2,
+    total_cost_usd: 0.5,
+    duration_ms: 100,
+    session_id: "s",
+    result: "x",
+    structured_output: { outcome: "pr_opened", pr: 5, notes: "" },
+  });
+  const streamingSpawn: Spawner = async (_c, _a, opts) => {
+    for (let i = 0; i < 10; i++) opts.onStdoutLine?.(toolLine(`m${i}`, `/work/1/f${i}.ts`));
+    opts.onStdoutLine?.(result);
+    return { code: 0, stdout: result, stderr: "", timedOut: false, interrupted: false };
+  };
+
+  it("runRole writes activity into current (throttled) and appends the feed", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "tt-loop-"));
+    const issues = [issue({ number: 1, status: "Ready" })];
+    const { gh } = fakeGh(issues);
+    const m = memState();
+    const activityPatches: number[] = [];
+    const store = {
+      get: m.store.get,
+      patch: (p: Record<string, unknown>) => {
+        const cur = p.current as { activity?: { turns: number } } | null | undefined;
+        if (cur?.activity) activityPatches.push(cur.activity.turns);
+        return m.store.patch(p);
+      },
+    };
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, spawn: streamingSpawn, stateDir, state: store as never }),
+    );
+    expect(activityPatches.length).toBeLessThanOrEqual(2); // end-of-session flush, not one per line
+    expect(activityPatches.at(-1)).toBe(10);
+    const dir = join(stateDir, "activity");
+    expect(existsSync(dir)).toBe(true);
+    const files = readdirSync(dir);
+    expect(files).toHaveLength(1);
+    const lines = readFileSync(join(dir, files[0] as string), "utf8")
+      .trim()
+      .split("\n");
+    expect(lines).toHaveLength(11); // 10 tool + 1 result
+    expect(JSON.parse(lines[10] as string)).toMatchObject({ kind: "result", outcome: "pr_opened" });
+    expect(ACTIVITY_FLUSH_MS).toBe(2000);
+  });
+
+  it("runOnce stores a board next to lastPlan", async () => {
+    const issues = [issue({ number: 1, status: "In Review" })];
+    const { gh } = fakeGh(issues);
+    gh.listOpenPRs = async () => [pr({ number: 11, issue: 1, checks: "pending" })];
+    const m = memState();
+    // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
+    const exec: Exec = async () => ({
+      code: 0,
+      stderr: "",
+      stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+    });
+    await runOnce(
+      ctx({ gh, exec, state: m.store, stateDir: mkdtempSync(join(tmpdir(), "tt-loop-")) }),
+    );
+    const board = m.get().board as { waiting: Array<{ kind: string }>; pipeline: unknown[] };
+    expect(board.waiting.map((w) => w.kind)).toEqual(["ci"]);
+    expect(board.pipeline).toHaveLength(1);
   });
 });

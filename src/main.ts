@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { DEFAULT_CONFIG_PATH, loadConfig, STATE_DIR } from "./config.ts";
 import { Controller, Mutex } from "./control.ts";
 import { realExec } from "./exec.ts";
+import { readFeed } from "./feed.ts";
 import { GitHub } from "./github.ts";
 import { launchdInstalled } from "./launchd-status.ts";
 import { log } from "./log.ts";
@@ -115,6 +116,8 @@ const web = await startWebServer({
       maxSessionsPerDay: cfg.maxSessionsPerDay,
       wallClockMinutes: cfg.wallClockMinutes,
       host: cfg.host,
+      stallMinutes: cfg.stallMinutes,
+      repo: cfg.repo,
     }),
   next: () => lock.run(async () => describeNext(await buildSnapshot(ctx))),
   act: async (cmd) => {
@@ -127,6 +130,7 @@ const web = await startWebServer({
     controller.request(cmd);
     return `${cmd} requested; STOP file present`;
   },
+  feed: (session, limit) => readFeed(STATE_DIR, session, limit),
 });
 
 let crashed = false;

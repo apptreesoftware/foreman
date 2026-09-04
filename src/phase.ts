@@ -42,7 +42,7 @@ function epicIssue(e: Epic, issues: Issue[]): Issue | undefined {
   return issues.find((i) => i.number === e.number);
 }
 
-function plannerFinished(e: Epic, issues: Issue[]): boolean {
+export function plannerFinished(e: Epic, issues: Issue[]): boolean {
   const i = epicIssue(e, issues);
   return (
     !!i &&

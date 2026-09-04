@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { initialState } from "./state-file.ts";
 import { describeStatus, formatStatus, type StatusInput } from "./status.ts";
+import { emptyActivity } from "./stream.ts";
 
 const now = "2026-09-04T05:10:00.000Z";
 const state = () =>
@@ -25,6 +26,7 @@ const current = {
   childPid: 200,
   startedAt: "2026-09-04T04:58:00.000Z",
   deadlineAt: "2026-09-04T06:28:00.000Z",
+  activity: null,
 };
 function input(over: Partial<StatusInput> = {}): StatusInput {
   return {
@@ -37,6 +39,8 @@ function input(over: Partial<StatusInput> = {}): StatusInput {
     maxSessionsPerDay: 20,
     wallClockMinutes: 90,
     host: "mac-a",
+    stallMinutes: 5,
+    repo: "o/r",
     ...over,
   };
 }
@@ -110,5 +114,150 @@ describe("formatStatus", () => {
   it("hints when there is no state file", () => {
     const text = formatStatus(describeStatus(input({ state: null })));
     expect(text).toContain("predates this feature");
+  });
+});
+
+describe("live activity and board", () => {
+  const activity = {
+    ...emptyActivity(),
+    turns: 23,
+    lastEventAt: "2026-09-04T05:09:48.000Z",
+    lastTool: {
+      name: "Edit",
+      summary: "docs/plan.md",
+      at: "2026-09-04T05:09:48.000Z",
+      subagent: false,
+    },
+    lastText: { text: "Now I'll write the plan.", at: "2026-09-04T05:09:00.000Z" },
+    tokens: { input: 41_200, output: 6_100, cacheRead: 0, cacheWrite: 0 },
+  };
+  it("computes silentMinutes from lastEventAt and flags a stall at the threshold", () => {
+    const fresh = describeStatus(
+      input({ state: { ...state(), current: { ...current, activity } } }),
+    );
+    expect(fresh.current?.silentMinutes).toBe(0);
+    expect(fresh.current?.stalled).toBe(false);
+    const quiet = describeStatus(
+      input({
+        state: {
+          ...state(),
+          current: {
+            ...current,
+            activity: { ...activity, lastEventAt: "2026-09-04T05:05:00.000Z" },
+          },
+        },
+      }),
+    );
+    expect(quiet.current?.silentMinutes).toBe(5);
+    expect(quiet.current?.stalled).toBe(true);
+    const none = describeStatus(input({ state: { ...state(), current } }));
+    expect(none.current?.silentMinutes).toBe(12); // falls back to startedAt
+  });
+  it("never shows STALLED for a pre-#178 daemon with no activity, even past the threshold", () => {
+    const r = describeStatus(input({ state: { ...state(), current } }));
+    expect(r.current?.activity).toBeNull();
+    expect(r.current?.silentMinutes).toBe(12); // >= stallMinutes (5)
+    expect(r.current?.stalled).toBe(false);
+  });
+  it("marks the tick as blocked by the session", () => {
+    expect(describeStatus(input({ state: { ...state(), current } })).tick?.blockedBySession).toBe(
+      true,
+    );
+    expect(describeStatus(input()).tick?.blockedBySession).toBe(false);
+  });
+  it("layers live STOP/preflight/cap waits over the stored board", () => {
+    const board = {
+      at: now,
+      waiting: [
+        { kind: "ci" as const, subject: "PR #1", detail: "PR #1 checks pending", since: null },
+      ],
+      pipeline: [],
+      explain: [],
+      prs: [],
+    };
+    const r = describeStatus(input({ state: { ...state(), board }, stopPresent: true }));
+    expect(r.board?.waiting.map((w) => w.kind)).toEqual(["stop", "ci"]);
+    const noBoard = describeStatus(input({ stopPresent: true }));
+    expect(noBoard.board?.waiting.map((w) => w.kind)).toEqual(["stop"]);
+    const capped = describeStatus(
+      input({
+        state: {
+          ...state(),
+          board,
+          lastPreflight: { ok: false, reason: "daily session cap reached (20/20)" },
+        },
+        sessions: Array.from({ length: 20 }, (_, i) => ({
+          t: now,
+          host: "mac-a",
+          role: "builder",
+          issue: i,
+          sessionId: "s",
+          attempt: 1,
+          costUsd: 1,
+          outcome: "pr_opened",
+        })),
+      }),
+    );
+    expect(capped.board?.waiting.map((w) => w.kind)).toEqual(["cap", "ci"]);
+  });
+  it("overlays the running session onto the board (own-session visibility)", () => {
+    const board = {
+      at: now,
+      waiting: [
+        {
+          kind: "review_cycle" as const,
+          subject: "PR #175",
+          detail: "PR #175 fix round 2 queued",
+          since: null,
+        },
+      ],
+      pipeline: [],
+      explain: [],
+      prs: [],
+    };
+    const r = describeStatus(input({ state: { ...state(), board, current } }));
+    expect(r.board?.pipeline[0]).toMatchObject({
+      issue: 146,
+      pr: 175,
+      claim: { host: "mac-a", role: "builder", round: 1, at: current.startedAt },
+      stages: { build: "active" },
+    });
+    expect(r.board?.waiting).toEqual([]);
+  });
+  it("formatStatus prints doing, stalled and waiting lines", () => {
+    const board = {
+      at: now,
+      waiting: [
+        {
+          kind: "human" as const,
+          subject: "epic #10",
+          detail: "epic #10 awaits plan-approved",
+          since: null,
+        },
+      ],
+      pipeline: [],
+      explain: [],
+      prs: [],
+    };
+    const text = formatStatus(
+      describeStatus(
+        input({
+          state: {
+            ...state(),
+            board,
+            current: {
+              ...current,
+              activity: { ...activity, lastEventAt: "2026-09-04T05:03:00.000Z" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(text).toContain(
+      "doing  Edit docs/plan.md  (7m ago)  turns 23  tokens 41.2k in / 6.1k out",
+    );
+    expect(text).toContain('       "Now I\'ll write the plan."');
+    expect(text).toContain("STALLED  no output for 7m (limit 90m; ctl stop to interrupt)");
+    expect(text).toContain("waiting  epic #10 awaits plan-approved");
   });
 });

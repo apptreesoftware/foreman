@@ -1,5 +1,7 @@
+import { overlayCurrent } from "./board.ts";
 import { type SessionLogEntry, todayStats } from "./sessions.ts";
-import type { CurrentSession, ForemanState, StopMode } from "./state-file.ts";
+import type { Board, CurrentSession, ForemanState, StopMode } from "./state-file.ts";
+import { liveWaits } from "./waiting.ts";
 
 export type DaemonState = "RUNNING" | "STOPPED" | "CRASHED" | "UNKNOWN";
 
@@ -13,10 +15,13 @@ export interface StatusInput {
   maxSessionsPerDay: number;
   wallClockMinutes: number;
   host: string;
+  stallMinutes: number;
+  repo: string;
 }
 
 export interface StatusReport {
   host: string;
+  repo: string;
   daemon: DaemonState;
   pid: number | null;
   uptimeMinutes: number | null;
@@ -27,12 +32,21 @@ export interface StatusReport {
     nextAt: string | null;
     preflight: { ok: boolean; reason: string | null } | null;
     consecutiveFailures: number;
+    blockedBySession: boolean;
   } | null;
-  current: (CurrentSession & { elapsedMinutes: number; limitMinutes: number }) | null;
+  current:
+    | (CurrentSession & {
+        elapsedMinutes: number;
+        limitMinutes: number;
+        silentMinutes: number;
+        stalled: boolean;
+      })
+    | null;
   orphan: { pid: number; issue: number } | null;
   stopping: ForemanState["stopping"];
   unfinished: { issue: number; mode: StopMode; role: string } | null;
   lastPlan: string[] | null;
+  board: Board | null;
   recent: SessionLogEntry[];
   today: { count: number; cap: number; spendUsd: number };
 }
@@ -53,8 +67,32 @@ export function describeStatus(i: StatusInput): StatusReport {
       : null;
   const recent = [...i.sessions].sort((a, b) => b.t.localeCompare(a.t)).slice(0, RECENT_LIMIT);
   const today = todayStats(i.sessions, new Date(i.now));
+  const live = liveWaits({
+    host: i.host,
+    preflight: s?.lastPreflight ?? null,
+    stopPresent: i.stopPresent,
+    todayCount: today.count,
+    cap: i.maxSessionsPerDay,
+  });
+  const liveKinds = new Set(live.map((w) => w.kind));
+  const stored = s?.board ?? null;
+  let board: Board | null =
+    stored || live.length
+      ? {
+          at: stored?.at ?? i.now,
+          waiting: [...live, ...(stored?.waiting ?? []).filter((w) => !liveKinds.has(w.kind))],
+          pipeline: stored?.pipeline ?? [],
+          explain: stored?.explain ?? [],
+          prs: stored?.prs ?? [],
+        }
+      : null;
+  if (current && board) board = overlayCurrent(board, current, i.host);
+  const silentMinutes = current
+    ? minutesBetween(current.activity?.lastEventAt ?? current.startedAt, i.now)
+    : 0;
   return {
     host: s?.host ?? i.host,
+    repo: i.repo,
     daemon,
     pid: s?.pid ?? null,
     uptimeMinutes: s && daemon === "RUNNING" ? minutesBetween(s.startedAt, i.now) : null,
@@ -66,6 +104,7 @@ export function describeStatus(i: StatusInput): StatusReport {
           nextAt: s.nextTickAt,
           preflight: s.lastPreflight,
           consecutiveFailures: s.consecutiveFailures,
+          blockedBySession: current !== null,
         }
       : null,
     current: current
@@ -73,6 +112,8 @@ export function describeStatus(i: StatusInput): StatusReport {
           ...current,
           elapsedMinutes: minutesBetween(current.startedAt, i.now),
           limitMinutes: i.wallClockMinutes,
+          silentMinutes,
+          stalled: current.activity !== null && silentMinutes >= i.stallMinutes,
         }
       : null,
     orphan,
@@ -81,6 +122,7 @@ export function describeStatus(i: StatusInput): StatusReport {
       ? { issue: s.unfinished.issue, mode: s.unfinished.mode, role: s.unfinished.role }
       : null,
     lastPlan: s?.lastPlan ?? null,
+    board,
     recent,
     today: { count: today.count, cap: i.maxSessionsPerDay, spendUsd: today.spendUsd },
   };
@@ -89,6 +131,7 @@ export function describeStatus(i: StatusInput): StatusReport {
 const hhmm = (iso: string | null) => (iso ? `${iso.slice(11, 19)}Z` : "–");
 const mins = (m: number) =>
   m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m` : `${m}m`;
+const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 export function formatStatus(r: StatusReport): string {
   const lines: string[] = [];
@@ -119,6 +162,16 @@ export function formatStatus(r: StatusReport): string {
       `now    ${c.role} #${c.issue} round ${c.round} attempt ${c.attempt}  session ${c.sessionId.slice(0, 8)}  ${mins(c.elapsedMinutes)} of ${c.limitMinutes}m${c.childPid ? `  child ${c.childPid}` : ""}`,
     );
     lines.push(`       worktree ${c.worktree}  branch ${c.branch}`);
+    const a = c.activity;
+    if (a?.lastTool)
+      lines.push(
+        `doing  ${a.lastTool.name} ${a.lastTool.summary}  (${mins(c.silentMinutes)} ago)  turns ${a.turns}  tokens ${k(a.tokens.input)} in / ${k(a.tokens.output)} out`,
+      );
+    if (a?.lastText) lines.push(`       "${a.lastText.text}"`);
+    if (c.stalled)
+      lines.push(
+        `STALLED  no output for ${mins(c.silentMinutes)} (limit ${c.limitMinutes}m; ctl stop to interrupt)`,
+      );
   } else if (r.daemon === "RUNNING") lines.push("now    idle");
   if (r.orphan) lines.push(`ORPHAN child ${r.orphan.pid} still running for #${r.orphan.issue}`);
   if (r.unfinished)
@@ -126,6 +179,8 @@ export function formatStatus(r: StatusReport): string {
       `UNFINISHED ${r.unfinished.mode} bookkeeping for ${r.unfinished.role} #${r.unfinished.issue}; run ctl abort`,
     );
   lines.push(`next   ${r.lastPlan ? r.lastPlan.join(", ") : "–"}   (as of last tick)`);
+  if (r.board?.waiting.length)
+    lines.push(`waiting  ${r.board.waiting.map((w) => w.detail).join(" · ")}`);
   lines.push(
     `recent ${
       r.recent.length

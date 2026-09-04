@@ -1,9 +1,70 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { ActivitySchema } from "./stream.ts";
 
 export const StopModeSchema = z.enum(["stop", "abort"]);
 export type StopMode = z.infer<typeof StopModeSchema>;
+
+export const WAIT_KINDS = [
+  "stop",
+  "preflight",
+  "cap",
+  "paused",
+  "human",
+  "ci",
+  "review_cycle",
+  "dependency",
+  "other_host",
+] as const;
+export const WaitItemSchema = z.object({
+  kind: z.enum(WAIT_KINDS),
+  subject: z.string(),
+  detail: z.string(),
+  since: z.string().nullable(),
+});
+export type WaitItem = z.infer<typeof WaitItemSchema>;
+
+export const StageStateSchema = z.enum(["done", "active", "pending", "failed", "skipped"]);
+export type StageState = z.infer<typeof StageStateSchema>;
+export const PipelineRowSchema = z.object({
+  issue: z.number().int(),
+  title: z.string(),
+  phase: z.number().int(),
+  status: z.string().nullable(),
+  pr: z.number().int().nullable(),
+  stages: z.object({
+    build: StageStateSchema,
+    review: StageStateSchema,
+    validate: StageStateSchema,
+    ci: z.enum(["success", "pending", "failure", "none"]),
+    merge: StageStateSchema,
+  }),
+  claim: z
+    .object({ host: z.string(), role: z.string(), round: z.number().int(), at: z.string() })
+    .nullable(),
+  fixRound: z.number().int(),
+  blocked: z.boolean(),
+});
+export type PipelineRow = z.infer<typeof PipelineRowSchema>;
+
+export const BoardSchema = z.object({
+  at: z.string(),
+  waiting: z.array(WaitItemSchema),
+  pipeline: z.array(PipelineRowSchema),
+  explain: z.array(z.string()),
+  prs: z.array(
+    z.object({
+      pr: z.number().int(),
+      issue: z.number().int().nullable(),
+      status: z.string(),
+      checks: z.string(),
+      labels: z.array(z.string()),
+      reason: z.string(),
+    }),
+  ),
+});
+export type Board = z.infer<typeof BoardSchema>;
 
 export const CurrentSessionSchema = z.object({
   issue: z.number().int(),
@@ -19,6 +80,7 @@ export const CurrentSessionSchema = z.object({
   childPid: z.number().int().nullable(),
   startedAt: z.string(),
   deadlineAt: z.string(),
+  activity: ActivitySchema.nullable().default(null),
 });
 export type CurrentSession = z.infer<typeof CurrentSessionSchema>;
 
@@ -38,6 +100,7 @@ export const ForemanStateSchema = z.object({
   current: CurrentSessionSchema.nullable(),
   stopping: z.object({ mode: StopModeSchema, at: z.string() }).nullable(),
   unfinished: CurrentSessionSchema.extend({ mode: StopModeSchema }).nullable(),
+  board: BoardSchema.nullable().default(null),
 });
 export type ForemanState = z.infer<typeof ForemanStateSchema>;
 
@@ -64,6 +127,7 @@ export function initialState(o: {
     current: null,
     stopping: null,
     unfinished: null,
+    board: null,
   };
 }
 

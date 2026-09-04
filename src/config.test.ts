@@ -27,6 +27,19 @@ describe("parseConfig", () => {
     expect(parseConfig(JSON.stringify(base)).webPort).toBe(8090);
     expect(parseConfig(JSON.stringify({ ...base, webPort: 8091 })).webPort).toBe(8091);
   });
+  it("stallMinutes defaults to 5 and must be ≥ 1", () => {
+    const base = {
+      repo: "o/r",
+      project: 2,
+      host: "h",
+      repoDir: "/r",
+      workDir: "/w",
+      slackUser: "m",
+    };
+    expect(parseConfig(JSON.stringify(base)).stallMinutes).toBe(5);
+    expect(parseConfig(JSON.stringify({ ...base, stallMinutes: 8 })).stallMinutes).toBe(8);
+    expect(() => parseConfig(JSON.stringify({ ...base, stallMinutes: 0 }))).toThrow();
+  });
 });
 
 describe("expandHome", () => {

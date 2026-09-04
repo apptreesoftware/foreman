@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { cp } from "node:fs/promises";
 import { join } from "node:path";
+import { describeBoard } from "./board.ts";
 import { conflictOn } from "./claim.ts";
 import type { ForemanConfig } from "./config.ts";
 import {
@@ -17,6 +18,7 @@ import {
 } from "./dispatch.ts";
 import type { Exec } from "./exec.ts";
 import { realExec } from "./exec.ts";
+import { appendFeed, type FeedEntry } from "./feed.ts";
 import { type GitHubApi, phaseOf } from "./github.ts";
 import { fmt, openClaim } from "./ledger.ts";
 import { log } from "./log.ts";
@@ -28,10 +30,14 @@ import {
 } from "./phase.ts";
 import { preflight } from "./preflight.ts";
 import { ledgerInterrupt } from "./release.ts";
-import { appendSession } from "./sessions.ts";
+import { appendSession, readSessions, todayStats } from "./sessions.ts";
 import { plan } from "./state.ts";
 import type { CurrentSession, StateStore, StopMode } from "./state-file.ts";
+import type { Activity } from "./stream.ts";
 import type { Action, Epic, Issue, Role, Snapshot } from "./types.ts";
+
+/** Activity lands in state.json at most this often; the feed file is appended per event. */
+export const ACTIVITY_FLUSH_MS = 2000;
 
 export interface Ctx {
   cfg: ForemanConfig;
@@ -220,21 +226,61 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     childPid: null,
     startedAt: ctx.now(),
     deadlineAt: new Date(started + cfg.wallClockMinutes * 60_000).toISOString(),
+    activity: null,
   };
   const setCurrent = (p: Partial<CurrentSession>) => {
     current = { ...current, ...p };
     ctx.state?.patch({ current });
   };
   setCurrent({});
+  let flushTimer: NodeJS.Timeout | null = null;
+  let dirty = false;
+  const flush = () => {
+    flushTimer = null;
+    if (!dirty) return;
+    dirty = false;
+    ctx.state?.patch({ current });
+  };
+  let feedWarned = false;
+  const onActivity = (activity: Activity, entries: FeedEntry[]) => {
+    current = { ...current, activity };
+    dirty = true;
+    if (!flushTimer) {
+      flushTimer = setTimeout(flush, ACTIVITY_FLUSH_MS);
+      flushTimer.unref();
+    }
+    for (const e of entries) {
+      try {
+        appendFeed(ctx.stateDir, current.sessionId, e);
+      } catch (err) {
+        if (!feedWarned) {
+          feedWarned = true;
+          log("warn", "feed append failed; continuing without the feed", {
+            sessionId: current.sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+  };
   const result = await dispatchWithRetry(req, cfg, {
     spawn: ctx.spawn,
     signal: ctx.signal,
     onSpawn: (pid) => setCurrent({ childPid: pid }),
+    onActivity,
     onAttempt: async (a) => {
-      setCurrent({ attempt: a.attempt, sessionId: a.sessionId, resume: a.resume, childPid: null });
+      setCurrent({
+        attempt: a.attempt,
+        sessionId: a.sessionId,
+        resume: a.resume,
+        childPid: null,
+        activity: null,
+      });
       await gh.comment("issue", a.issue, fmt.session(a.sessionId, cfg.host, a.role, a.attempt));
     },
   });
+  if (flushTimer) clearTimeout(flushTimer);
+  flush();
   const minutes = Math.round((Date.now() - started) / 60_000);
   // Outcome wins over interrupted: a child that printed its structured result JSON just before
   // the kill landed did finish its work, so it takes the normal completion path below (comment +
@@ -550,7 +596,15 @@ export async function runOnce(ctx: Ctx): Promise<void> {
     a.type === "idle" ? `idle(${a.reason})` : `${a.type}#${"issue" in a ? a.issue : a.epic}`,
   );
   log("info", "plan", { actions: names });
-  ctx.state?.patch({ lastPlan: names });
+  const today = todayStats(readSessions(ctx.stateDir), new Date(snapshot.now));
+  const board = describeBoard(snapshot, {
+    host: ctx.cfg.host,
+    preflight: { ok: true, reason: null },
+    stopPresent: false,
+    todayCount: today.count,
+    cap: ctx.cfg.maxSessionsPerDay,
+  });
+  ctx.state?.patch({ lastPlan: names, board });
   for (const a of actions) {
     if (ctx.signal.aborted) {
       log("info", "stopping before next action", { next: a.type });

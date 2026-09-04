@@ -8,5 +8,6 @@
   "maxSessionsPerDay": 20,
   "maxTurns": 200,
   "wallClockMinutes": 90,
+  "stallMinutes": 5,
   "slackUser": "matthew"
 }

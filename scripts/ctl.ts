@@ -46,6 +46,8 @@ function statusReport() {
     maxSessionsPerDay: cfg.maxSessionsPerDay,
     wallClockMinutes: cfg.wallClockMinutes,
     host: cfg.host,
+    stallMinutes: cfg.stallMinutes,
+    repo: cfg.repo,
   });
 }
 

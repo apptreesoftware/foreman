@@ -5,8 +5,10 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { ForemanConfig } from "./config.ts";
 import type { Exec } from "./exec.ts";
+import type { FeedEntry } from "./feed.ts";
 import { log } from "./log.ts";
 import { FORBIDDEN_ENV } from "./preflight.ts";
+import { type Activity, emptyActivity, foldEvent } from "./stream.ts";
 import type { Role } from "./types.ts";
 
 export const OUTCOME_KINDS = [
@@ -119,7 +121,8 @@ export function buildArgs(req: DispatchRequest, cfg: ForemanConfig): string[] {
   return [
     "-p",
     "--output-format",
-    "json",
+    "stream-json",
+    "--verbose",
     "--json-schema",
     JSON.stringify(OUTCOME_JSON_SCHEMA),
     "--max-turns",
@@ -274,6 +277,7 @@ export interface SpawnOptions {
   timeoutMs: number;
   signal?: AbortSignal;
   onSpawn?: (pid: number) => void;
+  onStdoutLine?: (line: string) => void;
 }
 export type Spawner = (cmd: string, args: string[], opts: SpawnOptions) => Promise<SpawnResult>;
 
@@ -286,13 +290,25 @@ export const realSpawn: Spawner = (cmd, args, opts) =>
       env: opts.env,
       stdio: ["pipe", "pipe", "pipe"],
     });
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     if (child.pid && opts.onSpawn) opts.onSpawn(child.pid);
     let stdout = "";
     let stderr = "";
     let timedOut = false;
     let interrupted = false;
+    let pending = "";
+    const emit = (chunk: string) => {
+      if (!opts.onStdoutLine) return;
+      pending += chunk;
+      const parts = pending.split("\n");
+      pending = parts.pop() ?? "";
+      for (const p of parts) if (p.length > 0) opts.onStdoutLine(p);
+    };
     child.stdout.on("data", (d) => {
-      stdout += String(d);
+      const s = String(d);
+      stdout += s;
+      emit(s);
     });
     child.stderr.on("data", (d) => {
       stderr += String(d);
@@ -314,6 +330,10 @@ export const realSpawn: Spawner = (cmd, args, opts) =>
     const done = (r: SpawnResult) => {
       clearTimeout(timer);
       opts.signal?.removeEventListener("abort", onAbort);
+      if (pending.length > 0 && opts.onStdoutLine) {
+        opts.onStdoutLine(pending);
+        pending = "";
+      }
       resolve(r);
     };
     child.on("close", (code) => done({ code: code ?? 1, stdout, stderr, timedOut, interrupted }));
@@ -328,6 +348,7 @@ export interface DispatchDeps {
   onAttempt: (req: DispatchRequest) => Promise<void>;
   signal?: AbortSignal;
   onSpawn?: (pid: number) => void;
+  onActivity?: (activity: Activity, entries: FeedEntry[]) => void;
 }
 
 export async function runSession(
@@ -336,6 +357,7 @@ export async function runSession(
   deps: DispatchDeps,
 ): Promise<SessionResult> {
   await deps.onAttempt(req);
+  let activity = emptyActivity();
   const r = await deps.spawn("claude", buildArgs(req, cfg), {
     cwd: req.worktree,
     env: childEnv(process.env),
@@ -343,12 +365,33 @@ export async function runSession(
     timeoutMs: cfg.wallClockMinutes * 60_000,
     signal: deps.signal,
     onSpawn: deps.onSpawn,
+    onStdoutLine: (line) => {
+      try {
+        const f = foldEvent(activity, line, new Date().toISOString(), req.worktree);
+        activity = f.activity;
+        deps.onActivity?.(activity, f.entries);
+      } catch (err) {
+        log("warn", "stream fold failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
   });
   const parsed = parseResult(r.stdout, r.timedOut);
   parsed.stderr = r.stderr.slice(-4000);
   parsed.interrupted = r.interrupted;
   if (r.interrupted && !parsed.outcome) parsed.subtype = "interrupted";
   if (!parsed.sessionId) parsed.sessionId = req.sessionId;
+  deps.onActivity?.(activity, [
+    {
+      t: new Date().toISOString(),
+      kind: "result",
+      subtype: parsed.subtype,
+      outcome: parsed.outcome?.outcome ?? null,
+      turns: parsed.numTurns,
+      costUsd: parsed.costUsd,
+    },
+  ]);
   log("info", "session finished", {
     issue: req.issue,
     role: req.role,

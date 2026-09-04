@@ -21,6 +21,7 @@ import {
   trustWorktree,
 } from "./dispatch.ts";
 import type { Exec } from "./exec.ts";
+import { emptyActivity } from "./stream.ts";
 
 const cfg = parseConfig(
   JSON.stringify({
@@ -71,7 +72,9 @@ describe("buildArgs / buildPrompt", () => {
     const a = buildArgs(req, cfg);
     expect(a).toContain("-p");
     expect(a).toContain("--output-format");
-    expect(a).toContain("json");
+    expect(a).toContain("stream-json");
+    expect(a).toContain("--verbose");
+    expect(a).not.toContain("json");
     expect(a).toContain("--json-schema");
     expect(a).toContain("--max-turns");
     expect(a).toContain("50");
@@ -300,5 +303,57 @@ describe("interrupts", () => {
     await runSession(req, cfg, { spawn, onAttempt: async () => {}, signal: ac.signal, onSpawn });
     expect(seen.signal).toBe(ac.signal);
     expect(seen.onSpawn).toBe(onSpawn);
+  });
+});
+
+describe("streaming", () => {
+  const toolLine = (id: string, file: string) =>
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        id,
+        content: [{ type: "tool_use", id: `t_${id}`, name: "Read", input: { file_path: file } }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+      parent_tool_use_id: null,
+      timestamp: "2026-09-04T13:27:20.000Z",
+    });
+
+  it("realSpawn delivers complete lines once each, across chunk boundaries", async () => {
+    const seen: string[] = [];
+    const script = `process.stdout.write('{"a":1}\\n{"b":'); setTimeout(() => process.stdout.write('2}\\n{"c":3}'), 50);`;
+    const r = await realSpawn("node", ["-e", script], {
+      cwd: process.cwd(),
+      env: process.env,
+      input: "",
+      timeoutMs: 10_000,
+      onStdoutLine: (l) => seen.push(l),
+    });
+    expect(r.code).toBe(0);
+    expect(seen).toEqual(['{"a":1}', '{"b":2}', '{"c":3}']);
+    expect(r.stdout).toBe('{"a":1}\n{"b":2}\n{"c":3}');
+  });
+
+  it("runSession folds lines into activity and reports the result entry", async () => {
+    const lines = [toolLine("m1", "/work/42/a.ts"), toolLine("m2", "/work/42/b.ts"), okJson()];
+    const spawn: Spawner = async (_c, _a, opts) => {
+      for (const l of lines) opts.onStdoutLine?.(l);
+      return { code: 0, stdout: lines.join("\n"), stderr: "", timedOut: false, interrupted: false };
+    };
+    const reports: Array<{ turns: number; kinds: string[] }> = [];
+    const r = await runSession(req, cfg, {
+      spawn,
+      onAttempt: async () => {},
+      onActivity: (a, entries) =>
+        reports.push({ turns: a.turns, kinds: entries.map((e) => e.kind) }),
+    });
+    expect(r.outcome?.outcome).toBe("pr_opened");
+    expect(reports.map((x) => x.turns)).toEqual([1, 2, 2, 2]);
+    expect(reports.map((x) => x.kinds)).toEqual([["tool"], ["tool"], [], ["result"]]);
+    expect(reports.at(-1)).toBeDefined();
+  });
+
+  it("emptyActivity is the starting point for every attempt", () => {
+    expect(emptyActivity().turns).toBe(0);
   });
 });

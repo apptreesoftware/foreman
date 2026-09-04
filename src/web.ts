@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
+import { FEED_LIMIT_DEFAULT, type FeedEntry, isSessionId } from "./feed.ts";
 import { log } from "./log.ts";
 import type { NextReport } from "./next.ts";
 import type { StatusReport } from "./status.ts";
@@ -13,6 +14,7 @@ export interface WebDeps {
   status: () => StatusReport;
   next: () => Promise<NextReport>;
   act: (cmd: WebCommand) => Promise<string>;
+  feed: (sessionId: string, limit: number) => FeedEntry[];
   /** Page HTML; defaults to src/web.html. Injectable for tests. */
   html?: string;
 }
@@ -37,7 +39,8 @@ export function createWebServer(d: WebDeps): http.Server {
   const html = d.html ?? readFileSync(join(import.meta.dirname, "web.html"), "utf8");
   const server = http.createServer(async (req, res) => {
     const bound = (server.address() as AddressInfo | null)?.port ?? d.port;
-    const url = req.url ?? "/";
+    const u = new URL(req.url ?? "/", "http://localhost");
+    const url = u.pathname;
     try {
       // Spec §7: every route is localhost-only, not just the POST actions.
       if (!isLocalHost(req.headers.host, bound))
@@ -46,6 +49,13 @@ export function createWebServer(d: WebDeps): http.Server {
         return send(res, 200, html, "text/html; charset=utf-8");
       if (req.method === "GET" && url === "/api/status") return json(res, 200, d.status());
       if (req.method === "GET" && url === "/api/next") return json(res, 200, await d.next());
+      if (req.method === "GET" && url === "/api/feed") {
+        const session = u.searchParams.get("session") ?? "";
+        if (!isSessionId(session)) return json(res, 400, { ok: false, error: "bad session id" });
+        const limit =
+          Number(u.searchParams.get("limit") ?? FEED_LIMIT_DEFAULT) || FEED_LIMIT_DEFAULT;
+        return json(res, 200, { session, entries: d.feed(session, limit) });
+      }
       const m = /^\/api\/(stop|abort|go)$/.exec(url);
       if (m) {
         if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
