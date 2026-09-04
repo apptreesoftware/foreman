@@ -59,3 +59,16 @@ describe("role prompts", () => {
     expect(read("planner")).toContain("superpowers:writing-plans");
   });
 });
+
+describe("role prompts carry the .claude/ denial convention", () => {
+  it("every role carries the whole convention sentence, not just needs-owner", () => {
+    for (const role of roles) {
+      const text = read(role);
+      expect(text, role).toContain("If an Edit/Write under");
+      expect(text, role).toContain("`.claude/` is denied");
+      expect(text, role).toContain("needs-owner");
+      expect(text, role).toContain("humans own");
+      expect(text, role).toContain("decision #165");
+    }
+  });
+});

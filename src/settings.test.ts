@@ -81,3 +81,20 @@ describe(".claude/headless-settings.json headless allowlist", () => {
     expect(deny).not.toContain("Bash(mv ~/.tone_tonic*)");
   });
 });
+
+describe("read-only utilities are allowed for role sessions", () => {
+  it("allows tail, head, grep, pwd and true", () => {
+    for (const rule of ["Bash(tail *)", "Bash(grep *)", "Bash(head *)", "Bash(pwd)", "Bash(true)"])
+      expect(allow, rule).toContain(rule);
+  });
+  it("never allows find: -exec runs arbitrary commands past the deny list", () => {
+    expect(allow.some((r) => r.startsWith("Bash(find"))).toBe(false);
+  });
+  it("never allows a bare shell that would run arbitrary commands past the deny list", () => {
+    for (const prefix of ["Bash(sh", "Bash(bash", "Bash(zsh", "Bash(xargs", "Bash(env "])
+      expect(
+        allow.some((r) => r.startsWith(prefix)),
+        prefix,
+      ).toBe(false);
+  });
+});
