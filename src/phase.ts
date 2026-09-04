@@ -42,29 +42,54 @@ function epicIssue(e: Epic, issues: Issue[]): Issue | undefined {
   return issues.find((i) => i.number === e.number);
 }
 
-export function plannerFinished(e: Epic, issues: Issue[]): boolean {
-  const i = epicIssue(e, issues);
+/**
+ * An epic whose drafted plan is waiting on the owner: `needs-owner` without `plan-approved`.
+ * A phase epic waiting on sign-off carries `plan-approved` too, so it does not count here.
+ */
+export function planAwaitingOwner(epics: Epic[]): Epic | null {
   return (
-    !!i &&
-    i.comments.some((c) => /^session \S+ finished on \S+: outcome=plan_drafted/.test(c.body.trim()))
+    epics.find(
+      (e) =>
+        e.state === "OPEN" &&
+        e.labels.includes("needs-owner") &&
+        !e.labels.includes("plan-approved"),
+    ) ?? null
   );
 }
 
-export function nextUnplannedEpic(epics: Epic[], issues: Issue[]): Epic | null {
-  const active = epics.filter(
-    (e) =>
-      e.state === "OPEN" &&
-      (e.status === "In Progress" || e.status === "Ready") &&
-      !e.labels.includes("needs-owner"),
+/**
+ * The epic the planner may draft next, or null. Three gates, in order:
+ * 1. no approved phase is still being built,
+ * 2. no drafted plan is already waiting on the owner (one plan in flight),
+ * 3. the owner has labelled the epic `agent-ready` — the human backstop (#187). The foreman
+ *    removes that label when the plan is drafted, so re-labelling is how you ask for a re-plan.
+ */
+/** An approved phase whose tasks are still being built; the planner waits for it. */
+export function buildingEpic(epics: Epic[]): Epic | null {
+  return (
+    epics.find(
+      (e) =>
+        e.state === "OPEN" &&
+        e.labels.includes("plan-approved") &&
+        (e.status === "In Progress" || e.status === "Ready") &&
+        !e.labels.includes("needs-owner"),
+    ) ?? null
   );
-  if (active.length > 0) return null; // something is still being built
+}
+
+export function nextUnplannedEpic(epics: Epic[]): Epic | null {
+  if (buildingEpic(epics)) return null; // a phase is still being built
+  if (planAwaitingOwner(epics)) return null; // one drafted plan at a time
   return (
     epics
       .filter(
         (e) =>
-          e.state === "OPEN" && !e.labels.includes("plan-approved") && !plannerFinished(e, issues),
+          e.state === "OPEN" &&
+          e.labels.includes("agent-ready") &&
+          !e.labels.includes("plan-approved") &&
+          !e.labels.includes("needs-owner") &&
+          e.status !== "In Review",
       )
-      .filter((e) => e.status !== "In Review")
       .sort((a, b) => a.phase - b.phase)[0] ?? null
   );
 }
@@ -93,7 +118,7 @@ export function phaseActions(s: Snapshot): Action[] {
       return out; // one session-starting action per iteration
     }
   }
-  const next = nextUnplannedEpic(s.epics, s.issues);
+  const next = nextUnplannedEpic(s.epics);
   const nextIssue = next ? epicIssue(next, s.issues) : undefined;
   if (next && !(nextIssue && openClaim(nextIssue.comments)))
     out.push({ type: "plan", epic: next.number });

@@ -309,6 +309,33 @@ describe("execute", () => {
     expect(seen[1]?.join(" ")).not.toContain("--resume");
     expect(seen[1]?.join(" ")).toContain("--session-id");
   });
+  it("plan claims the epic visibly: assign, In Progress, then hand it back to the owner", async () => {
+    const { gh, calls } = fakeGh([
+      issue({ number: 200, labels: ["epic", "phase:2", "agent-ready"], status: "Backlog" }),
+    ]);
+    await execute(
+      { type: "plan", epic: 200 },
+      ctx({ gh, spawn: okSpawn({ outcome: "plan_drafted", pr: 7, notes: "" }) }),
+    );
+    expect(calls).toContain("assign 200 matthewtsmith");
+    expect(calls).toContain("setStatus PVTI_200 In Progress");
+    expect(calls).toContain("setStatus PVTI_200 In Review");
+    expect(calls).toContain("addLabels issue 200 needs-owner");
+    expect(calls).toContain("removeLabels issue 200 agent-ready");
+    expect(calls).toContain("unassign 200 matthewtsmith");
+  });
+  it("phase_close does not move the epic to In Progress", async () => {
+    const { gh, calls } = fakeGh([
+      issue({ number: 200, labels: ["epic", "phase:2", "plan-approved"], status: "In Progress" }),
+    ]);
+    await execute(
+      { type: "phase_close", epic: 200 },
+      ctx({ gh, spawn: okSpawn({ outcome: "phase_closed", pr: null, notes: "" }) }),
+    );
+    expect(calls).not.toContain("setStatus PVTI_200 In Progress");
+    expect(calls).toContain("setStatus PVTI_200 In Review");
+    expect(calls).toContain("addLabels issue 200 needs-owner");
+  });
   it("apply_plan with no issues file just records plan applied", async () => {
     const { gh, calls } = fakeGh([
       issue({ number: 200, labels: ["epic", "phase:2", "plan-approved"] }),
@@ -348,6 +375,8 @@ describe("execute", () => {
     expect(calls).toContain("addLabels issue 999 phase:2,size:M,agent-ready");
     expect(calls).toContain("setStatus PVTI_201 Ready");
     expect(calls).toContain(`comment issue 200 ${fmt.planApplied("mac-a")}`);
+    expect(calls).toContain("removeLabels issue 200 needs-owner");
+    expect(calls).toContain("setStatus PVTI_200 In Progress");
   });
   it("dry-run writes nothing and does not spawn", async () => {
     const { gh, calls } = fakeGh([issue({ number: 1 })]);

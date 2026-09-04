@@ -420,7 +420,14 @@ async function applyOutcome(
       await setStatus(ctx, r.issue, "In Review");
       await gh.addLabels("issue", n, ["needs-owner"]);
       break;
+    // The plan is drafted; hand the epic back to the owner. `needs-owner` and the dropped
+    // `agent-ready` are both gates on the next planner session (#187) — either one alone stops
+    // a re-plan, so a failed write here cannot restart a $5 planning session by itself.
     case "plan_drafted":
+      await gh.addLabels("issue", n, ["needs-owner"]);
+      await gh.removeLabels("issue", n, ["agent-ready"]);
+      await setStatus(ctx, r.issue, "In Review");
+      await gh.unassign(n, ctx.login);
       break;
   }
 }
@@ -453,6 +460,11 @@ async function applyPlan(ctx: Ctx, epicNumber: number): Promise<void> {
     const itemId = existing?.itemId ?? (await gh.addToProject(number));
     await gh.setStatus(itemId, "Ready");
   }
+  // The plan is applied, so the epic is no longer waiting on the owner: clear the gate that
+  // holds the planner (#187) and put the epic back where the phase-closer can see it.
+  await gh.removeLabels("issue", epicNumber, ["needs-owner"]);
+  const item = epic.itemId ?? (await gh.addToProject(epicNumber));
+  await gh.setStatus(item, "In Progress");
   await gh.comment("issue", epicNumber, fmt.planApplied(cfg.host));
 }
 
@@ -566,6 +578,12 @@ export async function execute(action: Action, ctx: Ctx): Promise<"continue" | "s
       if (conflictOn(withClaim, cfg.host) === "release") {
         await gh.comment("issue", action.epic, fmt.released(cfg.host, "conflict"));
         return "continue";
+      }
+      // A planner session runs for an hour or more with nothing else to show for it on GitHub,
+      // so mark the epic the way a builder marks a task: assigned and In Progress (#187).
+      if (action.type === "plan") {
+        await gh.assign(action.epic, ctx.login);
+        if (issue.status !== "In Progress") await setStatus(ctx, issue, "In Progress");
       }
       await runRole(ctx, { issue, role, pr: null, round: 1, resumeSessionId: null, notes: "" });
       return "stop";

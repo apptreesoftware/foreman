@@ -62,15 +62,18 @@ describe("describeWaiting", () => {
   it("human: plan-approved, owner sign-off, blocked issue", () => {
     const e10 = issue({
       number: 10,
-      labels: ["epic", "phase:1"],
-      status: "Ready",
+      labels: ["epic", "phase:1", "needs-owner"],
+      status: "In Review",
       comments: [
         comment(
           "session abc finished on mac-a: outcome=plan_drafted turns=3 cost=$1.00 duration=9m",
         ),
       ],
     });
-    const e12 = issue({ number: 12, labels: ["epic", "phase:0", "needs-owner"] });
+    const e12 = issue({
+      number: 12,
+      labels: ["epic", "phase:0", "plan-approved", "needs-owner"],
+    });
     const b = issue({
       number: 5,
       labels: ["phase:1", "blocked"],
@@ -79,8 +82,17 @@ describe("describeWaiting", () => {
     const s = snapshot({
       issues: [e10, e12, b],
       epics: [
-        epic({ number: 10, phase: 1, labels: ["epic", "phase:1"], status: "Ready" }),
-        epic({ number: 12, phase: 0, labels: ["epic", "phase:0", "needs-owner"] }),
+        epic({
+          number: 10,
+          phase: 1,
+          labels: ["epic", "phase:1", "needs-owner"],
+          status: "In Review",
+        }),
+        epic({
+          number: 12,
+          phase: 0,
+          labels: ["epic", "phase:0", "plan-approved", "needs-owner"],
+        }),
       ],
     });
     const w = describeWaiting(s, base);
@@ -89,6 +101,25 @@ describe("describeWaiting", () => {
       "epic #10 awaits plan-approved",
       "#5 blocked: migration conflicts",
     ]);
+  });
+  it("human: the planner waits for agent-ready on the next epic", () => {
+    const s = snapshot({
+      issues: [issue({ number: 20, labels: ["epic", "phase:2"], status: "Backlog" })],
+      epics: [epic({ number: 20, phase: 2, labels: ["epic", "phase:2"], status: "Backlog" })],
+    });
+    expect(describeWaiting(s, base).map((x) => x.detail)).toEqual([
+      "epic #20 awaits agent-ready before the planner runs",
+    ]);
+  });
+  it("stays quiet about agent-ready while a phase is being built", () => {
+    const s = snapshot({
+      issues: [issue({ number: 20, labels: ["epic", "phase:2"], status: "Backlog" })],
+      epics: [
+        epic({ number: 10, phase: 1, labels: ["epic", "phase:1", "plan-approved"] }),
+        epic({ number: 20, phase: 2, labels: ["epic", "phase:2"], status: "Backlog" }),
+      ],
+    });
+    expect(describeWaiting(s, base).map((x) => x.detail)).toEqual([]);
   });
   it("ci pending and failed on In Review PRs without a claim", () => {
     const i1 = issue({ number: 1, status: "In Review" });

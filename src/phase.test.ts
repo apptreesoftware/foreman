@@ -70,34 +70,27 @@ describe("phaseActions", () => {
     });
     expect(phaseActions(snapshot({ epics: [done], issues: [epicIssue] }))).toEqual([]);
   });
-  it("plans the next unapproved phase when the current one is in review", () => {
+  it("plans an epic the owner labelled agent-ready", () => {
     const reviewing = {
       ...done,
       status: "In Review" as const,
-      labels: ["epic", "phase:1", "needs-owner"],
+      labels: ["epic", "phase:1", "plan-approved", "needs-owner"],
     };
-    const next = epic({ number: 200, phase: 2, labels: ["epic", "phase:2"], status: "Backlog" });
-    expect(nextUnplannedEpic([reviewing, next], [])?.number).toBe(200);
+    const next = epic({
+      number: 200,
+      phase: 2,
+      labels: ["epic", "phase:2", "agent-ready"],
+      status: "Backlog",
+    });
+    expect(nextUnplannedEpic([reviewing, next])?.number).toBe(200);
     expect(phaseActions(snapshot({ epics: [reviewing, next], issues: [] }))).toEqual([
       { type: "plan", epic: 200 },
     ]);
   });
-  it("does not re-plan after a planner session finished", () => {
-    const reviewing = {
-      ...done,
-      status: "In Review" as const,
-      labels: ["epic", "phase:1", "needs-owner"],
-    };
+  it("plans nothing while no epic is labelled agent-ready", () => {
     const next = epic({ number: 200, phase: 2, labels: ["epic", "phase:2"], status: "Backlog" });
-    const nextIssue = issue({
-      number: 200,
-      labels: ["epic", "phase:2"],
-      comments: [
-        comment(fmt.claimed("mac-a", hoursAgo(3), "planner", 1), hoursAgo(3)),
-        comment(fmt.finished("x", "mac-a", "plan_drafted", 1, 0, 1), hoursAgo(2)),
-      ],
-    });
-    expect(phaseActions(snapshot({ epics: [reviewing, next], issues: [nextIssue] }))).toEqual([]);
+    expect(nextUnplannedEpic([next])).toBeNull();
+    expect(phaseActions(snapshot({ epics: [next], issues: [] }))).toEqual([]);
   });
   it("applies an approved plan once", () => {
     const approved = epic({
@@ -120,5 +113,61 @@ describe("phaseActions", () => {
       comments: [comment(fmt.planApplied("mac-a"))],
     });
     expect(phaseActions(snapshot({ epics: [approved], issues: [applied] }))).toEqual([]);
+  });
+});
+
+describe("nextUnplannedEpic", () => {
+  const ready = (over = {}) =>
+    epic({
+      number: 200,
+      phase: 2,
+      labels: ["epic", "phase:2", "agent-ready"],
+      status: "Backlog",
+      ...over,
+    });
+
+  it("skips an epic whose plan is already approved", () => {
+    expect(
+      nextUnplannedEpic([ready({ labels: ["epic", "phase:2", "agent-ready", "plan-approved"] })]),
+    ).toBeNull();
+  });
+  it("skips an epic that already awaits the owner", () => {
+    expect(
+      nextUnplannedEpic([ready({ labels: ["epic", "phase:2", "agent-ready", "needs-owner"] })]),
+    ).toBeNull();
+  });
+  it("holds while another epic's drafted plan awaits the owner", () => {
+    const drafted = epic({
+      number: 150,
+      phase: 1,
+      labels: ["epic", "phase:1", "needs-owner"],
+      status: "In Review",
+    });
+    expect(nextUnplannedEpic([drafted, ready()])).toBeNull();
+  });
+  it("does not count a phase awaiting sign-off as a drafted plan", () => {
+    const signOff = epic({
+      number: 150,
+      phase: 1,
+      labels: ["epic", "phase:1", "plan-approved", "needs-owner"],
+      status: "In Review",
+    });
+    expect(nextUnplannedEpic([signOff, ready()])?.number).toBe(200);
+  });
+  it("holds while an approved phase is still being built", () => {
+    const building = epic({
+      number: 150,
+      phase: 1,
+      labels: ["epic", "phase:1", "plan-approved"],
+      status: "In Progress",
+    });
+    expect(nextUnplannedEpic([building, ready()])).toBeNull();
+  });
+  it("takes the lowest phase among several agent-ready epics", () => {
+    const later = ready({ number: 300, phase: 3, labels: ["epic", "phase:3", "agent-ready"] });
+    expect(nextUnplannedEpic([later, ready()])?.number).toBe(200);
+  });
+  it("ignores a closed epic", () => {
+    expect(nextUnplannedEpic([ready({ state: "CLOSED" })])).toBeNull();
   });
 });

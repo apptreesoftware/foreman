@@ -15,7 +15,7 @@ Every `pollSeconds` (config, default 120s), the foreman wakes up and runs one it
 5. **Claim.** The foreman comments `claimed by <host> at <iso> role=<role> round=<n>`, assigns itself, and (for a first-round build) sets Status In Progress. If another host's claim comment landed in the same window, the alphabetically first host keeps it; the others comment `released by <host>: conflict` and unassign. The ledger (issue comments), not the GitHub assignee, is authoritative — two Macs can share one GitHub login.
 6. **Dispatch.** Creates or reuses a git worktree at `<workDir>/<issue>` on branch `feat/<issue>-<slug>`, runs `pnpm install`, and invokes `claude -p` with the role's prompt file, the issue/PR/worktree/branch context, `--max-turns <maxTurns>`, and a `wallClockMinutes` timeout. Posts `session <id> on <host> role=<role> attempt=<n>` before each attempt. Records the session in `~/.tone_tonic/state.json` (`current`) until it ends.
 7. **Outcome.** Parses the session's structured JSON outcome. On a validator `passed`/`failed`, first copies `<worktree>/.validation-artifacts/<pr>/` — where the validator leaves its screenshots, because a headless session cannot write outside its worktree — to `~/.tone_tonic/artifacts/<pr>/` and logs the destination, so the artifacts survive the worktree being removed at merge. Then applies labels/Status (table below). A session that ends without a valid outcome is retried up to 3 attempts total (`dispatchWithRetry` in `src/dispatch.ts`); if all 3 fail, the issue is labeled `blocked` with a log excerpt and unassigned.
-8. **Phase check.** If every task under a phase epic is closed, dispatches the phase-closer. If the next phase's epic has no `plan-approved` label and nothing is currently active, dispatches the planner once, then idles until a human labels the epic.
+8. **Phase check.** If every task under a phase epic is closed, dispatches the phase-closer. Then the planner, which is gated three ways (`src/phase.ts`): the epic must carry **`agent-ready`** (the owner's go-ahead — without it the foreman never plans anything), no approved phase may still be building, and no other epic's drafted plan may be waiting on the owner. When it dispatches, the epic is assigned and set In Progress so the hour-long session is visible on the board; `plan_drafted` then sets the epic In Review, adds `needs-owner`, removes `agent-ready` and unassigns. Labeling the epic `plan-approved` applies the plan, clears `needs-owner`, and puts the epic back In Progress. Re-adding `agent-ready` asks for a re-plan.
 
 `src/state.ts`'s `plan()` runs these in order and stops after the first action that would start a `claude -p` session, so at most one session runs per iteration per Mac.
 
@@ -31,7 +31,7 @@ Every `pollSeconds` (config, default 120s), the foreman wakes up and runs one it
 | (foreman) green CI + approved + validated | squash merge, issue closed → Done, `merged by foreman@<host>` |
 | third change request | issue `blocked` |
 | phase-closer `phase_closed` | epic → In Review, `needs-owner` |
-| planner `plan_drafted` | nothing until `plan-approved`, then tasks `agent-ready` + Ready |
+| planner `plan_drafted` | epic → In Review, `needs-owner`, `agent-ready` removed, unassigned; nothing else until `plan-approved`, which applies the plan (tasks `agent-ready` + Ready), clears `needs-owner` and returns the epic to In Progress |
 
 ## 2. Install on a Mac
 
@@ -138,6 +138,7 @@ All of these work from any terminal on the Mac: `pnpm --filter @tone/foreman ctl
 - **Start again:** `ctl go`. Removes `STOP`, then wakes the daemon (`SIGUSR2`), or `launchctl kickstart`s it, or prints the start command.
 - **This Mac, next poll only:** `touch ~/.tone_tonic/STOP`. Preflight fails on the next iteration and the foreman sleeps until the file is removed.
 - **This phase, every Mac:** `gh issue edit <epic> --add-label foreman:pause`. No new claims are picked for issues under that phase on any Mac; in-flight sessions finish normally.
+- **The planning backstop, every Mac:** the planner never runs on an epic that is not labeled `agent-ready`, and never on a second epic while a drafted plan is still waiting on the owner. Starting a phase is therefore always an explicit `gh issue edit <epic> --add-label agent-ready`; leaving every epic unlabeled leaves the foreman idle. `ctl status` says `epic #N awaits agent-ready before the planner runs` when this is what is holding it.
 - **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.tonetonic.foreman` (a clean stop, as above).
 
 A killed daemon (`kill -9`) does no bookkeeping: `ctl status` then shows `CRASHED` and, if the child is still alive, `ORPHAN child <pid>`; `ctl stop` or `ctl abort` kills it.

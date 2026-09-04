@@ -9,7 +9,7 @@ describe("describeNext", () => {
         issue({
           number: 10,
           title: "Phase 1: Identity",
-          labels: ["epic", "phase:1"],
+          labels: ["epic", "phase:1", "agent-ready"],
           status: "Backlog",
         }),
         issue({
@@ -20,7 +20,14 @@ describe("describeNext", () => {
         }),
       ],
       prs: [pr({ number: 175, issue: 146 })],
-      epics: [epic({ number: 10, phase: 1, labels: ["epic", "phase:1"], status: "Backlog" })],
+      epics: [
+        epic({
+          number: 10,
+          phase: 1,
+          labels: ["epic", "phase:1", "agent-ready"],
+          status: "Backlog",
+        }),
+      ],
     });
     const r = describeNext(s);
     expect(r.actions).toEqual(["plan#10"]);

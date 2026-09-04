@@ -27,7 +27,7 @@ function explain(a: Action, s: Snapshot): string {
   const title = (n: number) => s.issues.find((i) => i.number === n)?.title ?? "";
   switch (a.type) {
     case "plan":
-      return `${actionName(a)}: planner on epic #${a.epic} "${title(a.epic)}" (no active epic; lowest open epic without plan-approved)`;
+      return `${actionName(a)}: planner on epic #${a.epic} "${title(a.epic)}" (lowest open epic labelled agent-ready; nothing building, no plan awaiting the owner)`;
     case "phase_close":
       return `${actionName(a)}: phase-closer on epic #${a.epic} "${title(a.epic)}" (every task closed)`;
     case "apply_plan":

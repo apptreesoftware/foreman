@@ -1,6 +1,6 @@
 import { parseDependsOn } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
-import { plannerFinished } from "./phase.ts";
+import { buildingEpic, planAwaitingOwner } from "./phase.ts";
 import { MAX_FIX_ROUNDS } from "./pick.ts";
 import { WAIT_KINDS, type WaitItem } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
@@ -71,19 +71,35 @@ export function describeWaiting(s: Snapshot, i: WaitingInput): WaitItem[] {
   for (const e of [...s.epics].sort((a, b) => a.phase - b.phase)) {
     if (e.state !== "OPEN") continue;
     const ei = byNumber.get(e.number);
+    // A drafted plan and a closed phase both park the epic on `needs-owner`; `plan-approved`
+    // is what tells them apart, and the plan case also holds every other epic (#187).
     if (e.labels.includes("needs-owner"))
       out.push({
         kind: "human",
         subject: `epic #${e.number}`,
-        detail: `epic #${e.number} awaits owner sign-off`,
+        detail: e.labels.includes("plan-approved")
+          ? `epic #${e.number} awaits owner sign-off`
+          : `epic #${e.number} awaits plan-approved`,
         since: ei?.updatedAt ?? null,
       });
-    else if (!e.labels.includes("plan-approved") && plannerFinished(e, s.issues))
+  }
+  // Nothing is drafted or being built, so the only thing between the foreman and the next
+  // phase is the owner's `agent-ready` label on the epic.
+  if (!planAwaitingOwner(s.epics) && !buildingEpic(s.epics)) {
+    const next = [...s.epics]
+      .filter(
+        (e) =>
+          e.state === "OPEN" &&
+          !e.labels.includes("plan-approved") &&
+          !e.labels.includes("agent-ready"),
+      )
+      .sort((a, b) => a.phase - b.phase)[0];
+    if (next)
       out.push({
         kind: "human",
-        subject: `epic #${e.number}`,
-        detail: `epic #${e.number} awaits plan-approved`,
-        since: ei?.updatedAt ?? null,
+        subject: `epic #${next.number}`,
+        detail: `epic #${next.number} awaits agent-ready before the planner runs`,
+        since: byNumber.get(next.number)?.updatedAt ?? null,
       });
   }
   for (const x of s.issues) {
