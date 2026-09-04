@@ -459,15 +459,39 @@ export async function runOnce(ctx: Ctx): Promise<void> {
   for (const a of actions) if ((await execute(a, ctx)) === "stop") break;
 }
 
-export async function runForever(ctx: Ctx): Promise<never> {
+/**
+ * Longest gap between attempts. A GitHub rate-limit lockout clears within the hour, so the
+ * cap keeps a locked-out foreman retrying often enough to pick the work back up on its own.
+ */
+export const MAX_BACKOFF_SECONDS = 900;
+
+/** Poll interval while healthy; doubles per consecutive failure, capped. */
+export function backoffSeconds(pollSeconds: number, consecutiveFailures: number): number {
+  if (consecutiveFailures <= 0) return pollSeconds;
+  return Math.min(pollSeconds * 2 ** consecutiveFailures, MAX_BACKOFF_SECONDS);
+}
+
+export interface LoopDeps {
+  sleep?: (ms: number) => Promise<void>;
+  iterate?: (ctx: Ctx) => Promise<void>;
+}
+
+export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<never> {
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const iterate = deps.iterate ?? runOnce;
+  let consecutiveFailures = 0;
   for (;;) {
     try {
-      await runOnce(ctx);
+      await iterate(ctx);
+      consecutiveFailures = 0;
     } catch (err) {
+      consecutiveFailures++;
       log("error", "loop iteration failed", {
         error: err instanceof Error ? err.message : String(err),
+        consecutiveFailures,
+        nextAttemptSeconds: backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures),
       });
     }
-    await new Promise((r) => setTimeout(r, ctx.cfg.pollSeconds * 1000));
+    await sleep(backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures) * 1000);
   }
 }

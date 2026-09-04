@@ -8,7 +8,7 @@ import { parseConfig } from "./config.ts";
 import type { Spawner } from "./dispatch.ts";
 import type { GitHubApi } from "./github.ts";
 import { fmt } from "./ledger.ts";
-import { type Ctx, execute } from "./loop.ts";
+import { type Ctx, execute, MAX_BACKOFF_SECONDS, runForever } from "./loop.ts";
 import type { Issue } from "./types.ts";
 
 const cfg = parseConfig(
@@ -331,5 +331,46 @@ describe("execute", () => {
     );
     expect(spawned).toBe(false);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("runForever backoff", () => {
+  // Drives runForever with an injected sleep that records each delay and aborts the
+  // otherwise-infinite loop once the iteration outcomes under test are exhausted.
+  async function delaysFor(outcomes: ("ok" | "fail")[]): Promise<number[]> {
+    const seconds: number[] = [];
+    let n = 0;
+    const stop = new Error("stop");
+    await expect(
+      runForever(ctx({}), {
+        iterate: async () => {
+          if (outcomes[n++] === "fail") throw new Error("gh: API rate limit exceeded");
+        },
+        sleep: async (ms) => {
+          seconds.push(ms / 1000);
+          if (n >= outcomes.length) throw stop;
+        },
+      }),
+    ).rejects.toThrow("stop");
+    return seconds;
+  }
+
+  it("sleeps one poll interval between successful iterations", async () => {
+    expect(await delaysFor(["ok", "ok"])).toEqual([120, 120]);
+  });
+
+  it("doubles the delay while iterations keep failing", async () => {
+    expect(await delaysFor(["fail", "fail", "fail"])).toEqual([240, 480, 900]);
+  });
+
+  it("caps the backoff so a rate-limited foreman still retries within the hour", async () => {
+    const d = await delaysFor(["fail", "fail", "fail", "fail", "fail", "fail"]);
+    expect(d.slice(-3)).toEqual([MAX_BACKOFF_SECONDS, MAX_BACKOFF_SECONDS, MAX_BACKOFF_SECONDS]);
+    // A GitHub lockout clears within the hour, so the cap must leave several attempts inside one.
+    expect(MAX_BACKOFF_SECONDS).toBeLessThanOrEqual(3600 / 4);
+  });
+
+  it("returns to the poll interval after a success", async () => {
+    expect(await delaysFor(["fail", "fail", "ok"])).toEqual([240, 480, 120]);
   });
 });
