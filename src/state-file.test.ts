@@ -34,6 +34,12 @@ describe("state file", () => {
     writeFileSync(statePath(dir), JSON.stringify({ version: 2 }));
     expect(readState(dir)).toBeNull();
   });
+  it("a state file written before the model override parses with model null", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tt-state-"));
+    const { model: _absent, ...old } = base();
+    writeFileSync(statePath(dir), JSON.stringify(old));
+    expect(readState(dir)?.model).toBeNull();
+  });
   it("StateStore.patch merges and persists", () => {
     const dir = mkdtempSync(join(tmpdir(), "tt-state-"));
     const store = new StateStore(dir, base());

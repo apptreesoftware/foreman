@@ -1,7 +1,15 @@
 import { KILL_GRACE_MS } from "./dispatch.ts";
 import type { InterruptInput } from "./release.ts";
 import { GH_TIMEOUT_MS } from "./release.ts";
-import { type CurrentSession, readState, type StopMode, writeState } from "./state-file.ts";
+import {
+  type CurrentSession,
+  MODEL_CHOICES,
+  MODEL_DEFAULT,
+  ModelSchema,
+  readState,
+  type StopMode,
+  writeState,
+} from "./state-file.ts";
 
 export interface CtlDeps {
   stateDir: string;
@@ -18,6 +26,10 @@ export interface CtlDeps {
   release: (i: InterruptInput) => Promise<string[]>;
   out: (line: string) => void;
   startCommand: string;
+  /** `model` from foreman.json, so `ctl model` can name what an override is hiding. */
+  configModel: string;
+  /** POSTs /api/model to a running daemon, which owns state.json while it lives. */
+  postModel: (model: string) => Promise<string>;
 }
 
 // Worst case: the daemon's interrupt path kills the child (KILL_GRACE_MS) and then makes up to
@@ -111,6 +123,46 @@ export async function ctlStop(d: CtlDeps, mode: StopMode): Promise<void> {
   if (!pending) return;
   if (mode === "abort") await releaseLocally(d, pending, "abort");
   else d.out(`claim on #${pending.issue} may still be open; ctl abort releases it`);
+}
+
+/**
+ * Reads or sets the model the next session runs as. A live daemon owns state.json — its in-memory
+ * copy would overwrite anything written underneath it — so a set goes through the page's
+ * `/api/model` while it is running, and straight to the file only when it is not.
+ */
+export async function ctlModel(d: CtlDeps, model: string | null): Promise<void> {
+  const s = readState(d.stateDir);
+  if (model === null) {
+    const current = s?.model ?? d.configModel;
+    d.out(
+      `model ${current} ${s?.model ? `(override; foreman.json says ${d.configModel})` : "(foreman.json)"}`,
+    );
+    d.out(
+      `choices: ${MODEL_CHOICES.join(", ")}, ${MODEL_DEFAULT}   (any model name is accepted; ${MODEL_DEFAULT} clears an override)`,
+    );
+    return;
+  }
+  if (!ModelSchema.safeParse(model).success) {
+    d.out(`${model} is not a model name; expected something like ${MODEL_CHOICES.join(", ")}`);
+    return;
+  }
+  if (s && d.pidAlive(s.pid)) {
+    d.out(await d.postModel(model));
+    return;
+  }
+  if (!s) {
+    d.out(
+      `no state file: the daemon has never run here. Set "model": "${model}" in foreman.json instead.`,
+    );
+    return;
+  }
+  const next = model === MODEL_DEFAULT ? null : model;
+  writeState(d.stateDir, { ...s, model: next });
+  d.out(
+    next
+      ? `model set to ${next}; it applies when the daemon next starts`
+      : `override cleared; foreman.json's ${d.configModel} applies when the daemon next starts`,
+  );
 }
 
 export async function ctlGo(d: CtlDeps): Promise<void> {

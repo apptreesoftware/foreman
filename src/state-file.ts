@@ -60,6 +60,20 @@ export const BudgetReportSchema = z.object({
 });
 export type BudgetReport = z.infer<typeof BudgetReportSchema>;
 
+/**
+ * The models the page and `ctl model` offer as one-click choices (#210). Not a whitelist of what
+ * is *allowed* — `foreman.json` and `ctl model <name>` accept any name matching `ModelSchema`, so
+ * a dated model id still works and this list never has to be right about the future.
+ */
+export const MODEL_CHOICES = ["opus", "sonnet", "haiku", "fable"] as const;
+/**
+ * The name that clears the override instead of setting one, so `model` in foreman.json is
+ * reachable again after a click. Nothing is actually dispatched under this name.
+ */
+export const MODEL_DEFAULT = "default";
+/** Conservative shape check: an alias or a dated model id, never a flag or a path. */
+export const ModelSchema = z.string().regex(/^[a-z0-9][a-z0-9.-]{0,63}$/);
+
 /** The label gates a human owns; the page turns each into a button (#198). */
 export const OWNER_ACTIONS = [
   "sign_off",
@@ -136,6 +150,11 @@ export const ForemanStateSchema = z.object({
   unfinished: CurrentSessionSchema.extend({ mode: StopModeSchema }).nullable(),
   board: BoardSchema.nullable().default(null),
   budget: BudgetReportSchema.nullable().default(null),
+  /**
+   * Live model override set from the page or `ctl model`; null means "use `model` from
+   * foreman.json". Older state.json files predate this field; the default keeps them readable.
+   */
+  model: z.string().nullable().default(null),
 });
 export type ForemanState = z.infer<typeof ForemanStateSchema>;
 
@@ -149,10 +168,14 @@ export function initialState(o: {
   configPath: string;
   dryRun: boolean;
   startedAt: string;
+  /** Carried over from the previous state.json so a restart keeps the owner's model choice. */
+  model?: string | null;
 }): ForemanState {
   return {
     version: 1,
     ...o,
+    // After the spread: an omitted `model` arrives as undefined, which the schema rejects.
+    model: o.model ?? null,
     exitedAt: null,
     lastTickAt: null,
     nextTickAt: null,

@@ -8,6 +8,7 @@ describe("parseCtlArgs", () => {
       watch: true,
       json: false,
       config: undefined,
+      model: null,
     });
     expect(parseCtlArgs(["status", "--json", "--config", "/c"])).toMatchObject({
       cmd: "status",
@@ -15,6 +16,10 @@ describe("parseCtlArgs", () => {
       config: "/c",
     });
     expect(parseCtlArgs(["abort"])).toMatchObject({ cmd: "abort" });
+  });
+  it("parses model, with and without a name", () => {
+    expect(parseCtlArgs(["model"])).toMatchObject({ cmd: "model", model: null });
+    expect(parseCtlArgs(["model", "sonnet"])).toMatchObject({ cmd: "model", model: "sonnet" });
   });
   it("rejects unknown commands", () => {
     expect(() => parseCtlArgs(["dance"])).toThrow(/usage/);

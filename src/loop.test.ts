@@ -554,6 +554,43 @@ describe("runForever backoff", () => {
   });
 });
 
+describe("model", () => {
+  // Captures the argv the dispatcher hands `claude`, then answers like a healthy session.
+  function capturingSpawn(seen: string[][]): Spawner {
+    const ok = okSpawn({ outcome: "pr_opened", pr: 5, notes: "" });
+    return async (...a) => {
+      seen.push(a[1]);
+      return ok(...a);
+    };
+  }
+  async function dispatchWith(model: string | null): Promise<string> {
+    const seen: string[][] = [];
+    const st = memState();
+    st.store.patch({ model });
+    const { gh } = fakeGh([issue({ number: 1, status: "In Progress" })]);
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        state: st.store,
+        stateDir: mkdtempSync(join(tmpdir(), "tt-loop-model-")),
+        spawn: capturingSpawn(seen),
+      }),
+    );
+    return (seen[0] ?? []).join(" ");
+  }
+
+  it("dispatches with the config model when no override is set", async () => {
+    expect(await dispatchWith(null)).toContain("--model opus");
+  });
+
+  it("dispatches with the live override the owner set, without a daemon restart", async () => {
+    const argv = await dispatchWith("sonnet");
+    expect(argv).toContain("--model sonnet");
+    expect(argv).not.toContain("--model opus");
+  });
+});
+
 describe("operator interrupt", () => {
   const interruptedSpawn: Spawner = async () => ({
     code: 143,

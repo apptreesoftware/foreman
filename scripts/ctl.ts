@@ -1,7 +1,7 @@
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_CONFIG_PATH, loadConfig, STATE_DIR } from "../src/config.ts";
-import { ctlGo, ctlStop } from "../src/ctl.ts";
+import { ctlGo, ctlModel, ctlStop } from "../src/ctl.ts";
 import { realExec } from "../src/exec.ts";
 import { GitHub } from "../src/github.ts";
 import { LAUNCHD_LABEL, launchdInstalled, launchdUid } from "../src/launchd-status.ts";
@@ -48,6 +48,7 @@ function statusReport() {
     host: cfg.host,
     stallMinutes: cfg.stallMinutes,
     repo: cfg.repo,
+    configModel: cfg.model,
   });
 }
 
@@ -103,6 +104,16 @@ const deps = {
   },
   out: (line: string) => process.stdout.write(`${line}\n`),
   startCommand: `pnpm --filter @tone/foreman start   (config: ${args.config ?? process.env.TONE_FOREMAN_CONFIG ?? DEFAULT_CONFIG_PATH})`,
+  configModel: cfg.model,
+  postModel: async (model: string) => {
+    const r = await fetch(`http://127.0.0.1:${cfg.webPort}/api/model`, {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    });
+    const body = (await r.json()) as { ok: boolean; message?: string; error?: string };
+    if (!r.ok || !body.ok) throw new Error(body.error ?? `daemon refused (${r.status})`);
+    return body.message ?? `next session runs ${model}`;
+  },
 };
 
 switch (args.cmd) {
@@ -120,5 +131,8 @@ switch (args.cmd) {
     break;
   case "go":
     await ctlGo(deps);
+    break;
+  case "model":
+    await ctlModel(deps, args.model);
     break;
 }

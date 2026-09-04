@@ -21,6 +21,23 @@ describe("parseConfig", () => {
     expect(cfg.wallClockMinutes).toBe(90);
     expect(cfg.workDir.startsWith("/")).toBe(true);
   });
+  it("defaults model to opus, so a session never inherits the CLI default", () => {
+    expect(parseConfig(JSON.stringify(base)).model).toBe("opus");
+    expect(parseConfig(JSON.stringify({ ...base, model: "sonnet" })).model).toBe("sonnet");
+    expect(() => parseConfig(JSON.stringify({ ...base, model: "" }))).toThrow();
+  });
+  it("defaults workDir to <repoDir>/.worktrees, and an explicit value still wins", () => {
+    const { workDir: _omitted, ...noWorkDir } = base;
+    const cfg = parseConfig(JSON.stringify({ ...noWorkDir, repoDir: "/r" }));
+    expect(cfg.workDir).toBe("/r/.worktrees");
+    // The default follows repoDir through ~ expansion rather than keeping a literal tilde.
+    const home = parseConfig(JSON.stringify(noWorkDir));
+    expect(home.workDir).toBe(`${home.repoDir}/.worktrees`);
+    expect(home.workDir).not.toContain("~");
+    expect(parseConfig(JSON.stringify({ ...noWorkDir, workDir: "/elsewhere" })).workDir).toBe(
+      "/elsewhere",
+    );
+  });
   it("rejects a bad repo", () => {
     expect(() => parseConfig(JSON.stringify({ ...base, repo: "nope" }))).toThrow();
   });

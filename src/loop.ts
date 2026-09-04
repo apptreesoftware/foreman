@@ -168,6 +168,11 @@ interface RunRole {
   notes: string;
 }
 
+/** The model the next session runs as: the owner's live override, else `model` from foreman.json. */
+export function modelFor(ctx: Ctx): string {
+  return ctx.state?.get().model ?? ctx.cfg.model;
+}
+
 async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   const { cfg, gh } = ctx;
   if (ctx.dryRun) {
@@ -262,22 +267,28 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
       }
     }
   };
-  const result = await dispatchWithRetry(req, cfg, {
-    spawn: ctx.spawn,
-    signal: ctx.signal,
-    onSpawn: (pid) => setCurrent({ childPid: pid }),
-    onActivity,
-    onAttempt: async (a) => {
-      setCurrent({
-        attempt: a.attempt,
-        sessionId: a.sessionId,
-        resume: a.resume,
-        childPid: null,
-        activity: null,
-      });
-      await gh.comment("issue", a.issue, fmt.session(a.sessionId, cfg.host, a.role, a.attempt));
+  // The owner can change the model from the page or `ctl model` mid-run; it lands in state.json
+  // and is read here, per dispatch, so it takes effect without restarting the daemon (#210).
+  const result = await dispatchWithRetry(
+    req,
+    { ...cfg, model: modelFor(ctx) },
+    {
+      spawn: ctx.spawn,
+      signal: ctx.signal,
+      onSpawn: (pid) => setCurrent({ childPid: pid }),
+      onActivity,
+      onAttempt: async (a) => {
+        setCurrent({
+          attempt: a.attempt,
+          sessionId: a.sessionId,
+          resume: a.resume,
+          childPid: null,
+          activity: null,
+        });
+        await gh.comment("issue", a.issue, fmt.session(a.sessionId, cfg.host, a.role, a.attempt));
+      },
     },
-  });
+  );
   if (flushTimer) clearTimeout(flushTimer);
   flush();
   const minutes = Math.round((Date.now() - started) / 60_000);

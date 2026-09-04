@@ -85,6 +85,9 @@ describe("buildArgs / buildPrompt", () => {
     expect(a.join(" ")).toContain("--session-id 33333333-3333-3333-3333-333333333333");
     expect(a.join(" ")).toContain("--append-system-prompt-file /work/42/.claude/roles/builder.md");
     expect(a.join(" ")).not.toContain("dangerously");
+    // Always pinned, never inherited from the interactive CLI default (#210).
+    expect(a.join(" ")).toContain("--model opus");
+    expect(buildArgs(req, { ...cfg, model: "sonnet" }).join(" ")).toContain("--model sonnet");
   });
   it("switches to --resume on resume", () => {
     const a = buildArgs({ ...req, resume: true }, cfg).join(" ");

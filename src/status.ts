@@ -1,7 +1,14 @@
 import { overlayCurrent } from "./board.ts";
 import { formatBudget } from "./budget.ts";
 import { type SessionLogEntry, todayStats } from "./sessions.ts";
-import type { Board, BudgetReport, CurrentSession, ForemanState, StopMode } from "./state-file.ts";
+import {
+  type Board,
+  type BudgetReport,
+  type CurrentSession,
+  type ForemanState,
+  MODEL_CHOICES,
+  type StopMode,
+} from "./state-file.ts";
 import { liveWaits } from "./waiting.ts";
 
 export type DaemonState = "RUNNING" | "STOPPED" | "CRASHED" | "UNKNOWN";
@@ -18,6 +25,8 @@ export interface StatusInput {
   host: string;
   stallMinutes: number;
   repo: string;
+  /** `model` from foreman.json; the state file's `model` overrides it while set (#210). */
+  configModel: string;
 }
 
 export interface StatusReport {
@@ -28,6 +37,14 @@ export interface StatusReport {
   uptimeMinutes: number | null;
   launchdInstalled: boolean;
   stopPresent: boolean;
+  /** What the next session will run as, where it came from, and the page's one-click choices. */
+  model: {
+    current: string;
+    /** What foreman.json says, kept so the page and `ctl status` can name what an override hides. */
+    configured: string;
+    source: "config" | "override";
+    choices: readonly string[];
+  };
   tick: {
     lastAt: string | null;
     nextAt: string | null;
@@ -101,6 +118,12 @@ export function describeStatus(i: StatusInput): StatusReport {
     uptimeMinutes: s && daemon === "RUNNING" ? minutesBetween(s.startedAt, i.now) : null,
     launchdInstalled: i.launchdInstalled,
     stopPresent: i.stopPresent,
+    model: {
+      current: s?.model ?? i.configModel,
+      configured: i.configModel,
+      source: s?.model ? "override" : "config",
+      choices: MODEL_CHOICES,
+    },
     tick: s
       ? {
           lastAt: s.lastTickAt,
@@ -192,6 +215,11 @@ export function formatStatus(r: StatusReport): string {
             .map((e) => `${hhmm(e.t)} ${e.role} #${e.issue} ${e.outcome} $${e.costUsd.toFixed(2)}`)
             .join(" | ")
         : "none"
+    }`,
+  );
+  lines.push(
+    `model  ${r.model.current}${
+      r.model.source === "override" ? ` (override; foreman.json says ${r.model.configured})` : ""
     }`,
   );
   lines.push(`today  ${r.today.count} of ${r.today.cap} sessions, $${r.today.spendUsd.toFixed(2)}`);

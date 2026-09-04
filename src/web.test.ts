@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FeedEntry } from "./feed.ts";
 import type { NextReport } from "./next.ts";
+import { MODEL_CHOICES } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
 import { createWebServer, isLocalHost } from "./web.ts";
 
@@ -16,6 +17,7 @@ const report: StatusReport = {
   uptimeMinutes: 3,
   launchdInstalled: false,
   stopPresent: false,
+  model: { current: "opus", configured: "opus", source: "config", choices: MODEL_CHOICES },
   tick: null,
   current: null,
   orphan: null,
@@ -37,6 +39,7 @@ const nextReport: NextReport = {
 describe("web server", () => {
   const acts: string[] = [];
   const owned: string[] = [];
+  const models: string[] = [];
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
     t: `2026-09-04T13:27:0${i}.000Z`,
@@ -61,6 +64,10 @@ describe("web server", () => {
     ownerItems: () => [
       { epic: 124, title: "Phase 0.5", phase: 0, detail: "d", actions: ["sign_off", "pause"] },
     ],
+    setModel: async (model) => {
+      models.push(model);
+      return `next session runs ${model}`;
+    },
     html: "<title>Foreman</title>",
   });
   let base = "";
@@ -147,6 +154,21 @@ describe("web server", () => {
     expect((await fetch(`${base}/api/owner`)).status).toBe(405);
     expect(owned).toEqual(["sign_off 124"]);
   });
+  it("sets the model, and refuses anything that is not a plain model name", async () => {
+    const post = (body: unknown) =>
+      fetch(`${base}/api/model`, { method: "POST", body: JSON.stringify(body) });
+    const ok = await post({ model: "sonnet" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, message: "next session runs sonnet" });
+    // A dated model id is a legitimate choice, so the check is a shape, not a fixed list.
+    expect((await post({ model: "claude-haiku-4-5-20251001" })).status).toBe(200);
+    expect((await post({ model: "--dangerously-skip-permissions" })).status).toBe(400);
+    expect((await post({ model: "../../etc/passwd" })).status).toBe(400);
+    expect((await post({ model: "" })).status).toBe(400);
+    expect((await post({})).status).toBe(400);
+    expect((await fetch(`${base}/api/model`)).status).toBe(405);
+    expect(models).toEqual(["sonnet", "claude-haiku-4-5-20251001"]);
+  });
   it("rejects a session id that is not a uuid", async () => {
     const r = await fetch(`${base}/api/feed?session=../etc/passwd`);
     expect(r.status).toBe(400);
@@ -170,5 +192,12 @@ describe("web.html", () => {
       expect(html).toContain(`id="${id}"`);
     expect(html).toContain("const esc =");
     expect(html).toContain("/api/feed?session=");
+  });
+  it("offers the model choices and confirms before POSTing one", () => {
+    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+    expect(html).toContain('rows.push(["model", modelControl(r.model)])');
+    expect(html).toContain("window.confirm(`Run foreman sessions as ");
+    expect(html).toContain('data-model="');
+    expect(html).toContain('fetch("/api/model"');
   });
 });

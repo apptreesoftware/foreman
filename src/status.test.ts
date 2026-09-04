@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialState } from "./state-file.ts";
+import { initialState, MODEL_CHOICES } from "./state-file.ts";
 import { describeStatus, formatStatus, type StatusInput } from "./status.ts";
 import { emptyActivity } from "./stream.ts";
 
@@ -41,6 +41,7 @@ function input(over: Partial<StatusInput> = {}): StatusInput {
     host: "mac-a",
     stallMinutes: 5,
     repo: "o/r",
+    configModel: "opus",
     ...over,
   };
 }
@@ -53,6 +54,20 @@ describe("describeStatus", () => {
     expect(r.current?.elapsedMinutes).toBe(12);
     expect(r.current?.limitMinutes).toBe(90);
     expect(r.orphan).toBeNull();
+  });
+  it("reports the config model, and the live override when one is set", () => {
+    const fromConfig = describeStatus(input());
+    expect(fromConfig.model).toEqual({
+      current: "opus",
+      configured: "opus",
+      source: "config",
+      choices: MODEL_CHOICES,
+    });
+    const overridden = describeStatus(input({ state: { ...state(), model: "sonnet" } }));
+    expect(overridden.model.current).toBe("sonnet");
+    expect(overridden.model.source).toBe("override");
+    expect(formatStatus(overridden)).toContain("model  sonnet (override; foreman.json says opus)");
+    expect(formatStatus(fromConfig)).toContain("model  opus");
   });
   it("STOPPED when exitedAt is set and the pid is dead", () => {
     const r = describeStatus(

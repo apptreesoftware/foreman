@@ -99,6 +99,7 @@
   .owner .acts { display: flex; gap: 6px; } .owner .empty { color: var(--ink-3); padding: 6px 0; }
   .tick, .recent { font: 12.5px/1.6 var(--mono); }
   .tick div { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--line); } .tick div span:first-child { color: var(--ink-2); }
+  .tick .acts { display: inline-flex; gap: 6px; margin-left: 8px; } .tick .from { color: var(--ink-3); }
   .recent .r { display: grid; grid-template-columns: 52px 1fr auto auto; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
   .recent .r:hover, .recent .r.sel { background: var(--panel-2); }
   .recent .r:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -207,6 +208,7 @@
       rows.push(["next", r.tick.blockedBySession ? `blocked by session since ${t(r.current?.startedAt)}` : t(r.tick.nextAt)]);
       rows.push(["backoff", String(r.tick.consecutiveFailures)]);
     }
+    if (r.model) rows.push(["model", modelControl(r.model)]);
     if (r.stopping) rows.push(["stopping", `${esc(r.stopping.mode)} since ${t(r.stopping.at)}`]);
     if (r.orphan) rows.push(["orphan", `child ${r.orphan.pid} still running for #${r.orphan.issue}`]);
     if (r.unfinished) rows.push(["unfinished", `${esc(r.unfinished.mode)} bookkeeping for ${esc(r.unfinished.role)} #${r.unfinished.issue}; run ctl abort`]);
@@ -220,6 +222,25 @@
     }
     rows.push(["launchd", r.launchdInstalled ? "installed" : "not installed"]);
     $("tick").innerHTML = rows.map(([a, b]) => `<div><span>${a}</span><span>${b}</span></div>`).join("");
+    for (const b of $("tick").querySelectorAll("button[data-model]")) b.onclick = () => setModel(b.dataset.model);
+  }
+
+  // What the next session runs as. The buttons are the common choices only; foreman.json and
+  // `ctl model <name>` still take any model name.
+  function modelControl(m) {
+    // An override is only reachable-out-of via "default", so offer it whenever one is set.
+    const choices = m.source === "override" ? [...m.choices, "default"] : m.choices;
+    const btns = choices.filter((c) => c !== m.current)
+      .map((c) => `<button type="button" data-model="${esc(c)}">${esc(c === "default" ? `default (${m.configured})` : c)}</button>`).join("");
+    const from = m.source === "override" ? `<span class="from"> override · foreman.json says ${esc(m.configured)}</span>` : "";
+    return `<span><b>${esc(m.current)}</b>${from}<span class="acts">${btns}</span></span>`;
+  }
+  async function setModel(model) {
+    if (!window.confirm(`Run foreman sessions as ${model}?\n\nA session running now keeps the model it started with; the next dispatch uses ${model}.`)) return;
+    $("msg").textContent = `model ${model}…`;
+    const j = await (await fetch("/api/model", { method: "POST", body: JSON.stringify({ model }) })).json();
+    $("msg").textContent = j.ok ? j.message : `error: ${j.error}`;
+    refresh();
   }
 
   function renderRecent(list) {

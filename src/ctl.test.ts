@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { type CtlDeps, ctlGo, ctlStop } from "./ctl.ts";
+import { type CtlDeps, ctlGo, ctlModel, ctlStop } from "./ctl.ts";
 import { initialState, readState, writeState } from "./state-file.ts";
 
 const current = {
@@ -56,6 +56,11 @@ function deps(over: Partial<CtlDeps> & { alive?: number[] } = {}) {
       log.out.push(l);
     },
     startCommand: "pnpm --filter @tone/foreman start",
+    configModel: "opus",
+    postModel: async (m) => {
+      log.out.push(`posted ${m}`);
+      return `next session runs ${m}`;
+    },
     ...over,
   };
   return { d, dir, log, alive };
@@ -126,6 +131,52 @@ describe("ctlStop", () => {
     await ctlStop(d, "stop");
     expect(log.stop).toBe(true);
     expect(log.out.join("\n")).toContain("no state file");
+  });
+});
+
+describe("ctlModel", () => {
+  it("with no argument, reports the model and where it came from", async () => {
+    const a = deps();
+    writeState(a.dir, base());
+    await ctlModel(a.d, null);
+    expect(a.log.out.join("\n")).toContain("model opus (foreman.json)");
+    const b = deps();
+    writeState(b.dir, { ...base(), model: "sonnet" });
+    await ctlModel(b.d, null);
+    expect(b.log.out.join("\n")).toContain("model sonnet (override; foreman.json says opus)");
+  });
+  it("posts to a live daemon, so the change lands without a restart", async () => {
+    const { d, dir, log } = deps({ alive: [100] });
+    writeState(dir, base());
+    await ctlModel(d, "sonnet");
+    expect(log.out).toContain("posted sonnet");
+    expect(log.out.join("\n")).toContain("next session runs sonnet");
+  });
+  it("writes state.json itself when no daemon is running", async () => {
+    const { d, dir, log } = deps();
+    writeState(dir, base());
+    await ctlModel(d, "haiku");
+    expect(readState(dir)?.model).toBe("haiku");
+    expect(log.out.join("\n")).not.toContain("posted");
+  });
+  it("clears the override with `default`, so foreman.json is reachable again", async () => {
+    const { d, dir } = deps();
+    writeState(dir, { ...base(), model: "sonnet" });
+    await ctlModel(d, "default");
+    expect(readState(dir)?.model).toBeNull();
+  });
+  it("refuses a name that is not a plain model name, and touches nothing", async () => {
+    const { d, dir, log } = deps({ alive: [100] });
+    writeState(dir, base());
+    await ctlModel(d, "--dangerously-skip-permissions");
+    expect(readState(dir)?.model).toBeNull();
+    expect(log.out.join("\n")).toContain("not a model name");
+    expect(log.out.join("\n")).not.toContain("posted");
+  });
+  it("says where to set it when there is no state file at all", async () => {
+    const { d, log } = deps();
+    await ctlModel(d, "sonnet");
+    expect(log.out.join("\n")).toContain("foreman.json");
   });
 });
 

@@ -13,7 +13,7 @@ import { describeNext } from "./next.ts";
 import { applyOwnerAction, applyOwnerActionToBoard } from "./owner.ts";
 import { checkEnv, preflight } from "./preflight.ts";
 import { readSessions } from "./sessions.ts";
-import { initialState, StateStore } from "./state-file.ts";
+import { initialState, MODEL_DEFAULT, readState, StateStore } from "./state-file.ts";
 import { describeStatus } from "./status.ts";
 import { startWebServer } from "./web.ts";
 
@@ -87,6 +87,8 @@ const store = new StateStore(
     configPath,
     dryRun,
     startedAt: new Date().toISOString(),
+    // A restart must not silently revert the owner's model choice back to foreman.json (#210).
+    model: readState(STATE_DIR)?.model ?? null,
   }),
 );
 const controller = new Controller((mode) => {
@@ -119,6 +121,7 @@ const web = await startWebServer({
       host: cfg.host,
       stallMinutes: cfg.stallMinutes,
       repo: cfg.repo,
+      configModel: cfg.model,
     }),
   next: () => lock.run(async () => describeNext(await buildSnapshot(ctx))),
   act: async (cmd) => {
@@ -132,6 +135,14 @@ const web = await startWebServer({
     return `${cmd} requested; STOP file present`;
   },
   feed: (session, limit) => readFeed(STATE_DIR, session, limit),
+  setModel: async (model) => {
+    // Read per dispatch by runRole's modelFor(), so a session already running keeps the model it
+    // started with and the next one picks this up — no restart (#210).
+    const next = model === MODEL_DEFAULT ? null : model;
+    store.patch({ model: next });
+    log("info", "model set", { model: next, configured: cfg.model });
+    return `next session runs ${next ?? cfg.model}`;
+  },
   ownerItems: () => store.get().board?.owner ?? [],
   owner: async (epic, action) => {
     const message = await applyOwnerAction(gh, epic, action);

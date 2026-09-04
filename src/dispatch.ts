@@ -142,7 +142,10 @@ export function buildArgs(req: DispatchRequest, cfg: ForemanConfig): string[] {
     "--append-system-prompt-file",
     join(req.worktree, ".claude", "roles", `${req.role}.md`),
     ...(req.resume ? ["--resume", req.sessionId] : ["--session-id", req.sessionId]),
-    ...(cfg.model ? ["--model", cfg.model] : []),
+    // Always pinned: `cfg.model` is defaulted, so a session never inherits the interactive CLI
+    // default on this Mac. `runRole` passes the live override through here when one is set (#210).
+    "--model",
+    cfg.model,
   ];
 }
 

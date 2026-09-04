@@ -6,7 +6,7 @@ import { z } from "zod";
 import { FEED_LIMIT_DEFAULT, type FeedEntry, isSessionId } from "./feed.ts";
 import { log } from "./log.ts";
 import type { NextReport } from "./next.ts";
-import { type OwnerAction, OwnerActionSchema, type OwnerItem } from "./state-file.ts";
+import { ModelSchema, type OwnerAction, OwnerActionSchema, type OwnerItem } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
 
 export type WebCommand = "stop" | "abort" | "go";
@@ -21,6 +21,8 @@ export interface WebDeps {
   owner: (epic: number, action: OwnerAction) => Promise<string>;
   /** The epics the page may act on, as of the last tick. */
   ownerItems: () => OwnerItem[];
+  /** Sets the model the next dispatch uses; the name has already passed `ModelSchema`. */
+  setModel: (model: string) => Promise<string>;
   /** Page HTML; defaults to src/web.html. Injectable for tests. */
   html?: string;
 }
@@ -34,6 +36,8 @@ const OwnerRequestSchema = z.object({
   epic: z.number().int().positive(),
   action: OwnerActionSchema,
 });
+
+const ModelRequestSchema = z.object({ model: ModelSchema });
 
 /** Reads a small JSON body; anything unparsable (or over 8 KB) resolves to null. */
 async function readJson(req: http.IncomingMessage): Promise<unknown> {
@@ -94,6 +98,14 @@ export function createWebServer(d: WebDeps): http.Server {
         if (!item?.actions.includes(action))
           return json(res, 400, { ok: false, error: `#${epic} does not offer ${action}` });
         return json(res, 200, { ok: true, message: await d.owner(epic, action) });
+      }
+      if (url === "/api/model") {
+        if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
+        const parsed = ModelRequestSchema.safeParse(await readJson(req));
+        // A model name reaches `claude` as argv, so anything that is not a plain name — a flag,
+        // a path, an empty string — is refused here rather than passed through.
+        if (!parsed.success) return json(res, 400, { ok: false, error: "bad model name" });
+        return json(res, 200, { ok: true, message: await d.setModel(parsed.data.model) });
       }
       const m = /^\/api\/(stop|abort|go)$/.exec(url);
       if (m) {
