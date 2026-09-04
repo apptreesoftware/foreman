@@ -430,9 +430,9 @@ async function applyOutcome(
   }
 }
 
-async function applyPlan(ctx: Ctx, epicNumber: number): Promise<void> {
+async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Promise<void> {
   const { gh, cfg } = ctx;
-  const epic = await gh.getIssue(epicNumber);
+  const epic = await issueFor(ctx, epicNumber, snapshot);
   const specPath = parseSpecPath(epic.body) ?? "";
   const nn =
     /phase-(\d\d)/.exec(specPath)?.[1] ?? /phase-(\d\d)/.exec(planIssuesPath(specPath, "x"))?.[1];
@@ -460,7 +460,9 @@ async function applyPlan(ctx: Ctx, epicNumber: number): Promise<void> {
   // One board read for the whole plan. This used to be one `listIssues` per task, which is a
   // `gh project item-list` each time; a twenty-task plan tripped GitHub's rate limiter, the
   // tick failed, and the retry started the same storm again.
-  const itemIds = new Map((await gh.listIssues("open")).map((i) => [i.number, i.itemId]));
+  const itemIds = new Map(
+    (snapshot?.issues ?? (await gh.listIssues("open"))).map((i) => [i.number, i.itemId]),
+  );
   for (const t of planFile.tasks) {
     let number = t.number;
     if (number) await gh.editBody(number, t.body);
@@ -480,7 +482,19 @@ async function applyPlan(ctx: Ctx, epicNumber: number): Promise<void> {
   await gh.comment("issue", epicNumber, fmt.planApplied(cfg.host));
 }
 
-export async function execute(action: Action, ctx: Ctx): Promise<"continue" | "stop"> {
+/**
+ * The issue as this tick's snapshot already saw it, falling back to a single-issue read. Only
+ * the claim paths below re-read from GitHub on purpose, to spot a competing host's claim (#192).
+ */
+async function issueFor(ctx: Ctx, n: number, snapshot?: Snapshot): Promise<Issue> {
+  return snapshot?.issues.find((i) => i.number === n) ?? (await ctx.gh.getIssue(n));
+}
+
+export async function execute(
+  action: Action,
+  ctx: Ctx,
+  snapshot?: Snapshot,
+): Promise<"continue" | "stop"> {
   const { gh, cfg } = ctx;
   log("info", "action", { ...action, dryRun: ctx.dryRun });
   // Dry-run must not call any gh method: return before the switch dispatches to a case that would.
@@ -503,7 +517,7 @@ export async function execute(action: Action, ctx: Ctx): Promise<"continue" | "s
       await gh.unassign(action.issue, ctx.login);
       return "continue";
     case "merge": {
-      const issue = await gh.getIssue(action.issue);
+      const issue = await issueFor(ctx, action.issue, snapshot);
       await gh.mergePR(action.pr);
       await gh.comment("issue", action.issue, fmt.merged(cfg.host));
       await gh.closeIssue(action.issue);
@@ -526,8 +540,8 @@ export async function execute(action: Action, ctx: Ctx): Promise<"continue" | "s
       return "continue";
     case "reclaim": {
       await gh.comment("issue", action.issue, fmt.reclaimed(action.fromHost, cfg.host, ctx.now()));
-      const issue = await gh.getIssue(action.issue);
-      const prs = await gh.listOpenPRs();
+      const issue = await issueFor(ctx, action.issue, snapshot);
+      const prs = snapshot?.prs ?? (await gh.listOpenPRs());
       const pr = prs.find((p) => p.issue === action.issue)?.number ?? null;
       await gh.comment("issue", action.issue, fmt.claimed(cfg.host, ctx.now(), "builder", 1));
       await gh.assign(action.issue, ctx.login);
@@ -569,7 +583,7 @@ export async function execute(action: Action, ctx: Ctx): Promise<"continue" | "s
       return "stop";
     }
     case "resume": {
-      const issue = await gh.getIssue(action.issue);
+      const issue = await issueFor(ctx, action.issue, snapshot);
       await runRole(ctx, {
         issue,
         role: action.role,
@@ -601,7 +615,7 @@ export async function execute(action: Action, ctx: Ctx): Promise<"continue" | "s
       return "stop";
     }
     case "apply_plan":
-      await applyPlan(ctx, action.epic);
+      await applyPlan(ctx, action.epic, snapshot);
       return "continue";
   }
 }
@@ -640,7 +654,7 @@ export async function runOnce(ctx: Ctx): Promise<void> {
       log("info", "stopping before next action", { next: a.type });
       break;
     }
-    if ((await execute(a, ctx)) === "stop") break;
+    if ((await execute(a, ctx, snapshot)) === "stop") break;
   }
 }
 

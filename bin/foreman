@@ -1,0 +1,107 @@
+#!/bin/zsh
+# `foreman` — one command for the daemon, so nobody has to remember the pnpm incantation.
+# Install once:  tools/foreman/bin/foreman install   (symlinks itself into ~/.local/bin)
+set -euo pipefail
+
+# `:A` resolves the symlink, so an installed copy still finds the clone it points into.
+SELF="${0:A}"
+WRAPPER_REPO="${SELF:h:h:h:h}"
+STATE_DIR="$HOME/.tone_tonic"
+CONFIG="$STATE_DIR/foreman.json"
+LOG="$STATE_DIR/foreman.log"
+
+# The daemon must run from the clone it is configured to build in, not from whichever
+# worktree this script happens to live in.
+config_value() {
+  local key="$1" fallback="$2"
+  [[ -r "$CONFIG" ]] || { print -r -- "$fallback"; return }
+  python3 - "$CONFIG" "$key" "$fallback" <<'PY' 2>/dev/null || print -r -- "$fallback"
+import json, os, sys
+cfg, key, fallback = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    v = json.load(open(cfg)).get(key, fallback)
+except Exception:
+    v = fallback
+print(os.path.expanduser(str(v)))
+PY
+}
+
+REPO="$(config_value repoDir "$WRAPPER_REPO")"
+PORT="$(config_value webPort 8090)"
+
+usage() {
+  cat <<EOF
+foreman — Tone & Tonic daemon control
+
+  foreman status [--watch] [--json]   what it is doing, what it waits on
+  foreman next                        what the next tick would do, and why
+  foreman start                       start the daemon detached (log: $LOG)
+  foreman stop                        stop it, keep the claim (resumable)
+  foreman abort                       stop it and release the running session
+  foreman go                          clear STOP and wake it
+  foreman restart                     stop, then start
+  foreman update                      pull the clone and install deps
+  foreman logs [-f]                   tail the daemon log
+  foreman page                        open the web page
+  foreman install                     symlink this script into ~/.local/bin
+
+clone: $REPO
+EOF
+}
+
+daemon_pid() {
+  pgrep -f "tsx src/main.ts" | head -1
+}
+
+ctl() {
+  (cd "$REPO" && pnpm --silent --filter @tone/foreman ctl "$@")
+}
+
+cmd="${1:-help}"
+[[ $# -gt 0 ]] && shift
+
+case "$cmd" in
+  status|next|stop|abort|go)
+    ctl "$cmd" "$@"
+    ;;
+  start)
+    if [[ -n "$(daemon_pid)" ]]; then
+      print -u2 "foreman: already running (pid $(daemon_pid))"
+      exit 1
+    fi
+    mkdir -p "$STATE_DIR"
+    (cd "$REPO" && nohup pnpm --filter @tone/foreman start >>"$LOG" 2>&1 &)
+    print "foreman: started; log $LOG"
+    ;;
+  restart)
+    [[ -n "$(daemon_pid)" ]] && ctl stop || true
+    "$SELF" start
+    ;;
+  update)
+    git -C "$REPO" pull --ff-only
+    (cd "$REPO" && pnpm install)
+    ;;
+  logs)
+    if [[ "${1:-}" == "-f" ]]; then tail -f "$LOG"; else tail -n 50 "$LOG"; fi
+    ;;
+  page)
+    open "http://127.0.0.1:$PORT"
+    ;;
+  install)
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$SELF" "$HOME/.local/bin/foreman"
+    print "installed: $HOME/.local/bin/foreman -> $SELF"
+    case ":$PATH:" in
+      *":$HOME/.local/bin:"*) ;;
+      *) print -u2 "warning: ~/.local/bin is not on PATH; add it in ~/.zshrc" ;;
+    esac
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    print -u2 "foreman: unknown command '$cmd'"
+    usage
+    exit 2
+    ;;
+esac

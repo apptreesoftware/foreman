@@ -14,7 +14,8 @@ describe("parseConfig", () => {
   it("applies defaults and derives owner", () => {
     const cfg = parseConfig(JSON.stringify(base));
     expect(cfg.owner).toBe("matthewtsmith");
-    expect(cfg.pollSeconds).toBe(120);
+    expect(cfg.pollSeconds).toBe(300);
+    expect(cfg.minGraphqlPoints).toBe(500);
     expect(cfg.maxSessionsPerDay).toBe(20);
     expect(cfg.maxTurns).toBe(200);
     expect(cfg.wallClockMinutes).toBe(90);

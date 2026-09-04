@@ -67,6 +67,37 @@ describe("preflight", () => {
     expect(countSessionsToday(d.stateDir, d.now)).toBe(2);
     expect((await preflight(cfg, d)).ok).toBe(false);
   });
+  it("fails when the GraphQL budget is nearly spent", async () => {
+    const exec: Exec = async (cmd, args) =>
+      cmd === "gh" && args[1] === "graphql"
+        ? {
+            code: 0,
+            stdout: '{"data":{"rateLimit":{"remaining":12,"resetAt":"2026-09-04T18:00:00Z"}}}',
+            stderr: "",
+          }
+        : okExec(cmd, args);
+    const r = await preflight(cfg, deps({ exec }));
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.reason).toContain("12 points left");
+  });
+  it("passes on a healthy GraphQL budget", async () => {
+    const exec: Exec = async (cmd, args) =>
+      cmd === "gh" && args[1] === "graphql"
+        ? {
+            code: 0,
+            stdout: '{"data":{"rateLimit":{"remaining":4800,"resetAt":"2026-09-04T18:00:00Z"}}}',
+            stderr: "",
+          }
+        : okExec(cmd, args);
+    expect((await preflight(cfg, deps({ exec }))).ok).toBe(true);
+  });
+  it("does not block when the budget cannot be read", async () => {
+    const exec: Exec = async (cmd, args) =>
+      cmd === "gh" && args[1] === "graphql"
+        ? { code: 1, stdout: "", stderr: "unreadable" }
+        : okExec(cmd, args);
+    expect((await preflight(cfg, deps({ exec }))).ok).toBe(true);
+  });
   it("fails when docker is down", async () => {
     const exec: Exec = async (cmd, args) =>
       cmd === "docker" ? { code: 1, stdout: "", stderr: "no daemon" } : okExec(cmd, args);

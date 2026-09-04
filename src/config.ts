@@ -12,7 +12,7 @@ export const ConfigSchema = z.object({
   host: z.string().min(1),
   repoDir: z.string().min(1),
   workDir: z.string().min(1),
-  pollSeconds: z.number().int().min(10).default(120),
+  pollSeconds: z.number().int().min(10).default(300),
   maxSessionsPerDay: z.number().int().min(1).default(20),
   maxTurns: z.number().int().min(1).default(200),
   wallClockMinutes: z.number().int().min(1).default(90),
@@ -20,6 +20,8 @@ export const ConfigSchema = z.object({
   model: z.string().optional(),
   webPort: z.number().int().min(1).max(65535).default(8090),
   stallMinutes: z.number().int().min(1).default(5),
+  /** Preflight refuses to start a tick with fewer GitHub GraphQL points left than this (#192). */
+  minGraphqlPoints: z.number().int().min(0).default(500),
 });
 export type ForemanConfig = z.infer<typeof ConfigSchema> & { owner: string };
 

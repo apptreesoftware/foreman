@@ -18,6 +18,15 @@ function fakeExec(calls: string[][]): Exec {
     calls.push([cmd, ...args]);
     const a = args.join(" ");
     if (a.startsWith("issue list")) return { code: 0, stdout: fx("issues.json"), stderr: "" };
+    if (a.startsWith("issue view")) {
+      const n = Number(args[2]);
+      const one = (JSON.parse(fx("issues.json")) as Array<{ number: number }>).find(
+        (i) => i.number === n,
+      );
+      return one
+        ? { code: 0, stdout: JSON.stringify(one), stderr: "" }
+        : { code: 1, stdout: "", stderr: "not found" };
+    }
     if (a.startsWith("pr list")) return { code: 0, stdout: fx("prs.json"), stderr: "" };
     if (a.startsWith("project item-list")) return { code: 0, stdout: fx("board.json"), stderr: "" };
     if (a.startsWith("project field-list"))
@@ -95,6 +104,33 @@ describe("GitHub reads", () => {
     expect(Object.keys(f.options)).toEqual(
       expect.arrayContaining(["Backlog", "Ready", "In Progress", "In Review", "Done"]),
     );
+  });
+  it("getIssue reads one issue, not the whole repo", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, fakeExec(calls), false);
+    const board = await gh.listBoard();
+    const onBoard = board.find((b) => b.issue === 93) as (typeof board)[number];
+    const i = await gh.getIssue(93);
+    expect(i.number).toBe(93);
+    expect(i.itemId).toBe(onBoard.itemId);
+    expect(calls.some((c) => c[1] === "issue" && c[2] === "list")).toBe(false);
+    expect(calls.some((c) => c[1] === "issue" && c[2] === "view")).toBe(true);
+  });
+  it("fetches the board once and reuses it", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, fakeExec(calls), false);
+    await gh.listIssues();
+    await gh.listIssues();
+    await gh.listBoard();
+    expect(calls.filter((c) => c[2] === "item-list")).toHaveLength(1);
+  });
+  it("re-reads the board after a status write", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, fakeExec(calls), false);
+    await gh.listBoard();
+    await gh.setStatus("PVTI_x", "Ready");
+    await gh.listBoard();
+    expect(calls.filter((c) => c[2] === "item-list")).toHaveLength(2);
   });
   it("reads sub-issues", async () => {
     const gh = new GitHub(cfg, fakeExec([]), false);

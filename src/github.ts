@@ -56,12 +56,31 @@ function names(labels: Array<{ name: string }> | undefined): string[] {
   return (labels ?? []).map((l) => l.name);
 }
 
+const ISSUE_FIELDS = "number,title,body,state,labels,assignees,comments,updatedAt";
+
+interface RawIssue {
+  number: number;
+  title: string;
+  body: string;
+  state: "OPEN" | "CLOSED";
+  updatedAt: string;
+  labels: Array<{ name: string }>;
+  assignees: Array<{ login: string }>;
+  comments: Array<{ author: { login: string }; body: string; createdAt: string }>;
+}
+
 export class GitHub {
   private statusCache: {
     fieldId: string;
     projectId: string;
     options: Record<string, string>;
   } | null = null;
+  /**
+   * `project item-list` is the most expensive read the foreman makes (GraphQL, paged 100 at a
+   * time) and every issue read needs it for Status and item id. One copy per tick, dropped by
+   * any write that changes the board (#192).
+   */
+  private boardCache: BoardItem[] | null = null;
 
   constructor(
     private readonly cfg: GhConfig,
@@ -88,7 +107,13 @@ export class GitHub {
     return (JSON.parse(await this.gh(["api", "user"])) as { login: string }).login;
   }
 
+  /** Drops the cached board; call after any write that changes an item's status or membership. */
+  invalidateBoard(): void {
+    this.boardCache = null;
+  }
+
   async listBoard(): Promise<BoardItem[]> {
+    if (this.boardCache) return this.boardCache;
     const out = JSON.parse(
       await this.gh([
         "project",
@@ -104,13 +129,31 @@ export class GitHub {
     ) as {
       items: Array<{ id: string; status?: string; content?: { number?: number; type?: string } }>;
     };
-    return out.items
+    this.boardCache = out.items
       .filter((i) => i.content?.type === "Issue" && typeof i.content.number === "number")
       .map((i) => ({
         itemId: i.id,
         issue: i.content?.number as number,
         status: STATUSES.includes(i.status as Status) ? (i.status as Status) : null,
       }));
+    return this.boardCache;
+  }
+
+  private toIssue(i: RawIssue, b: BoardItem | undefined): Issue {
+    return {
+      number: i.number,
+      title: i.title,
+      body: i.body ?? "",
+      state: i.state,
+      labels: names(i.labels),
+      assignees: (i.assignees ?? []).map((a) => a.login),
+      comments: (i.comments ?? []).map(
+        (c): Comment => ({ author: c.author?.login ?? "", body: c.body, createdAt: c.createdAt }),
+      ),
+      updatedAt: i.updatedAt,
+      status: b?.status ?? null,
+      itemId: b?.itemId ?? null,
+    };
   }
 
   async listIssues(state: "open" | "all" = "open"): Promise<Issue[]> {
@@ -125,40 +168,26 @@ export class GitHub {
         "--limit",
         "500",
         "--json",
-        "number,title,body,state,labels,assignees,comments,updatedAt",
+        ISSUE_FIELDS,
       ]),
-    ) as Array<{
-      number: number;
-      title: string;
-      body: string;
-      state: "OPEN" | "CLOSED";
-      updatedAt: string;
-      labels: Array<{ name: string }>;
-      assignees: Array<{ login: string }>;
-      comments: Array<{ author: { login: string }; body: string; createdAt: string }>;
-    }>;
+    ) as RawIssue[];
     const board = new Map((await this.listBoard()).map((b) => [b.issue, b]));
-    return raw.map((i) => ({
-      number: i.number,
-      title: i.title,
-      body: i.body ?? "",
-      state: i.state,
-      labels: names(i.labels),
-      assignees: (i.assignees ?? []).map((a) => a.login),
-      comments: (i.comments ?? []).map(
-        (c): Comment => ({ author: c.author?.login ?? "", body: c.body, createdAt: c.createdAt }),
-      ),
-      updatedAt: i.updatedAt,
-      status: board.get(i.number)?.status ?? null,
-      itemId: board.get(i.number)?.itemId ?? null,
-    }));
+    return raw.map((i) => this.toIssue(i, board.get(i.number)));
   }
 
+  /**
+   * One issue, one query. This used to call `listIssues("all")` — every claim, merge, resume
+   * and plan re-downloaded every issue in the repo with all of its comments, which is what
+   * spent the hourly GraphQL budget (#192).
+   */
   async getIssue(n: number): Promise<Issue> {
-    const all = await this.listIssues("all");
-    const i = all.find((x) => x.number === n);
-    if (!i) throw new Error(`issue #${n} not found`);
-    return i;
+    const raw = JSON.parse(
+      await this.gh(["issue", "view", String(n), "--repo", this.cfg.repo, "--json", ISSUE_FIELDS]),
+    ) as RawIssue;
+    return this.toIssue(
+      raw,
+      (await this.listBoard()).find((b) => b.issue === n),
+    );
   }
 
   async listOpenPRs(): Promise<PullRequest[]> {
@@ -271,6 +300,7 @@ export class GitHub {
       "--single-select-option-id",
       opt,
     ]);
+    this.invalidateBoard();
   }
 
   async addToProject(issue: number): Promise<string> {
@@ -291,6 +321,7 @@ export class GitHub {
         "json",
       ]),
     ) as { id: string };
+    this.invalidateBoard();
     return out.id;
   }
 

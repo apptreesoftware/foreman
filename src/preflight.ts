@@ -47,6 +47,25 @@ export function countSessionsToday(stateDir: string, now: Date): number {
     }).length;
 }
 
+/**
+ * The remaining GitHub GraphQL points. The `rateLimit` query itself costs nothing, so this is
+ * safe to run every tick; an unreadable answer returns null and never blocks the daemon (#192).
+ */
+export async function graphqlBudget(
+  exec: Exec,
+): Promise<{ remaining: number; resetAt: string } | null> {
+  const r = await exec("gh", ["api", "graphql", "-f", "query={rateLimit{remaining resetAt}}"]);
+  if (r.code !== 0) return null;
+  try {
+    const l = JSON.parse(r.stdout).data?.rateLimit;
+    return typeof l?.remaining === "number"
+      ? { remaining: l.remaining, resetAt: String(l.resetAt ?? "") }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function chromiumInstalled(): boolean {
   const dir = join(homedir(), "Library", "Caches", "ms-playwright");
   return existsSync(dir) && readdirSync(dir).some((d) => d.startsWith("chromium"));
@@ -82,6 +101,13 @@ export async function preflight(cfg: ForemanConfig, deps: PreflightDeps): Promis
 
   const docker = await deps.exec("docker", ["info", "--format", "{{.ServerVersion}}"]);
   if (docker.code !== 0) return { ok: false, reason: "docker is not responding" };
+
+  const budget = await graphqlBudget(deps.exec);
+  if (budget && budget.remaining < cfg.minGraphqlPoints)
+    return {
+      ok: false,
+      reason: `GitHub GraphQL budget low: ${budget.remaining} points left, resets ${budget.resetAt}`,
+    };
 
   const used = countSessionsToday(deps.stateDir, deps.now);
   if (used >= cfg.maxSessionsPerDay)

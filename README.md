@@ -6,7 +6,7 @@ Design: `docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md`. Build 
 
 ## 1. What it does
 
-Every `pollSeconds` (config, default 120s), the foreman wakes up and runs one iteration:
+Every `pollSeconds` (config, default 300s), the foreman wakes up and runs one iteration:
 
 1. **Preflight.** Refuses to run if `ANTHROPIC_API_KEY` (or any other API-billing env var) is set, `~/.tone_tonic/STOP` exists, `claude auth status` isn't a `claude.ai` subscription login, `gh auth status` fails, Docker isn't responding, or the day's session count is at `maxSessionsPerDay`. See `src/preflight.ts`.
 2. **Resume check.** If an issue on the board is In Progress and claimed by this host, the foreman resumes that session instead of picking anything new.
@@ -70,7 +70,7 @@ Every `pollSeconds` (config, default 120s), the foreman wakes up and runs one it
    mkdir -p ~/.tone_tonic
    cp tools/foreman/foreman.example.json ~/.tone_tonic/foreman.json
    ```
-   Edit `~/.tone_tonic/foreman.json`: set `host` to something unique to this Mac (lowercase, no spaces — it's how ledger comments tell Macs apart), `repoDir` to the clone path from step 2, and `slackUser` to the Slack handle that should get DMs. The schema (`src/config.ts`) is `repo`, `project`, `host`, `repoDir`, `workDir`, `pollSeconds`, `maxSessionsPerDay`, `maxTurns`, `wallClockMinutes`, `slackUser`, and an optional `model`.
+   Edit `~/.tone_tonic/foreman.json`: set `host` to something unique to this Mac (lowercase, no spaces — it's how ledger comments tell Macs apart), `repoDir` to the clone path from step 2, and `slackUser` to the Slack handle that should get DMs. The schema (`src/config.ts`) is `repo`, `project`, `host`, `repoDir`, `workDir`, `pollSeconds`, `maxSessionsPerDay`, `maxTurns`, `wallClockMinutes`, `slackUser`, `minGraphqlPoints`, and an optional `model`.
 8. **Preflight run** — a single dry-run iteration that touches nothing:
    ```bash
    pnpm --filter @tone/foreman start --once --dry-run
@@ -130,7 +130,14 @@ The plist sets `KeepAlive` and `RunAtLoad`, so launchd restarts the foreman if i
 
 ## 5. Kill switches
 
-All of these work from any terminal on the Mac: `pnpm --filter @tone/foreman ctl <cmd>`. A daemon started before this version has no state.json and no page; stop it once by pid and start it again to get any of this.
+All of these work from any terminal on the Mac. Install the wrapper once and the commands are `foreman <cmd>`:
+
+```bash
+tools/foreman/bin/foreman install    # symlinks itself into ~/.local/bin
+foreman help
+```
+
+The wrapper reads `repoDir` and `webPort` from `~/.tone_tonic/foreman.json`, so it drives the configured clone no matter which directory (or worktree) you run it from, and it stays current because the symlink points into the clone. It adds `start`, `restart`, `update` (pull + install), `logs [-f]` and `page` to the `ctl` commands below. Without it, every command here is `pnpm --filter @tone/foreman ctl <cmd>` run inside the clone. A daemon started before this version has no state.json and no page; stop it once by pid and start it again to get any of this.
 
 - **See what it is doing:** `ctl status` (add `--watch` for a live view, `--json` for the raw report). Reads `~/.tone_tonic/state.json`, which the daemon writes every tick, whenever a `claude -p` child starts or ends, and (throttled to every 2 s) as the child's stream-json output arrives: the `doing` line shows the last tool call and how long ago, turn and token counts, and the last thing the session said; `STALLED` appears after `stallMinutes` (config, default 5) without output. A long tool call (a full `pnpm test`, a Playwright wait) also counts as silence, so STALLED can appear briefly on a healthy session. The `waiting` line lists what blocks a new claim — CI on a PR, a human label (`plan-approved`, `needs-owner`, `blocked`), a `Depends on` issue, another Mac's claim, the `STOP` file, or the daily cap. `ctl next` asks GitHub what the next tick would do and why each open PR is or is not mergeable; it ignores the `STOP` file. The same view, plus a pipeline table (build → review → validate → CI → merge per in-flight issue) and a live event feed per session, is served at http://127.0.0.1:8090 while the daemon is running (port `webPort` in `foreman.json`). Feeds are kept under `~/.tone_tonic/activity/<sessionId>.jsonl`; they hold tool names and one-line summaries only, never tool inputs or thinking. A daemon started before this version shows no live activity until it is restarted.
 - **Stop now, resume later:** `ctl stop`. Touches `STOP`, then `SIGTERM`s the daemon. The daemon kills the running `claude -p` child, posts `session <id> interrupted on <host>: stopped by operator`, and exits. The claim stays open, so the next start resumes that session with `--resume`. `launchctl bootout` and Ctrl-C do the same thing.
@@ -151,6 +158,9 @@ Three knobs in `~/.tone_tonic/foreman.json`:
 - `maxTurns` — passed to `claude -p --max-turns`; a session that hits this without returning an outcome counts as a failed attempt and is retried (up to 3 attempts total).
 - `wallClockMinutes` — the dispatcher kills the `claude -p` child (`SIGTERM`, then `SIGKILL` after 30s) if it runs longer than this.
 - `stallMinutes` — minutes without a stream-json event before the page and `ctl status` flag the session as stalled (visibility only; nothing is killed).
+- `minGraphqlPoints` — preflight refuses to start a tick when GitHub reports fewer GraphQL points left than this (default 500).
+
+There is a second budget besides money: GitHub gives 5000 GraphQL points an hour, and `gh issue list`, `gh pr list` and `gh project item-list` all spend it. The foreman keeps inside it by reading one issue at a time (`gh issue view`) instead of re-listing the repo, caching the project board for the length of a tick, reusing the tick's snapshot instead of re-fetching issues it already has, and polling every `pollSeconds` (default 300). If it still runs out, preflight parks the daemon with `GitHub GraphQL budget low: <n> points left, resets <time>` until the window rolls over.
 
 Per-session cost (from the session's JSON result) is posted in the `session … finished` issue comment and appended as one JSON line per session to `~/.tone_tonic/sessions.log`, which is also what `countSessionsToday` reads for the daily cap.
 
@@ -179,7 +189,8 @@ All durable state lives in GitHub; local disk (the worktree, the transcript, `se
 
 ## 9. Manual operations
 
-- `pnpm --filter @tone/foreman ctl status|next|stop|abort|go` — see §5. `ctl status --watch` refreshes every 2 s from local files; `ctl next` is the only subcommand that calls GitHub.
+- `foreman status|next|stop|abort|go` (or `pnpm --filter @tone/foreman ctl <cmd>` without the wrapper) — see §5. `status --watch` refreshes every 2 s from local files; `next` is the only subcommand that calls GitHub.
+- `foreman start|restart|update|logs|page` — wrapper-only conveniences: start the daemon detached with its log in `~/.tone_tonic/foreman.log`, restart it, pull the clone and install deps, tail the log, open the page.
 - `pnpm --filter @tone/foreman dev-env` — writes `apps/api/.env.local` and `apps/web/.env.local` from the running local Supabase's `supabase status -o env` output. Useful before running validator-style manual checks yourself.
 - `pnpm --filter @tone/foreman serve start` / `serve stop` / `serve status` — starts/stops/checks the web (`:8082`) and api (`:3005`) dev servers in the background, logging to `~/.tone_tonic/logs/serve-*.log` and tracking PIDs in `~/.tone_tonic/serve.json`. This is what the validator role uses to bring the app up before driving it with Playwright.
 - `pnpm --filter @tone/foreman start --once` — run a single loop iteration and exit, instead of polling forever. Useful for debugging one action at a time.

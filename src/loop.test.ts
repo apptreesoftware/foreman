@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { comment, hoursAgo, issue, pr } from "../test/helpers.ts";
+import { comment, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
 import { parseConfig } from "./config.ts";
 import type { Spawner } from "./dispatch.ts";
 import type { Exec } from "./exec.ts";
@@ -136,6 +136,27 @@ async function artifactFixture(pr: number, name: string) {
 }
 
 describe("execute", () => {
+  it("reuses the tick's snapshot instead of re-reading the issue", async () => {
+    const i = issue({ number: 1, status: "In Review" });
+    const { gh } = fakeGh([i]);
+    let reads = 0;
+    const counting = {
+      ...gh,
+      getIssue: async (n: number) => {
+        reads += 1;
+        return gh.getIssue(n);
+      },
+    };
+    await execute(
+      { type: "merge", pr: 9, issue: 1 },
+      ctx({ gh: counting }),
+      snapshot({ issues: [i] }),
+    );
+    expect(reads).toBe(0);
+    // Without a snapshot it still works, at the cost of one single-issue read.
+    await execute({ type: "merge", pr: 9, issue: 1 }, ctx({ gh: counting }));
+    expect(reads).toBe(1);
+  });
   it("merge: merges, comments, closes, marks Done, removes worktree", async () => {
     const i = issue({ number: 1, status: "In Review" });
     const { gh, calls } = fakeGh([i]);
@@ -514,11 +535,11 @@ describe("runForever backoff", () => {
   }
 
   it("sleeps one poll interval between successful iterations", async () => {
-    expect(await delaysFor(["ok", "ok"])).toEqual([120, 120]);
+    expect(await delaysFor(["ok", "ok"])).toEqual([300, 300]);
   });
 
   it("doubles the delay while iterations keep failing", async () => {
-    expect(await delaysFor(["fail", "fail", "fail"])).toEqual([240, 480, 900]);
+    expect(await delaysFor(["fail", "fail", "fail"])).toEqual([600, 900, 900]);
   });
 
   it("caps the backoff so a rate-limited foreman still retries within the hour", async () => {
@@ -529,7 +550,7 @@ describe("runForever backoff", () => {
   });
 
   it("returns to the poll interval after a success", async () => {
-    expect(await delaysFor(["fail", "fail", "ok"])).toEqual([240, 480, 120]);
+    expect(await delaysFor(["fail", "fail", "ok"])).toEqual([600, 900, 300]);
   });
 });
 
