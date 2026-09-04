@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { cp } from "node:fs/promises";
 import { join } from "node:path";
 import { conflictOn } from "./claim.ts";
 import type { ForemanConfig } from "./config.ts";
@@ -37,6 +38,9 @@ export interface Ctx {
   spawn: Spawner;
   dryRun: boolean;
   stateDir: string;
+  /** Where validator screenshots are archived: `<artifactsDir>/<pr>/`. */
+  artifactsDir: string;
+  copyDir: (src: string, dest: string) => Promise<void>;
   login: string;
   readFile: (absPath: string) => string | null;
   listPlanFiles?: () => string[]; // repo-relative *.issues.json paths
@@ -65,6 +69,10 @@ export function realCtx(
     spawn: realSpawn,
     dryRun,
     stateDir,
+    artifactsDir: join(stateDir, "artifacts"),
+    copyDir: async (src, dest) => {
+      await cp(src, dest, { recursive: true, force: true });
+    },
     login,
     readFile: (p) => (existsSync(p) ? readFileSync(p, "utf8") : null),
     listPlanFiles: () => {
@@ -203,10 +211,28 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
       minutes,
     ),
   );
-  await applyOutcome(ctx, r, result);
+  await applyOutcome(ctx, r, result, worktree);
 }
 
-async function applyOutcome(ctx: Ctx, r: RunRole, res: SessionResult): Promise<void> {
+// Role sessions cannot write outside their worktree (`--permission-mode dontAsk` denies it even
+// for allowlisted mkdir/mv), so the validator leaves screenshots in
+// `<worktree>/.validation-artifacts/<pr>/` and the foreman archives them here before the worktree
+// is removed on merge.
+async function archiveArtifacts(ctx: Ctx, worktree: string, pr: number | null): Promise<void> {
+  if (!pr) return;
+  const src = join(worktree, ".validation-artifacts", String(pr));
+  if (!existsSync(src)) return;
+  const dest = join(ctx.artifactsDir, String(pr));
+  await ctx.copyDir(src, dest);
+  log("info", "archived validation artifacts", { pr, dest });
+}
+
+async function applyOutcome(
+  ctx: Ctx,
+  r: RunRole,
+  res: SessionResult,
+  worktree: string,
+): Promise<void> {
   const { gh, cfg } = ctx;
   const n = r.issue.number;
   const pr = res.outcome?.pr ?? r.pr;
@@ -240,12 +266,14 @@ async function applyOutcome(ctx: Ctx, r: RunRole, res: SessionResult): Promise<v
       if (pr) await gh.addLabels("pr", pr, ["reviewer:changes"]);
       break;
     case "passed":
+      await archiveArtifacts(ctx, worktree, pr);
       if (pr) {
         await gh.addLabels("pr", pr, ["validator:passed"]);
         await gh.removeLabels("pr", pr, ["validator:failed"]);
       }
       break;
     case "failed":
+      await archiveArtifacts(ctx, worktree, pr);
       if (pr) await gh.addLabels("pr", pr, ["validator:failed"]);
       break;
     case "phase_closed":

@@ -36,7 +36,12 @@ describe("role prompts", () => {
       expect(text).toContain("Never merge");
       expect(text).toContain("main");
       expect(text).toContain("ANTHROPIC_API_KEY");
+      expect(text, `${r} forbids cd`).toContain("Never `cd`");
     }
+  });
+  it("keeps the shared preamble byte-identical across roles", () => {
+    const preamble = (r: string) => read(r).slice(0, read(r).indexOf("## Role:"));
+    for (const r of roles) expect(preamble(r), r).toBe(preamble("builder"));
   });
   it("validator and phase-closer know the URLs, logins and artifacts dir", () => {
     for (const s of [
@@ -45,6 +50,7 @@ describe("role prompts", () => {
       "student@local.test",
       "password123",
       "~/.tone_tonic/artifacts",
+      ".validation-artifacts",
     ])
       expect(read("validator")).toContain(s);
     for (const s of ["slack_send_message", "notify-failed", "signed-off", "http://localhost:8082"])

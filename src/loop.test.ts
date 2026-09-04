@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { comment, hoursAgo, issue } from "../test/helpers.ts";
 import { parseConfig } from "./config.ts";
@@ -83,9 +87,22 @@ function ctx(over: Partial<Ctx>): Ctx {
     ensureWorktree: async () => "/work/1",
     removeWorktree: async () => {},
     transcriptExists: () => true,
+    artifactsDir: "/tmp/tt-test/artifacts",
+    copyDir: async () => {},
     now: () => "2026-09-03T12:00:00Z",
     ...over,
   };
+}
+
+// A worktree holding `.validation-artifacts/<pr>/<name>` and an empty artifacts destination,
+// both under one temp dir the caller removes.
+async function artifactFixture(pr: number, name: string) {
+  const tmp = await mkdtemp(join(tmpdir(), "tt-artifacts-"));
+  const worktree = join(tmp, "wt");
+  const artifactsDir = join(tmp, "artifacts");
+  await mkdir(join(worktree, ".validation-artifacts", String(pr)), { recursive: true });
+  await writeFile(join(worktree, ".validation-artifacts", String(pr), name), "png");
+  return { tmp, worktree, artifactsDir };
 }
 
 describe("execute", () => {
@@ -176,6 +193,43 @@ describe("execute", () => {
       );
       for (const e of expected) expect(calls, JSON.stringify(outcome)).toContain(e);
     }
+  });
+  it("copies the validator's worktree artifacts to the artifacts dir on passed and failed", async () => {
+    for (const outcome of ["passed", "failed"] as const) {
+      const { tmp, worktree, artifactsDir } = await artifactFixture(9, "01-health.png");
+      const { gh, calls } = fakeGh([issue({ number: 1, status: "In Review" })]);
+      await execute(
+        { type: "claim", issue: 1, role: "validator", pr: 9, round: 1 },
+        ctx({
+          gh,
+          spawn: okSpawn({ outcome, pr: 9, notes: "" }),
+          ensureWorktree: async () => worktree,
+          artifactsDir,
+          copyDir: async (src, dest) => {
+            await cp(src, dest, { recursive: true, force: true });
+          },
+        }),
+      );
+      expect(existsSync(join(artifactsDir, "9", "01-health.png")), outcome).toBe(true);
+      expect(calls, outcome).toContain(`addLabels pr 9 validator:${outcome}`);
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+  it("skips the artifact copy when the validator left no artifacts directory", async () => {
+    const { gh } = fakeGh([issue({ number: 1, status: "In Review" })]);
+    let copied = 0;
+    await execute(
+      { type: "claim", issue: 1, role: "validator", pr: 9, round: 1 },
+      ctx({
+        gh,
+        spawn: okSpawn({ outcome: "passed", pr: 9, notes: "" }),
+        ensureWorktree: async () => join(tmpdir(), "tt-does-not-exist"),
+        copyDir: async () => {
+          copied += 1;
+        },
+      }),
+    );
+    expect(copied).toBe(0);
   });
   it("fix round clears the request labels before dispatch", async () => {
     const { gh, calls } = fakeGh([issue({ number: 1, status: "In Review" })]);

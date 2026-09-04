@@ -39,6 +39,7 @@ describe(".claude/headless-settings.json headless allowlist", () => {
       "Bash(supabase *)",
       "Bash(npx playwright *)",
       "Bash(node *)",
+      "Bash(echo *)",
       "mcp__playwright",
       "mcp__claude_ai_Slack__slack_send_message",
       "mcp__claude_ai_Slack__slack_search_users",
