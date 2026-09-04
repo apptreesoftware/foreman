@@ -1,4 +1,5 @@
 import { describeNext } from "./next.ts";
+import { ownerItems } from "./owner.ts";
 import { describePipeline } from "./pipeline.ts";
 import type { Board, CurrentSession, PipelineRow } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
@@ -11,6 +12,7 @@ export function describeBoard(s: Snapshot, i: WaitingInput): Board {
     at: s.now,
     waiting: describeWaiting(s, i),
     pipeline: describePipeline(s),
+    owner: ownerItems(s),
     explain: next.explain,
     prs: next.prs,
   };

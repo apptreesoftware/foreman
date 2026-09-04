@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { BudgetSample } from "./budget.ts";
 import type { ForemanConfig } from "./config.ts";
 import type { Exec } from "./exec.ts";
 
@@ -51,15 +52,22 @@ export function countSessionsToday(stateDir: string, now: Date): number {
  * The remaining GitHub GraphQL points. The `rateLimit` query itself costs nothing, so this is
  * safe to run every tick; an unreadable answer returns null and never blocks the daemon (#192).
  */
-export async function graphqlBudget(
-  exec: Exec,
-): Promise<{ remaining: number; resetAt: string } | null> {
-  const r = await exec("gh", ["api", "graphql", "-f", "query={rateLimit{remaining resetAt}}"]);
+export async function graphqlBudget(exec: Exec): Promise<BudgetSample | null> {
+  const r = await exec("gh", [
+    "api",
+    "graphql",
+    "-f",
+    "query={rateLimit{limit remaining resetAt}}",
+  ]);
   if (r.code !== 0) return null;
   try {
     const l = JSON.parse(r.stdout).data?.rateLimit;
     return typeof l?.remaining === "number"
-      ? { remaining: l.remaining, resetAt: String(l.resetAt ?? "") }
+      ? {
+          remaining: l.remaining,
+          limit: typeof l.limit === "number" ? l.limit : 5000,
+          resetAt: String(l.resetAt ?? ""),
+        }
       : null;
   } catch {
     return null;

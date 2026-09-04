@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
+import { z } from "zod";
 import { FEED_LIMIT_DEFAULT, type FeedEntry, isSessionId } from "./feed.ts";
 import { log } from "./log.ts";
 import type { NextReport } from "./next.ts";
+import { type OwnerAction, OwnerActionSchema, type OwnerItem } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
 
 export type WebCommand = "stop" | "abort" | "go";
@@ -15,6 +17,10 @@ export interface WebDeps {
   next: () => Promise<NextReport>;
   act: (cmd: WebCommand) => Promise<string>;
   feed: (sessionId: string, limit: number) => FeedEntry[];
+  /** Applies an owner label gate; only ever called for an epic `ownerItems` currently offers. */
+  owner: (epic: number, action: OwnerAction) => Promise<string>;
+  /** The epics the page may act on, as of the last tick. */
+  ownerItems: () => OwnerItem[];
   /** Page HTML; defaults to src/web.html. Injectable for tests. */
   html?: string;
 }
@@ -22,6 +28,27 @@ export interface WebDeps {
 export function isLocalHost(hostHeader: string | undefined, port: number): boolean {
   if (!hostHeader) return false;
   return hostHeader === `127.0.0.1:${port}` || hostHeader === `localhost:${port}`;
+}
+
+const OwnerRequestSchema = z.object({
+  epic: z.number().int().positive(),
+  action: OwnerActionSchema,
+});
+
+/** Reads a small JSON body; anything unparsable (or over 8 KB) resolves to null. */
+async function readJson(req: http.IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > 8192) return null;
+    chunks.push(c as Buffer);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function send(res: http.ServerResponse, code: number, body: string, type: string): void {
@@ -55,6 +82,18 @@ export function createWebServer(d: WebDeps): http.Server {
         const limit =
           Number(u.searchParams.get("limit") ?? FEED_LIMIT_DEFAULT) || FEED_LIMIT_DEFAULT;
         return json(res, 200, { session, entries: d.feed(session, limit) });
+      }
+      if (url === "/api/owner") {
+        if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
+        const parsed = OwnerRequestSchema.safeParse(await readJson(req));
+        if (!parsed.success) return json(res, 400, { ok: false, error: "bad request" });
+        const { epic, action } = parsed.data;
+        // The board is the allowlist: an epic the page is not offering, or an action it is not
+        // offering for that epic, is refused rather than written to GitHub.
+        const item = d.ownerItems().find((i) => i.epic === epic);
+        if (!item?.actions.includes(action))
+          return json(res, 400, { ok: false, error: `#${epic} does not offer ${action}` });
+        return json(res, 200, { ok: true, message: await d.owner(epic, action) });
       }
       const m = /^\/api\/(stop|abort|go)$/.exec(url);
       if (m) {

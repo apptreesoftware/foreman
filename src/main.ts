@@ -10,6 +10,7 @@ import { launchdInstalled } from "./launchd-status.ts";
 import { log } from "./log.ts";
 import { buildSnapshot, ensureLogin, realCtx, runForever, runOnce } from "./loop.ts";
 import { describeNext } from "./next.ts";
+import { applyOwnerAction } from "./owner.ts";
 import { checkEnv, preflight } from "./preflight.ts";
 import { readSessions } from "./sessions.ts";
 import { initialState, StateStore } from "./state-file.ts";
@@ -131,6 +132,15 @@ const web = await startWebServer({
     return `${cmd} requested; STOP file present`;
   },
   feed: (session, limit) => readFeed(STATE_DIR, session, limit),
+  ownerItems: () => store.get().board?.owner ?? [],
+  owner: async (epic, action) => {
+    const message = await applyOwnerAction(gh, epic, action);
+    log("info", "owner action", { epic, action });
+    // The board is rebuilt per tick, so wake the loop instead of leaving the page stale for a
+    // whole poll interval. The tick that follows also acts on the label just written.
+    controller.wake();
+    return message;
+  },
 });
 
 let crashed = false;

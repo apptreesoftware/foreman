@@ -48,10 +48,44 @@ export const PipelineRowSchema = z.object({
 });
 export type PipelineRow = z.infer<typeof PipelineRowSchema>;
 
+/** GitHub's hourly GraphQL budget, sampled around each tick and attributed (#198). */
+export const BudgetReportSchema = z.object({
+  at: z.string(),
+  remaining: z.number().int(),
+  limit: z.number().int(),
+  resetAt: z.string(),
+  tickReads: z.number().int(),
+  actionSpend: z.number().int(),
+  betweenTicks: z.number().int(),
+});
+export type BudgetReport = z.infer<typeof BudgetReportSchema>;
+
+/** The label gates a human owns; the page turns each into a button (#198). */
+export const OWNER_ACTIONS = [
+  "sign_off",
+  "approve_plan",
+  "start_planning",
+  "pause",
+  "unpause",
+] as const;
+export const OwnerActionSchema = z.enum(OWNER_ACTIONS);
+export type OwnerAction = z.infer<typeof OwnerActionSchema>;
+
+export const OwnerItemSchema = z.object({
+  epic: z.number().int(),
+  title: z.string(),
+  phase: z.number(),
+  detail: z.string(),
+  actions: z.array(OwnerActionSchema),
+});
+export type OwnerItem = z.infer<typeof OwnerItemSchema>;
+
 export const BoardSchema = z.object({
   at: z.string(),
   waiting: z.array(WaitItemSchema),
   pipeline: z.array(PipelineRowSchema),
+  // Older state.json files predate this field; default keeps them readable.
+  owner: z.array(OwnerItemSchema).default([]),
   explain: z.array(z.string()),
   prs: z.array(
     z.object({
@@ -101,6 +135,7 @@ export const ForemanStateSchema = z.object({
   stopping: z.object({ mode: StopModeSchema, at: z.string() }).nullable(),
   unfinished: CurrentSessionSchema.extend({ mode: StopModeSchema }).nullable(),
   board: BoardSchema.nullable().default(null),
+  budget: BudgetReportSchema.nullable().default(null),
 });
 export type ForemanState = z.infer<typeof ForemanStateSchema>;
 
@@ -128,6 +163,7 @@ export function initialState(o: {
     stopping: null,
     unfinished: null,
     board: null,
+    budget: null,
   };
 }
 

@@ -146,7 +146,10 @@ The wrapper reads `repoDir` and `webPort` from `~/.tone_tonic/foreman.json`, so 
 - **This Mac, next poll only:** `touch ~/.tone_tonic/STOP`. Preflight fails on the next iteration and the foreman sleeps until the file is removed.
 - **This phase, every Mac:** `gh issue edit <epic> --add-label foreman:pause`. No new claims are picked for issues under that phase on any Mac; in-flight sessions finish normally.
 - **The planning backstop, every Mac:** the planner never runs on an epic that is not labeled `agent-ready`, and never on a second epic while a drafted plan is still waiting on the owner. Starting a phase is therefore always an explicit `gh issue edit <epic> --add-label agent-ready`; leaving every epic unlabeled leaves the foreman idle. `ctl status` says `epic #N awaits agent-ready before the planner runs` when this is what is holding it.
+- **Owner gates, from the page:** the **Owner** card lists every open epic with the label gates only a human can open — **Sign off** (adds `signed-off`, drops `needs-owner`, closes the epic), **Approve plan** (`plan-approved`), **Start planning** (`agent-ready`), **Pause** / **Resume** (`foreman:pause`). Each button confirms the exact label change first, and the daemon wakes straight after so the next tick acts on it. The same gates are still just labels, so `gh issue edit <epic> --add-label <label>` works identically.
 - **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.tonetonic.foreman` (a clean stop, as above).
+
+`foreman start` refuses when the daemon recorded in `state.json` is still alive, and `foreman status` warns when the web port is held by a different process — the symptom of a stale daemon serving a frozen page while a newer one does the work.
 
 A killed daemon (`kill -9`) does no bookkeeping: `ctl status` then shows `CRASHED` and, if the child is still alive, `ORPHAN child <pid>`; `ctl stop` or `ctl abort` kills it.
 
@@ -159,6 +162,8 @@ Three knobs in `~/.tone_tonic/foreman.json`:
 - `wallClockMinutes` — the dispatcher kills the `claude -p` child (`SIGTERM`, then `SIGKILL` after 30s) if it runs longer than this.
 - `stallMinutes` — minutes without a stream-json event before the page and `ctl status` flag the session as stalled (visibility only; nothing is killed).
 - `minGraphqlPoints` — preflight refuses to start a tick when GitHub reports fewer GraphQL points left than this (default 500).
+
+Each tick samples the budget three times (the `rateLimit` query is free) and `ctl status`, the page's Tick card and the log line `graphql budget` break the spend down three ways: **reads** is what the loop's own snapshot cost, **session** is what the `claude -p` session it dispatched spent, and **elsewhere** is what was gone before the tick started — a role session on another Mac, a second daemon, or a human at a terminal. Attribute before optimising.
 
 There is a second budget besides money: GitHub gives 5000 GraphQL points an hour, and `gh issue list`, `gh pr list` and `gh project item-list` all spend it. The foreman keeps inside it by reading one issue at a time (`gh issue view`) instead of re-listing the repo, caching the project board for the length of a tick, reusing the tick's snapshot instead of re-fetching issues it already has, and polling every `pollSeconds` (default 300). If it still runs out, preflight parks the daemon with `GitHub GraphQL budget low: <n> points left, resets <time>` until the window rolls over.
 

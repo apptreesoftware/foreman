@@ -172,6 +172,7 @@ describe("live activity and board", () => {
         { kind: "ci" as const, subject: "PR #1", detail: "PR #1 checks pending", since: null },
       ],
       pipeline: [],
+      owner: [],
       explain: [],
       prs: [],
     };
@@ -212,6 +213,7 @@ describe("live activity and board", () => {
         },
       ],
       pipeline: [],
+      owner: [],
       explain: [],
       prs: [],
     };
@@ -236,6 +238,7 @@ describe("live activity and board", () => {
         },
       ],
       pipeline: [],
+      owner: [],
       explain: [],
       prs: [],
     };

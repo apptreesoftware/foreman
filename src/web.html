@@ -93,6 +93,10 @@
   .wait li { display: grid; grid-template-columns: max-content 1fr; gap: 10px; align-items: start; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); }
   .wait .d { font-size: 13px; } .wait .since { display: block; font: 11px var(--mono); color: var(--ink-3); margin-top: 2px; }
   .wait .none { color: var(--ink-3); font: 12.5px var(--mono); }
+  .owner { font: 12.5px/1.5 var(--mono); }
+  .owner .o { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .owner .who { color: var(--ink-2); } .owner .why { grid-column: 1 / -1; color: var(--ink-3); font-size: 12px; }
+  .owner .acts { display: flex; gap: 6px; } .owner .empty { color: var(--ink-3); padding: 6px 0; }
   .tick, .recent { font: 12.5px/1.6 var(--mono); }
   .tick div { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--line); } .tick div span:first-child { color: var(--ink-2); }
   .recent .r { display: grid; grid-template-columns: 52px 1fr auto auto; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
@@ -127,6 +131,7 @@
       <section><h2>Feed <small id="feedMeta"></small></h2><div id="feed" class="feed"></div></section>
     </div>
     <div class="col">
+      <section><h2>Owner <small>gates only you can open</small></h2><div id="owner" class="owner"></div></section>
       <section><h2>Waiting on</h2><ul id="waiting" class="wait"></ul></section>
       <section><h2>Tick</h2><div id="tick" class="tick"></div></section>
       <section><h2>Recent <small>click a row to load its feed</small></h2><div id="recent" class="recent"></div></section>
@@ -207,6 +212,12 @@
     if (r.unfinished) rows.push(["unfinished", `${esc(r.unfinished.mode)} bookkeeping for ${esc(r.unfinished.role)} #${r.unfinished.issue}; run ctl abort`]);
     rows.push(["plan", r.lastPlan ? r.lastPlan.map(esc).join(", ") : "–"]);
     rows.push(["today", `${r.today.count} of ${r.today.cap} sessions · $${r.today.spendUsd.toFixed(2)}`]);
+    if (r.budget) {
+      const b = r.budget;
+      rows.push(["gh budget", `${b.remaining} of ${b.limit} points · resets ${hm(b.resetAt)}`]);
+      // Attribution, not just a total: whose calls emptied the hourly budget.
+      rows.push(["last tick", `${b.tickReads} reads · ${b.actionSpend} session · ${b.betweenTicks} elsewhere`]);
+    }
     rows.push(["launchd", r.launchdInstalled ? "installed" : "not installed"]);
     $("tick").innerHTML = rows.map(([a, b]) => `<div><span>${a}</span><span>${b}</span></div>`).join("");
   }
@@ -245,6 +256,33 @@
     lastRenderedSession = feedSession;
   }
 
+  // Label gates a human owns. The confirm text spells out the exact label change, because a
+  // mis-click here closes a phase or starts a $5 planning session.
+  const OWNER = {
+    sign_off:       { label: "Sign off",       ask: (n) => `Sign off #${n}?\n\nAdds signed-off, removes needs-owner, and closes the epic.` },
+    approve_plan:   { label: "Approve plan",   ask: (n) => `Approve the plan on #${n}?\n\nAdds plan-approved. The foreman then creates the task issues and starts building.` },
+    start_planning: { label: "Start planning", ask: (n) => `Start planning #${n}?\n\nAdds agent-ready. A planner session costs roughly $5.` },
+    pause:          { label: "Pause",          ask: (n) => `Pause #${n}?\n\nAdds foreman:pause. No new claims under this phase on any Mac.` },
+    unpause:        { label: "Resume",         ask: (n) => `Resume #${n}?\n\nRemoves foreman:pause.` },
+  };
+  function renderOwner(items) {
+    const el = $("owner");
+    el.innerHTML = items.length
+      ? items.map((i) => {
+          const btns = i.actions.map((a) => `<button type="button" data-epic="${i.epic}" data-action="${esc(a)}">${esc(OWNER[a]?.label ?? a)}</button>`).join("");
+          return `<div class="o"><span class="who">${link("issues", i.epic)} ${esc(i.title)}</span><span class="acts">${btns}</span>${i.detail ? `<span class="why">${esc(i.detail)}</span>` : ""}</div>`;
+        }).join("")
+      : '<div class="empty">no open epics</div>';
+    for (const b of el.querySelectorAll("button")) b.onclick = () => ownerAct(Number(b.dataset.epic), b.dataset.action);
+  }
+  async function ownerAct(epic, action) {
+    if (!window.confirm((OWNER[action]?.ask ?? ((n) => `${action} #${n}?`))(epic))) return;
+    $("msg").textContent = `${action} #${epic}…`;
+    const j = await (await fetch("/api/owner", { method: "POST", body: JSON.stringify({ epic, action }) })).json();
+    $("msg").textContent = j.ok ? j.message : `error: ${j.error}`;
+    refresh();
+  }
+
   async function refresh() {
     let r;
     try { r = await (await fetch("/api/status")).json(); }
@@ -259,6 +297,7 @@
     $("hmeta").textContent = r.daemon === "UNKNOWN" ? "no state.json: restart the daemon" : "";
     renderNow(r);
     renderPipeline(r.board?.pipeline ?? []);
+    renderOwner(r.board?.owner ?? []);
     renderWaiting(r.board?.waiting ?? []);
     renderTick(r);
     if (!feedPinned) feedSession = r.current?.sessionId ?? r.recent[0]?.sessionId ?? null;

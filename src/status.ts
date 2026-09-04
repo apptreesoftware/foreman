@@ -1,6 +1,7 @@
 import { overlayCurrent } from "./board.ts";
+import { formatBudget } from "./budget.ts";
 import { type SessionLogEntry, todayStats } from "./sessions.ts";
-import type { Board, CurrentSession, ForemanState, StopMode } from "./state-file.ts";
+import type { Board, BudgetReport, CurrentSession, ForemanState, StopMode } from "./state-file.ts";
 import { liveWaits } from "./waiting.ts";
 
 export type DaemonState = "RUNNING" | "STOPPED" | "CRASHED" | "UNKNOWN";
@@ -47,6 +48,7 @@ export interface StatusReport {
   unfinished: { issue: number; mode: StopMode; role: string } | null;
   lastPlan: string[] | null;
   board: Board | null;
+  budget: BudgetReport | null;
   recent: SessionLogEntry[];
   today: { count: number; cap: number; spendUsd: number };
 }
@@ -82,6 +84,7 @@ export function describeStatus(i: StatusInput): StatusReport {
           at: stored?.at ?? i.now,
           waiting: [...live, ...(stored?.waiting ?? []).filter((w) => !liveKinds.has(w.kind))],
           pipeline: stored?.pipeline ?? [],
+          owner: stored?.owner ?? [],
           explain: stored?.explain ?? [],
           prs: stored?.prs ?? [],
         }
@@ -123,6 +126,7 @@ export function describeStatus(i: StatusInput): StatusReport {
       : null,
     lastPlan: s?.lastPlan ?? null,
     board,
+    budget: s?.budget ?? null,
     recent,
     today: { count: today.count, cap: i.maxSessionsPerDay, spendUsd: today.spendUsd },
   };
@@ -191,5 +195,6 @@ export function formatStatus(r: StatusReport): string {
     }`,
   );
   lines.push(`today  ${r.today.count} of ${r.today.cap} sessions, $${r.today.spendUsd.toFixed(2)}`);
+  if (r.budget) lines.push(`budget ${formatBudget(r.budget)}`);
   return `${lines.join("\n")}\n`;
 }

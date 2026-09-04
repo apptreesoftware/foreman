@@ -23,6 +23,7 @@ const report: StatusReport = {
   unfinished: null,
   lastPlan: ["plan#10"],
   board: null,
+  budget: null,
   recent: [],
   today: { count: 0, cap: 20, spendUsd: 0 },
 };
@@ -35,6 +36,7 @@ const nextReport: NextReport = {
 
 describe("web server", () => {
   const acts: string[] = [];
+  const owned: string[] = [];
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
     t: `2026-09-04T13:27:0${i}.000Z`,
@@ -52,6 +54,13 @@ describe("web server", () => {
       return `did ${cmd}`;
     },
     feed: (session, limit) => (session === sid ? entries.slice(-limit) : []),
+    owner: async (epic, action) => {
+      owned.push(`${action} ${epic}`);
+      return `did ${action} on #${epic}`;
+    },
+    ownerItems: () => [
+      { epic: 124, title: "Phase 0.5", phase: 0, detail: "d", actions: ["sign_off", "pause"] },
+    ],
     html: "<title>Foreman</title>",
   });
   let base = "";
@@ -119,6 +128,25 @@ describe("web server", () => {
     const all = await (await fetch(`${base}/api/feed?session=${sid}`)).json();
     expect(all.entries).toHaveLength(5);
   });
+  it("performs an owner action on a listed epic", async () => {
+    const r = await fetch(`${base}/api/owner`, {
+      method: "POST",
+      body: JSON.stringify({ epic: 124, action: "sign_off" }),
+    });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, message: "did sign_off on #124" });
+    expect(owned).toEqual(["sign_off 124"]);
+  });
+  it("refuses an unknown action, an unlisted epic, and an action the epic does not offer", async () => {
+    const post = (body: unknown) =>
+      fetch(`${base}/api/owner`, { method: "POST", body: JSON.stringify(body) });
+    expect((await post({ epic: 124, action: "delete_everything" })).status).toBe(400);
+    expect((await post({ epic: 999, action: "sign_off" })).status).toBe(400);
+    expect((await post({ epic: 124, action: "approve_plan" })).status).toBe(400);
+    expect((await post({ action: "sign_off" })).status).toBe(400);
+    expect((await fetch(`${base}/api/owner`)).status).toBe(405);
+    expect(owned).toEqual(["sign_off 124"]);
+  });
   it("rejects a session id that is not a uuid", async () => {
     const r = await fetch(`${base}/api/feed?session=../etc/passwd`);
     expect(r.status).toBe(400);
@@ -138,7 +166,7 @@ describe("isLocalHost", () => {
 describe("web.html", () => {
   it("has the five sections and escapes through esc()", () => {
     const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    for (const id of ["now", "waiting", "pipeline", "feed", "recent", "tick"])
+    for (const id of ["now", "waiting", "owner", "pipeline", "feed", "recent", "tick"])
       expect(html).toContain(`id="${id}"`);
     expect(html).toContain("const esc =");
     expect(html).toContain("/api/feed?session=");

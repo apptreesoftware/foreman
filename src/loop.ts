@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { cp } from "node:fs/promises";
 import { join } from "node:path";
 import { describeBoard } from "./board.ts";
+import { budgetUpdate } from "./budget.ts";
 import { conflictOn } from "./claim.ts";
 import type { ForemanConfig } from "./config.ts";
 import {
@@ -29,7 +30,7 @@ import {
   planIssuesPath,
 } from "./phase.ts";
 import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts";
-import { preflight } from "./preflight.ts";
+import { graphqlBudget, preflight } from "./preflight.ts";
 import { ledgerInterrupt } from "./release.ts";
 import { appendSession, readSessions, todayStats } from "./sessions.ts";
 import { plan } from "./state.ts";
@@ -632,6 +633,9 @@ export async function runOnce(ctx: Ctx): Promise<void> {
     log("warn", "preflight failed; sleeping", { reason: pre.reason });
     return;
   }
+  // Free `rateLimit` reads around the tick's two phases, so the page can say whether the hourly
+  // GraphQL budget went on the loop's own reads, the session it dispatched, or something else.
+  const before = await graphqlBudget(ctx.exec);
   const snapshot = await buildSnapshot(ctx);
   const actions = plan(snapshot);
   const names = actions.map((a) =>
@@ -649,12 +653,27 @@ export async function runOnce(ctx: Ctx): Promise<void> {
     cap: ctx.cfg.maxSessionsPerDay,
   });
   ctx.state?.patch({ lastPlan: names, board });
+  const afterReads = await graphqlBudget(ctx.exec);
   for (const a of actions) {
     if (ctx.signal.aborted) {
       log("info", "stopping before next action", { next: a.type });
       break;
     }
     if ((await execute(a, ctx, snapshot)) === "stop") break;
+  }
+  const budget = budgetUpdate(
+    ctx.state?.get().budget ?? null,
+    { before, afterReads, afterActions: await graphqlBudget(ctx.exec) },
+    ctx.now(),
+  );
+  if (budget) {
+    ctx.state?.patch({ budget });
+    log("info", "graphql budget", {
+      remaining: budget.remaining,
+      tickReads: budget.tickReads,
+      actionSpend: budget.actionSpend,
+      betweenTicks: budget.betweenTicks,
+    });
   }
 }
 

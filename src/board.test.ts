@@ -41,7 +41,14 @@ describe("overlayCurrent", () => {
     deadlineAt: "2026-09-04T06:30:00.000Z",
     activity: null,
   };
-  const emptyBoard: Board = { at: "now", waiting: [], pipeline: [], explain: [], prs: [] };
+  const emptyBoard: Board = {
+    at: "now",
+    waiting: [],
+    pipeline: [],
+    owner: [],
+    explain: [],
+    prs: [],
+  };
 
   it("marks the matching pipeline row's build stage active and sets the claim", () => {
     const board: Board = {
