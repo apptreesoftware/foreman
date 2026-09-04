@@ -27,8 +27,10 @@ import {
   planIssuesPath,
 } from "./phase.ts";
 import { preflight } from "./preflight.ts";
+import { ledgerInterrupt } from "./release.ts";
 import { appendSession } from "./sessions.ts";
 import { plan } from "./state.ts";
+import type { CurrentSession, StateStore, StopMode } from "./state-file.ts";
 import type { Action, Epic, Issue, Role, Snapshot } from "./types.ts";
 
 export interface Ctx {
@@ -53,6 +55,11 @@ export interface Ctx {
   removeWorktree: (cfg: ForemanConfig, issue: number, exec: Exec) => Promise<void>;
   transcriptExists: (worktree: string, sessionId: string) => boolean;
   now: () => string;
+  /** Aborted when the operator requests stop or abort. */
+  signal: AbortSignal;
+  stopMode: () => StopMode | null;
+  /** The daemon's state.json writer; null for --once runs and tests. */
+  state: Pick<StateStore, "patch" | "get"> | null;
 }
 
 export function realCtx(
@@ -61,10 +68,12 @@ export function realCtx(
   login: string,
   dryRun: boolean,
   stateDir: string,
+  control: { signal: AbortSignal; stopMode: () => StopMode | null; state: Ctx["state"] },
 ): Ctx {
   return {
     cfg,
     gh,
+    ...control,
     exec: realExec,
     spawn: realSpawn,
     dryRun,
@@ -88,6 +97,21 @@ export function realCtx(
     transcriptExists: (w, s) => existsSync(transcriptPath(w, s)),
     now: () => new Date().toISOString(),
   };
+}
+
+/**
+ * Refetches the viewer login for a daemon that started before `gh` was authenticated. No-op
+ * once `ctx.login` is set, so a healthy daemon never re-fetches it. Preflight's `gh auth status`
+ * check inside `runOnce` keeps any write from reaching GitHub while the login is still empty, so
+ * a repeated failure here is harmless — the next tick just tries again.
+ */
+export async function ensureLogin(ctx: Ctx): Promise<void> {
+  if (ctx.login) return;
+  try {
+    ctx.login = await ctx.gh.viewerLogin();
+  } catch {
+    // still unauthenticated; try again next tick
+  }
 }
 
 export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
@@ -182,13 +206,82 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     notes,
   };
   const started = Date.now();
+  let current: CurrentSession = {
+    issue: r.issue.number,
+    title: r.issue.title,
+    role: r.role,
+    pr: r.pr,
+    round: r.round,
+    attempt: 1,
+    sessionId,
+    resume,
+    worktree,
+    branch,
+    childPid: null,
+    startedAt: ctx.now(),
+    deadlineAt: new Date(started + cfg.wallClockMinutes * 60_000).toISOString(),
+  };
+  const setCurrent = (p: Partial<CurrentSession>) => {
+    current = { ...current, ...p };
+    ctx.state?.patch({ current });
+  };
+  setCurrent({});
   const result = await dispatchWithRetry(req, cfg, {
     spawn: ctx.spawn,
+    signal: ctx.signal,
+    onSpawn: (pid) => setCurrent({ childPid: pid }),
     onAttempt: async (a) => {
+      setCurrent({ attempt: a.attempt, sessionId: a.sessionId, resume: a.resume, childPid: null });
       await gh.comment("issue", a.issue, fmt.session(a.sessionId, cfg.host, a.role, a.attempt));
     },
   });
   const minutes = Math.round((Date.now() - started) / 60_000);
+  // Outcome wins over interrupted: a child that printed its structured result JSON just before
+  // the kill landed did finish its work, so it takes the normal completion path below (comment +
+  // applyOutcome) rather than the interrupt bookkeeping — on `abort` that means the interrupt
+  // path's unassign/Ready reset is deliberately skipped, because the work is done.
+  if (!result.outcome && result.interrupted) {
+    const mode = ctx.stopMode() ?? "stop";
+    appendSession(ctx.stateDir, {
+      t: ctx.now(),
+      host: cfg.host,
+      role: r.role,
+      issue: r.issue.number,
+      sessionId: result.sessionId,
+      attempt: current.attempt,
+      costUsd: result.costUsd,
+      outcome: mode === "abort" ? "aborted" : "interrupted",
+    });
+    try {
+      const writes = await ledgerInterrupt(gh, {
+        mode,
+        host: cfg.host,
+        login: ctx.login,
+        issue: r.issue.number,
+        role: r.role,
+        round: r.round,
+        sessionId: result.sessionId,
+        minutes,
+      });
+      log("info", "session interrupted by operator", { issue: r.issue.number, mode, writes });
+      ctx.state?.patch({ current: null, unfinished: null });
+    } catch (err) {
+      log("error", "interrupt bookkeeping failed; recorded as unfinished", {
+        issue: r.issue.number,
+        mode,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      ctx.state?.patch({ current: null, unfinished: { ...current, mode } });
+    }
+    return;
+  }
+  if (result.interrupted && result.outcome) {
+    const mode = ctx.stopMode() ?? "stop";
+    log("info", "session finished despite interrupt; applying its outcome", {
+      issue: r.issue.number,
+      mode,
+    });
+  }
   appendSession(ctx.stateDir, {
     t: ctx.now(),
     host: cfg.host,
@@ -211,6 +304,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
       minutes,
     ),
   );
+  ctx.state?.patch({ current: null });
   await applyOutcome(ctx, r, result, worktree);
 }
 
@@ -443,20 +537,27 @@ export async function runOnce(ctx: Ctx): Promise<void> {
     stateDir: ctx.stateDir,
     now: new Date(),
   });
+  ctx.state?.patch({ lastPreflight: { ok: pre.ok, reason: pre.ok ? null : pre.reason } });
   if (!pre.ok) {
     log("warn", "preflight failed; sleeping", { reason: pre.reason });
     return;
   }
   const snapshot = await buildSnapshot(ctx);
   const actions = plan(snapshot);
-  log("info", "plan", {
-    actions: actions.map((a) =>
-      // Every non-idle Action variant carries either "issue" or "epic" — never neither — so a
-      // third fallback branch is unreachable (and TS correctly types it as `never`).
-      a.type === "idle" ? `idle(${a.reason})` : `${a.type}#${"issue" in a ? a.issue : a.epic}`,
-    ),
-  });
-  for (const a of actions) if ((await execute(a, ctx)) === "stop") break;
+  const names = actions.map((a) =>
+    // Every non-idle Action variant carries either "issue" or "epic" — never neither — so a
+    // third fallback branch is unreachable (and TS correctly types it as `never`).
+    a.type === "idle" ? `idle(${a.reason})` : `${a.type}#${"issue" in a ? a.issue : a.epic}`,
+  );
+  log("info", "plan", { actions: names });
+  ctx.state?.patch({ lastPlan: names });
+  for (const a of actions) {
+    if (ctx.signal.aborted) {
+      log("info", "stopping before next action", { next: a.type });
+      break;
+    }
+    if ((await execute(a, ctx)) === "stop") break;
+  }
 }
 
 /**
@@ -474,15 +575,19 @@ export function backoffSeconds(pollSeconds: number, consecutiveFailures: number)
 export interface LoopDeps {
   sleep?: (ms: number) => Promise<void>;
   iterate?: (ctx: Ctx) => Promise<void>;
+  /** Serialises ticks with the web page's on-demand `next`; identity when absent. */
+  lock?: <T>(fn: () => Promise<T>) => Promise<T>;
 }
 
-export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<never> {
+export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const iterate = deps.iterate ?? runOnce;
+  const lock = deps.lock ?? (<T>(fn: () => Promise<T>) => fn());
   let consecutiveFailures = 0;
   for (;;) {
+    if (ctx.signal.aborted) return;
     try {
-      await iterate(ctx);
+      await lock(() => iterate(ctx));
       consecutiveFailures = 0;
     } catch (err) {
       consecutiveFailures++;
@@ -492,6 +597,13 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<never> 
         nextAttemptSeconds: backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures),
       });
     }
-    await sleep(backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures) * 1000);
+    const delayMs = backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures) * 1000;
+    ctx.state?.patch({
+      lastTickAt: ctx.now(),
+      nextTickAt: new Date(Date.now() + delayMs).toISOString(),
+      consecutiveFailures,
+    });
+    if (ctx.signal.aborted) return;
+    await sleep(delayMs);
   }
 }

@@ -46,3 +46,26 @@ describe("ledger", () => {
     expect(fixRound([])).toBe(1);
   });
 });
+
+describe("operator interrupt comments", () => {
+  const id = "4b05b405-bc8c-4212-8f22-f5749af9c07b";
+  const claimed = comment(
+    fmt.claimed("mac-a", "2026-09-03T10:00:00Z", "builder", 1),
+    "2026-09-03T10:00:00Z",
+  );
+  const session = comment(fmt.session(id, "mac-a", "builder", 1), "2026-09-03T10:00:10Z");
+  it("interrupted keeps the claim open with its session id", () => {
+    const stopped = comment(fmt.interrupted(id, "mac-a", 12), "2026-09-03T10:12:00Z");
+    expect(fmt.interrupted(id, "mac-a", 12)).toBe(
+      `session ${id} interrupted on mac-a: stopped by operator after 12m`,
+    );
+    const open = openClaim([claimed, session, stopped]);
+    expect(open?.claim.host).toBe("mac-a");
+    expect(open?.sessionId).toBe(id);
+  });
+  it("aborted closes the claim", () => {
+    const released = comment(fmt.aborted("mac-a"), "2026-09-03T10:12:00Z");
+    expect(fmt.aborted("mac-a")).toBe("released by mac-a: aborted by operator");
+    expect(openClaim([claimed, session, released])).toBeNull();
+  });
+});

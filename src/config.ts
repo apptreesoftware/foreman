@@ -18,6 +18,7 @@ export const ConfigSchema = z.object({
   wallClockMinutes: z.number().int().min(1).default(90),
   slackUser: z.string().min(1),
   model: z.string().optional(),
+  webPort: z.number().int().min(1).max(65535).default(8090),
 });
 export type ForemanConfig = z.infer<typeof ConfigSchema> & { owner: string };
 

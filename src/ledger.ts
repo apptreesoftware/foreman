@@ -25,6 +25,9 @@ export const fmt = {
   reclaimed: (from: string, by: string, at: string) => `reclaimed from ${from} by ${by} at ${at}`,
   merged: (host: string) => `merged by foreman@${host}`,
   planApplied: (host: string) => `plan applied by foreman@${host}`,
+  interrupted: (id: string, host: string, minutes: number) =>
+    `session ${id} interrupted on ${host}: stopped by operator after ${minutes}m`,
+  aborted: (host: string) => `released by ${host}: aborted by operator`,
 };
 
 const CLAIM =

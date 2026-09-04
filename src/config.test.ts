@@ -23,6 +23,10 @@ describe("parseConfig", () => {
   it("rejects a bad repo", () => {
     expect(() => parseConfig(JSON.stringify({ ...base, repo: "nope" }))).toThrow();
   });
+  it("defaults webPort to 8090 and accepts an override", () => {
+    expect(parseConfig(JSON.stringify(base)).webPort).toBe(8090);
+    expect(parseConfig(JSON.stringify({ ...base, webPort: 8091 })).webPort).toBe(8091);
+  });
 });
 
 describe("expandHome", () => {

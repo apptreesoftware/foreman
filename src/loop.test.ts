@@ -1,14 +1,22 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { comment, hoursAgo, issue } from "../test/helpers.ts";
+import { comment, hoursAgo, issue, pr } from "../test/helpers.ts";
 import { parseConfig } from "./config.ts";
 import type { Spawner } from "./dispatch.ts";
+import type { Exec } from "./exec.ts";
 import type { GitHubApi } from "./github.ts";
 import { fmt } from "./ledger.ts";
-import { type Ctx, execute, MAX_BACKOFF_SECONDS, runForever } from "./loop.ts";
+import {
+  type Ctx,
+  ensureLogin,
+  execute,
+  MAX_BACKOFF_SECONDS,
+  runForever,
+  runOnce,
+} from "./loop.ts";
 import type { Issue } from "./types.ts";
 
 const cfg = parseConfig(
@@ -59,6 +67,7 @@ const okSpawn =
   async () => ({
     code: 0,
     timedOut: false,
+    interrupted: false,
     stderr: "",
     stdout: JSON.stringify({
       type: "result",
@@ -90,7 +99,25 @@ function ctx(over: Partial<Ctx>): Ctx {
     artifactsDir: "/tmp/tt-test/artifacts",
     copyDir: async () => {},
     now: () => "2026-09-03T12:00:00Z",
+    signal: new AbortController().signal,
+    stopMode: () => null,
+    state: null,
     ...over,
+  };
+}
+
+function memState() {
+  let s: Record<string, unknown> = {};
+  return {
+    patches: [] as Partial<Record<string, unknown>>[],
+    store: {
+      get: () => s as never,
+      patch: (p: Record<string, unknown>) => {
+        s = { ...s, ...p };
+        return s as never;
+      },
+    },
+    get: () => s,
   };
 }
 
@@ -166,7 +193,7 @@ describe("execute", () => {
         gh,
         spawn: async () => {
           spawned = true;
-          return { code: 1, stdout: "", stderr: "", timedOut: false };
+          return { code: 1, stdout: "", stderr: "", timedOut: false, interrupted: false };
         },
       }),
     );
@@ -238,7 +265,13 @@ describe("execute", () => {
   });
   it("exhausted retries block the issue with a log excerpt", async () => {
     const { gh, calls } = fakeGh([issue({ number: 1 })]);
-    const spawn: Spawner = async () => ({ code: 1, stdout: "", stderr: "boom", timedOut: true });
+    const spawn: Spawner = async () => ({
+      code: 1,
+      stdout: "",
+      stderr: "boom",
+      timedOut: true,
+      interrupted: false,
+    });
     await execute(
       { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
       ctx({ gh, spawn }),
@@ -325,12 +358,39 @@ describe("execute", () => {
         dryRun: true,
         spawn: async () => {
           spawned = true;
-          return { code: 0, stdout: "", stderr: "", timedOut: false };
+          return { code: 0, stdout: "", stderr: "", timedOut: false, interrupted: false };
         },
       }),
     );
     expect(spawned).toBe(false);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("ensureLogin", () => {
+  it("leaves login empty on failure, sets it on a later success, and never re-fetches once set", async () => {
+    let calls = 0;
+    const gh: GitHubApi = {
+      ...fakeGh([]).gh,
+      viewerLogin: async () => {
+        calls++;
+        if (calls === 1) throw new Error("not authenticated");
+        return "matthewtsmith";
+      },
+    };
+    const c = ctx({ gh, login: "" });
+
+    await ensureLogin(c);
+    expect(c.login).toBe("");
+    expect(calls).toBe(1);
+
+    await ensureLogin(c);
+    expect(c.login).toBe("matthewtsmith");
+    expect(calls).toBe(2);
+
+    await ensureLogin(c);
+    expect(c.login).toBe("matthewtsmith");
+    expect(calls).toBe(2);
   });
 });
 
@@ -372,5 +432,178 @@ describe("runForever backoff", () => {
 
   it("returns to the poll interval after a success", async () => {
     expect(await delaysFor(["fail", "fail", "ok"])).toEqual([240, 480, 120]);
+  });
+});
+
+describe("operator interrupt", () => {
+  const interruptedSpawn: Spawner = async () => ({
+    code: 143,
+    stdout: "",
+    stderr: "",
+    timedOut: false,
+    interrupted: true,
+  });
+  it("stop: posts the interrupted comment, no blocked label, no retry, clears current", async () => {
+    const i = issue({ number: 1, status: "In Progress" });
+    const { gh, calls } = fakeGh([i]);
+    const ac = new AbortController();
+    ac.abort();
+    const st = memState();
+    let spawns = 0;
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        signal: ac.signal,
+        stopMode: () => "stop",
+        state: st.store,
+        stateDir: mkdtempSync(join(tmpdir(), "tt-loop-")),
+        spawn: async (...a) => {
+          spawns++;
+          return interruptedSpawn(...a);
+        },
+      }),
+    );
+    expect(spawns).toBe(1);
+    expect(calls.some((c) => c.includes("interrupted on mac-a"))).toBe(true);
+    expect(calls.some((c) => c.includes("blocked"))).toBe(false);
+    expect(calls.some((c) => c.startsWith("unassign"))).toBe(false);
+    expect(st.get().current).toBeNull();
+    expect(st.get().unfinished).toBeNull();
+  });
+  it("abort: releases, unassigns, resets Ready; sessions.log records aborted", async () => {
+    const i = issue({ number: 1, status: "In Progress" });
+    const { gh, calls } = fakeGh([i]);
+    const ac = new AbortController();
+    ac.abort();
+    const dir = mkdtempSync(join(tmpdir(), "tt-loop-"));
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        signal: ac.signal,
+        stopMode: () => "abort",
+        stateDir: dir,
+        spawn: interruptedSpawn,
+      }),
+    );
+    expect(calls).toContain(`comment issue 1 ${fmt.aborted("mac-a")}`);
+    expect(calls).toContain("unassign 1 matthewtsmith");
+    expect(calls).toContain("setStatus PVTI_1 Ready");
+    const line = readFileSync(join(dir, "sessions.log"), "utf8").trim();
+    expect(JSON.parse(line).outcome).toBe("aborted");
+  });
+  it("records unfinished when the ledger write fails", async () => {
+    const i = issue({ number: 1, status: "In Progress" });
+    const { gh } = fakeGh([i]);
+    // Only the ledger-interrupt write (the 3rd comment: claimed, session-started, then the
+    // interrupt bookkeeping) fails — the earlier claim comments must still go through.
+    let commentCalls = 0;
+    gh.comment = async () => {
+      commentCalls++;
+      if (commentCalls > 2) throw new Error("gh: 502");
+    };
+    const ac = new AbortController();
+    ac.abort();
+    const st = memState();
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        signal: ac.signal,
+        stopMode: () => "stop",
+        state: st.store,
+        stateDir: mkdtempSync(join(tmpdir(), "tt-loop-")),
+        spawn: interruptedSpawn,
+      }),
+    );
+    expect(st.get().current).toBeNull();
+    expect((st.get().unfinished as { mode: string; issue: number }).mode).toBe("stop");
+    expect((st.get().unfinished as { mode: string; issue: number }).issue).toBe(1);
+  });
+  it("runRole records current with the child pid while the session runs", async () => {
+    const { gh } = fakeGh([issue({ number: 1 })]);
+    const st = memState();
+    let seenCurrent: unknown = null;
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        state: st.store,
+        stateDir: mkdtempSync(join(tmpdir(), "tt-loop-")),
+        spawn: async (_c, _a, opts) => {
+          opts.onSpawn?.(4242);
+          seenCurrent = st.get().current;
+          return okSpawn({ outcome: "pr_opened", pr: 5, notes: "" })(_c, _a, opts);
+        },
+      }),
+    );
+    expect(seenCurrent).toMatchObject({ issue: 1, role: "builder", childPid: 4242, attempt: 1 });
+    expect(st.get().current).toBeNull();
+  });
+});
+
+describe("runForever stop", () => {
+  it("exits without sleeping once the signal is aborted", async () => {
+    const ac = new AbortController();
+    let iterations = 0;
+    const st = memState();
+    await runForever(ctx({ signal: ac.signal, state: st.store }), {
+      iterate: async () => {
+        iterations++;
+        ac.abort();
+      },
+      sleep: async () => {
+        throw new Error("should not sleep");
+      },
+    });
+    expect(iterations).toBe(1);
+    expect(st.get().lastTickAt).toBeTruthy();
+    expect(st.get().consecutiveFailures).toBe(0);
+  });
+  it("runs iterations through the lock when one is given", async () => {
+    const ac = new AbortController();
+    let locked = 0;
+    await runForever(ctx({ signal: ac.signal }), {
+      iterate: async () => ac.abort(),
+      sleep: async () => {},
+      lock: async (fn) => {
+        locked++;
+        return fn();
+      },
+    });
+    expect(locked).toBe(1);
+  });
+});
+
+describe("runOnce abort mid-plan", () => {
+  it("stops between actions once the signal aborts, so a second mergeable PR is never merged", async () => {
+    const i1 = issue({ number: 1, status: "In Review" });
+    const i2 = issue({ number: 2, status: "In Review" });
+    const p1 = pr({ number: 10, issue: 1, labels: ["reviewer:approved", "validator:passed"] });
+    const p2 = pr({ number: 11, issue: 2, labels: ["reviewer:approved", "validator:passed"] });
+    const ac = new AbortController();
+    const merged: number[] = [];
+    const { gh: baseGh } = fakeGh([]);
+    const gh: GitHubApi = {
+      ...baseGh,
+      listIssues: async () => [i1, i2],
+      getIssue: async (n) => (n === 1 ? i1 : i2),
+      listOpenPRs: async () => [p1, p2],
+      mergePR: async (prNumber) => {
+        merged.push(prNumber);
+        // Abort lands while this first merge is still in flight.
+        ac.abort();
+      },
+    };
+    // preflight only needs exec to succeed; the exact stdout keeps `claude auth status` happy.
+    const exec: Exec = async () => ({
+      code: 0,
+      stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+      stderr: "",
+    });
+    const stateDir = mkdtempSync(join(tmpdir(), "tt-loop-abort-"));
+    await runOnce(ctx({ gh, exec, signal: ac.signal, stateDir }));
+    expect(merged).toEqual([10]);
   });
 });

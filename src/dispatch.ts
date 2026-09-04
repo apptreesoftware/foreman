@@ -67,6 +67,7 @@ export interface SessionResult {
   denials: number;
   timedOut: boolean;
   stderr: string;
+  interrupted: boolean;
 }
 
 export function slugify(title: string): string {
@@ -190,6 +191,7 @@ export function parseResult(stdout: string, timedOut: boolean): SessionResult {
     denials: 0,
     timedOut,
     stderr: "",
+    interrupted: false,
   };
   if (!line) return base;
   try {
@@ -262,12 +264,20 @@ export interface SpawnResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  /** True when the operator's abort signal killed the child. */
+  interrupted: boolean;
 }
-export type Spawner = (
-  cmd: string,
-  args: string[],
-  opts: { cwd: string; env: NodeJS.ProcessEnv; input: string; timeoutMs: number },
-) => Promise<SpawnResult>;
+export interface SpawnOptions {
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  input: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  onSpawn?: (pid: number) => void;
+}
+export type Spawner = (cmd: string, args: string[], opts: SpawnOptions) => Promise<SpawnResult>;
+
+export const KILL_GRACE_MS = 30_000;
 
 export const realSpawn: Spawner = (cmd, args, opts) =>
   new Promise((resolve) => {
@@ -276,34 +286,48 @@ export const realSpawn: Spawner = (cmd, args, opts) =>
       env: opts.env,
       stdio: ["pipe", "pipe", "pipe"],
     });
+    if (child.pid && opts.onSpawn) opts.onSpawn(child.pid);
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let interrupted = false;
     child.stdout.on("data", (d) => {
       stdout += String(d);
     });
     child.stderr.on("data", (d) => {
       stderr += String(d);
     });
+    const kill = () => {
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS).unref();
+    };
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 30_000).unref();
+      kill();
     }, opts.timeoutMs);
-    child.on("close", (code) => {
+    const onAbort = () => {
+      interrupted = true;
+      kill();
+    };
+    if (opts.signal?.aborted) onAbort();
+    else opts.signal?.addEventListener("abort", onAbort, { once: true });
+    const done = (r: SpawnResult) => {
       clearTimeout(timer);
-      resolve({ code: code ?? 1, stdout, stderr, timedOut });
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({ code: 1, stdout, stderr: `${stderr}\n${err.message}`, timedOut });
-    });
+      opts.signal?.removeEventListener("abort", onAbort);
+      resolve(r);
+    };
+    child.on("close", (code) => done({ code: code ?? 1, stdout, stderr, timedOut, interrupted }));
+    child.on("error", (err) =>
+      done({ code: 1, stdout, stderr: `${stderr}\n${err.message}`, timedOut, interrupted }),
+    );
     child.stdin.end(opts.input);
   });
 
 export interface DispatchDeps {
   spawn: Spawner;
   onAttempt: (req: DispatchRequest) => Promise<void>;
+  signal?: AbortSignal;
+  onSpawn?: (pid: number) => void;
 }
 
 export async function runSession(
@@ -317,9 +341,13 @@ export async function runSession(
     env: childEnv(process.env),
     input: buildPrompt(req, cfg),
     timeoutMs: cfg.wallClockMinutes * 60_000,
+    signal: deps.signal,
+    onSpawn: deps.onSpawn,
   });
   const parsed = parseResult(r.stdout, r.timedOut);
   parsed.stderr = r.stderr.slice(-4000);
+  parsed.interrupted = r.interrupted;
+  if (r.interrupted && !parsed.outcome) parsed.subtype = "interrupted";
   if (!parsed.sessionId) parsed.sessionId = req.sessionId;
   log("info", "session finished", {
     issue: req.issue,
@@ -330,6 +358,7 @@ export async function runSession(
     cost: parsed.costUsd,
     denials: parsed.denials,
     timedOut: r.timedOut,
+    interrupted: r.interrupted,
   });
   return parsed;
 }
@@ -342,6 +371,9 @@ export async function dispatchWithRetry(
 ): Promise<SessionResult> {
   let last: SessionResult | null = null;
   for (let attempt = req.attempt; attempt < req.attempt + MAX_ATTEMPTS; attempt++) {
+    // An abort landing between attempts (the first attempt always runs) must not post another
+    // "session …" comment and spawn a child just to kill it.
+    if (attempt > req.attempt && deps.signal?.aborted) break;
     const r = await runSession(
       { ...req, attempt, resume: req.resume || attempt > req.attempt },
       cfg,
@@ -349,6 +381,7 @@ export async function dispatchWithRetry(
     );
     last = r;
     if (r.outcome) return r;
+    if (r.interrupted) return r; // operator stop/abort: never retry
     log("warn", "session ended without outcome; retrying", {
       issue: req.issue,
       attempt,

@@ -13,7 +13,7 @@ Every `pollSeconds` (config, default 120s), the foreman wakes up and runs one it
 3. **Merge sweep.** For every open, non-draft PR whose issue is In Review: if CI is green, the PR carries `reviewer:approved`, and it carries `validator:passed` or `validator:skipped`, the foreman squash-merges, closes the issue, sets Status Done, and comments `merged by foreman@<host>`.
 4. **Pick.** Candidates are issues with Status Ready, label `agent-ready`, no open claim, every "Depends on" issue closed, and whose phase epic isn't `foreman:pause`d. Open PRs needing review or validation are also candidates. Priority: lowest phase number, then review/validate jobs before new builds, then fix rounds, then `size:S` before `M` before `L`.
 5. **Claim.** The foreman comments `claimed by <host> at <iso> role=<role> round=<n>`, assigns itself, and (for a first-round build) sets Status In Progress. If another host's claim comment landed in the same window, the alphabetically first host keeps it; the others comment `released by <host>: conflict` and unassign. The ledger (issue comments), not the GitHub assignee, is authoritative — two Macs can share one GitHub login.
-6. **Dispatch.** Creates or reuses a git worktree at `<workDir>/<issue>` on branch `feat/<issue>-<slug>`, runs `pnpm install`, and invokes `claude -p` with the role's prompt file, the issue/PR/worktree/branch context, `--max-turns <maxTurns>`, and a `wallClockMinutes` timeout. Posts `session <id> on <host> role=<role> attempt=<n>` before each attempt.
+6. **Dispatch.** Creates or reuses a git worktree at `<workDir>/<issue>` on branch `feat/<issue>-<slug>`, runs `pnpm install`, and invokes `claude -p` with the role's prompt file, the issue/PR/worktree/branch context, `--max-turns <maxTurns>`, and a `wallClockMinutes` timeout. Posts `session <id> on <host> role=<role> attempt=<n>` before each attempt. Records the session in `~/.tone_tonic/state.json` (`current`) until it ends.
 7. **Outcome.** Parses the session's structured JSON outcome. On a validator `passed`/`failed`, first copies `<worktree>/.validation-artifacts/<pr>/` — where the validator leaves its screenshots, because a headless session cannot write outside its worktree — to `~/.tone_tonic/artifacts/<pr>/` and logs the destination, so the artifacts survive the worktree being removed at merge. Then applies labels/Status (table below). A session that ends without a valid outcome is retried up to 3 attempts total (`dispatchWithRetry` in `src/dispatch.ts`); if all 3 fail, the issue is labeled `blocked` with a log excerpt and unassigned.
 8. **Phase check.** If every task under a phase epic is closed, dispatches the phase-closer. If the next phase's epic has no `plan-approved` label and nothing is currently active, dispatches the planner once, then idles until a human labels the epic.
 
@@ -130,10 +130,17 @@ The plist sets `KeepAlive` and `RunAtLoad`, so launchd restarts the foreman if i
 
 ## 5. Kill switches
 
-- **This Mac, next poll:** `touch ~/.tone_tonic/STOP`. Preflight fails on the next iteration and the foreman sleeps until the file is removed.
+All of these work from any terminal on the Mac: `pnpm --filter @tone/foreman ctl <cmd>`. A daemon started before this version has no state.json and no page; stop it once by pid and start it again to get any of this.
+
+- **See what it is doing:** `ctl status` (add `--watch` for a live view, `--json` for the raw report). Reads `~/.tone_tonic/state.json`, which the daemon writes every tick and whenever a `claude -p` child starts or ends. `ctl next` asks GitHub what the next tick would do and why each open PR is or is not mergeable; it ignores the `STOP` file. The same view is served at http://127.0.0.1:8090 while the daemon is running (port `webPort` in `foreman.json`).
+- **Stop now, resume later:** `ctl stop`. Touches `STOP`, then `SIGTERM`s the daemon. The daemon kills the running `claude -p` child, posts `session <id> interrupted on <host>: stopped by operator`, and exits. The claim stays open, so the next start resumes that session with `--resume`. `launchctl bootout` and Ctrl-C do the same thing.
+- **Stop now and discard the session:** `ctl abort`. Same, via `SIGUSR1`, but the daemon posts `released by <host>: aborted by operator`, unassigns itself, and moves a round-1 builder issue back to Ready. The worktree is left for reuse. If the daemon is already dead and `state.json` shows an unfinished claim, `ctl abort` posts the release itself.
+- **Start again:** `ctl go`. Removes `STOP`, then wakes the daemon (`SIGUSR2`), or `launchctl kickstart`s it, or prints the start command.
+- **This Mac, next poll only:** `touch ~/.tone_tonic/STOP`. Preflight fails on the next iteration and the foreman sleeps until the file is removed.
 - **This phase, every Mac:** `gh issue edit <epic> --add-label foreman:pause`. No new claims are picked for issues under that phase on any Mac; in-flight sessions finish normally.
-- **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.tonetonic.foreman`.
-- A running `claude -p` session is **not** killed by any of these — it finishes on its own or is killed at `wallClockMinutes`. STOP and `foreman:pause` only stop the *next* dispatch.
+- **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.tonetonic.foreman` (a clean stop, as above).
+
+A killed daemon (`kill -9`) does no bookkeeping: `ctl status` then shows `CRASHED` and, if the child is still alive, `ORPHAN child <pid>`; `ctl stop` or `ctl abort` kills it.
 
 ## 6. Budget
 
@@ -170,6 +177,7 @@ All durable state lives in GitHub; local disk (the worktree, the transcript, `se
 
 ## 9. Manual operations
 
+- `pnpm --filter @tone/foreman ctl status|next|stop|abort|go` — see §5. `ctl status --watch` refreshes every 2 s from local files; `ctl next` is the only subcommand that calls GitHub.
 - `pnpm --filter @tone/foreman dev-env` — writes `apps/api/.env.local` and `apps/web/.env.local` from the running local Supabase's `supabase status -o env` output. Useful before running validator-style manual checks yourself.
 - `pnpm --filter @tone/foreman serve start` / `serve stop` / `serve status` — starts/stops/checks the web (`:8082`) and api (`:3005`) dev servers in the background, logging to `~/.tone_tonic/logs/serve-*.log` and tracking PIDs in `~/.tone_tonic/serve.json`. This is what the validator role uses to bring the app up before driving it with Playwright.
 - `pnpm --filter @tone/foreman start --once` — run a single loop iteration and exit, instead of polling forever. Useful for debugging one action at a time.

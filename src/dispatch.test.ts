@@ -13,6 +13,8 @@ import {
   ensureWorktree,
   MAX_ATTEMPTS,
   parseResult,
+  realSpawn,
+  runSession,
   type Spawner,
   slugify,
   transcriptPath,
@@ -194,6 +196,7 @@ describe("dispatchWithRetry", () => {
           '{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":50,"total_cost_usd":1,"duration_ms":1,"session_id":"x","result":null}',
         stderr: "",
         timedOut: false,
+        interrupted: false,
       };
     };
     const r = await dispatchWithRetry(req, cfg, { spawn, onAttempt: async () => {} });
@@ -205,10 +208,97 @@ describe("dispatchWithRetry", () => {
     let n = 0;
     const spawn: Spawner = async () => {
       n++;
-      return { code: 0, stdout: okJson(), stderr: "", timedOut: false };
+      return { code: 0, stdout: okJson(), stderr: "", timedOut: false, interrupted: false };
     };
     const r = await dispatchWithRetry(req, cfg, { spawn, onAttempt: async () => {} });
     expect(n).toBe(1);
     expect(r.outcome?.outcome).toBe("pr_opened");
+  });
+  it("stops retrying when the signal aborts between attempts", async () => {
+    const ac = new AbortController();
+    let n = 0;
+    const firstResult = {
+      code: 1,
+      stdout:
+        '{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":50,"total_cost_usd":1,"duration_ms":1,"session_id":"x","result":null}',
+      stderr: "",
+      timedOut: false,
+      interrupted: false,
+    };
+    const spawn: Spawner = async () => {
+      n++;
+      // Abort lands after the first attempt returns, before dispatchWithRetry starts a retry.
+      ac.abort();
+      return firstResult;
+    };
+    const r = await dispatchWithRetry(req, cfg, {
+      spawn,
+      onAttempt: async () => {},
+      signal: ac.signal,
+    });
+    expect(n).toBe(1);
+    expect(r.subtype).toBe("error_max_turns");
+    expect(r.outcome).toBeNull();
+  });
+});
+
+describe("interrupts", () => {
+  it("realSpawn kills the child on abort and reports interrupted", async () => {
+    const ac = new AbortController();
+    let pid = 0;
+    const p = realSpawn("node", ["-e", "setInterval(() => {}, 1000)"], {
+      cwd: process.cwd(),
+      env: process.env,
+      input: "",
+      timeoutMs: 60_000,
+      signal: ac.signal,
+      onSpawn: (n) => {
+        pid = n;
+      },
+    });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(pid).toBeGreaterThan(0);
+    ac.abort();
+    const r = await p;
+    expect(r.interrupted).toBe(true);
+    expect(r.timedOut).toBe(false);
+  });
+  it("realSpawn kills immediately when the signal is already aborted", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const r = await realSpawn("node", ["-e", "setInterval(() => {}, 1000)"], {
+      cwd: process.cwd(),
+      env: process.env,
+      input: "",
+      timeoutMs: 60_000,
+      signal: ac.signal,
+    });
+    expect(r.interrupted).toBe(true);
+  });
+  it("dispatchWithRetry does not retry an interrupted attempt", async () => {
+    let n = 0;
+    const spawn: Spawner = async () => {
+      n++;
+      return { code: 143, stdout: "", stderr: "", timedOut: false, interrupted: true };
+    };
+    const r = await dispatchWithRetry(req, cfg, { spawn, onAttempt: async () => {} });
+    expect(n).toBe(1);
+    expect(r.interrupted).toBe(true);
+    expect(r.subtype).toBe("interrupted");
+    expect(r.outcome).toBeNull();
+    expect(r.sessionId).toBe(req.sessionId);
+  });
+  it("runSession passes signal and onSpawn through to the spawner", async () => {
+    const ac = new AbortController();
+    const seen: { signal?: AbortSignal; onSpawn?: unknown } = {};
+    const spawn: Spawner = async (_c, _a, opts) => {
+      seen.signal = opts.signal;
+      seen.onSpawn = opts.onSpawn;
+      return { code: 0, stdout: okJson(), stderr: "", timedOut: false, interrupted: false };
+    };
+    const onSpawn = () => {};
+    await runSession(req, cfg, { spawn, onAttempt: async () => {}, signal: ac.signal, onSpawn });
+    expect(seen.signal).toBe(ac.signal);
+    expect(seen.onSpawn).toBe(onSpawn);
   });
 });

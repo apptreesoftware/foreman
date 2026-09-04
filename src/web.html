@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foreman</title>
+<style>
+  :root { color-scheme: light dark; font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { margin: 0; padding: 1.5rem; max-width: 72rem; }
+  h1 { font-size: 1.1rem; margin: 0 0 1rem; display: flex; gap: .75rem; align-items: baseline; }
+  .badge { padding: .1rem .5rem; border-radius: .4rem; font-weight: 600; }
+  .RUNNING { background: #1f7a3a; color: #fff; } .STOPPED { background: #666; color: #fff; }
+  .CRASHED, .warn { background: #b3261e; color: #fff; } .UNKNOWN { background: #8a6d00; color: #fff; }
+  table { border-collapse: collapse; margin: .5rem 0 1rem; }
+  td, th { text-align: left; padding: .15rem .8rem .15rem 0; vertical-align: top; }
+  th { opacity: .6; font-weight: 500; }
+  button { font: inherit; padding: .35rem .8rem; margin-right: .4rem; cursor: pointer; }
+  button.danger { border-color: #b3261e; }
+  button.confirm { background: #b3261e; color: #fff; }
+  pre { white-space: pre-wrap; background: rgba(127,127,127,.12); padding: .75rem; border-radius: .4rem; }
+  #msg { margin-left: .5rem; opacity: .8; }
+</style>
+</head>
+<body>
+<h1>foreman <span id="host"></span> <span id="daemon" class="badge UNKNOWN">…</span> <span id="stopflag"></span></h1>
+<table id="facts"></table>
+<div>
+  <button id="go" type="button">Go</button>
+  <button id="stop" class="danger" type="button">Stop</button>
+  <button id="abort" class="danger" type="button">Abort</button>
+  <button id="next" type="button">Compute next</button>
+  <span id="msg"></span>
+</div>
+<pre id="nextOut" hidden></pre>
+<h2 style="font-size:1rem">recent</h2>
+<table id="recent"></table>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const t = (iso) => (iso ? `${iso.slice(11, 19)}Z` : "–");
+  const mins = (m) => (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m` : `${m}m`);
+  const row = (k, v) => `<tr><th>${k}</th><td>${v}</td></tr>`;
+  // GitHub-sourced text (issue titles, branch names, roles, PR reasons, ...) lands in the
+  // facts/recent tables via innerHTML, so escape it before interpolating. Values written via
+  // textContent (#host, #daemon, #stopflag, #msg, #nextOut) never parse markup and are left as-is.
+  const esc = (v) =>
+    String(v).replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
+
+  async function refresh() {
+    let r;
+    try { r = await (await fetch("/api/status")).json(); }
+    catch { $("daemon").textContent = "page offline"; $("daemon").className = "badge CRASHED"; return; }
+    $("host").textContent = r.host;
+    $("daemon").textContent = r.daemon + (r.pid ? ` pid ${r.pid}` : "") + (r.uptimeMinutes != null ? ` up ${mins(r.uptimeMinutes)}` : "");
+    $("daemon").className = `badge ${r.daemon}`;
+    $("stopflag").textContent = r.stopPresent ? "STOP present" : "";
+    const rows = [];
+    if (r.tick) rows.push(row("tick", `last ${t(r.tick.lastAt)} · ${r.tick.preflight ? (r.tick.preflight.ok ? "preflight ok" : `preflight failed: ${esc(r.tick.preflight.reason)}`) : "no tick yet"} · next ${t(r.tick.nextAt)} · backoff ${r.tick.consecutiveFailures}`));
+    if (r.stopping) rows.push(row("stopping", `${r.stopping.mode} since ${t(r.stopping.at)}`));
+    if (r.current) {
+      const c = r.current;
+      rows.push(row("now", `<b>${esc(c.role)} #${c.issue}</b> round ${c.round} attempt ${c.attempt} · session ${esc(c.sessionId.slice(0, 8))} · ${mins(c.elapsedMinutes)} of ${c.limitMinutes}m${c.childPid ? ` · child ${c.childPid}` : ""}<br>${esc(c.title)}<br>${esc(c.worktree)} · ${esc(c.branch)}`));
+    } else if (r.daemon === "RUNNING") rows.push(row("now", "idle"));
+    if (r.orphan) rows.push(row("<span class='badge warn'>orphan</span>", `child ${r.orphan.pid} still running for #${r.orphan.issue}`));
+    if (r.unfinished) rows.push(row("<span class='badge warn'>unfinished</span>", `${r.unfinished.mode} bookkeeping for ${esc(r.unfinished.role)} #${r.unfinished.issue}; run ctl abort`));
+    rows.push(row("next", `${r.lastPlan ? r.lastPlan.map(esc).join(", ") : "–"} <small>(as of last tick)</small>`));
+    rows.push(row("today", `${r.today.count} of ${r.today.cap} sessions · $${r.today.spendUsd.toFixed(2)}`));
+    rows.push(row("launchd", r.launchdInstalled ? "installed" : "not installed"));
+    $("facts").innerHTML = rows.join("");
+    $("recent").innerHTML = r.recent.length
+      ? r.recent.map((e) => row(esc(t(e.t)), `${esc(e.role)} #${e.issue} ${esc(e.outcome)} $${e.costUsd.toFixed(2)}`)).join("")
+      : row("", "none");
+  }
+
+  const pending = {};
+  function armed(cmd, btn) {
+    if (pending[cmd]) { clearTimeout(pending[cmd]); pending[cmd] = null; btn.classList.remove("confirm"); btn.textContent = cmd[0].toUpperCase() + cmd.slice(1); return true; }
+    btn.classList.add("confirm"); btn.textContent = `Confirm ${cmd}?`;
+    pending[cmd] = setTimeout(() => { pending[cmd] = null; btn.classList.remove("confirm"); btn.textContent = cmd[0].toUpperCase() + cmd.slice(1); }, 5000);
+    return false;
+  }
+  async function act(cmd) {
+    $("msg").textContent = `${cmd}…`;
+    const r = await fetch(`/api/${cmd}`, { method: "POST" });
+    const j = await r.json();
+    $("msg").textContent = j.ok ? j.message : `error: ${j.error}`;
+    refresh();
+  }
+  for (const cmd of ["stop", "abort"]) $(cmd).onclick = () => { if (armed(cmd, $(cmd))) act(cmd); };
+  $("go").onclick = () => act("go");
+  $("next").onclick = async () => {
+    $("nextOut").hidden = false; $("nextOut").textContent = "computing…";
+    const j = await (await fetch("/api/next")).json();
+    const lines = j.actions.map((a, i) => (i === j.stopAt ? `${a}  ← would stop here` : a));
+    $("nextOut").textContent = [`plan   ${lines.join(", ")}`, ...j.explain.map((e) => `       ${e}`), "", ...j.prs.map((p) => `PR #${p.pr} → ${p.issue == null ? "?" : `#${p.issue}`}  status ${p.status}  checks ${p.checks}  labels [${p.labels.join(",")}]   ${p.reason === "eligible to merge" ? p.reason : `not eligible: ${p.reason}`}`)].join("\n");
+  };
+  refresh();
+  setInterval(refresh, 3000);
+</script>
+</body>
+</html>
