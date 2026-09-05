@@ -20,7 +20,14 @@ export function plan(s: Snapshot): Action[] {
   ];
   const c = pick(s);
   if (c)
-    out.push({ type: "claim", issue: c.issue, role: roleFor(c.kind), pr: c.pr, round: c.round });
+    out.push({
+      type: "claim",
+      issue: c.issue,
+      role: roleFor(c.kind),
+      pr: c.pr,
+      round: c.round,
+      ...(c.kind === "rebase" ? { rebase: true } : {}),
+    });
   out.push(...phaseActions(s));
   return out.length ? out : [{ type: "idle", reason: "nothing eligible" }];
 }

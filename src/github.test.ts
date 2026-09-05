@@ -7,8 +7,10 @@ import {
   parseChecks,
   parseClosesIssue,
   parseDependsOn,
+  parseTouches,
   phaseOf,
   sizeOf,
+  touchesOverlap,
 } from "./github.ts";
 
 const fx = (n: string) => readFileSync(join(import.meta.dirname, "../test/fixtures", n), "utf8");
@@ -66,6 +68,24 @@ describe("pure parsers", () => {
     expect(parseClosesIssue("Fixes #9")).toBe(9);
     expect(parseClosesIssue("no ref")).toBeNull();
   });
+  it("parseTouches reads the comma-separated Touches section", () => {
+    expect(
+      parseTouches("## Touches\n\napps/web, tools/foreman, CLAUDE.md\n\n## Depends on"),
+    ).toEqual(["apps/web", "tools/foreman", "CLAUDE.md"]);
+    expect(parseTouches("## Touches\n- `packages/db/migrations`\n- apps/api/src\n")).toEqual([
+      "packages/db/migrations",
+      "apps/api/src",
+    ]);
+    expect(parseTouches("## Touches\nNone\n\n## Spec")).toEqual([]);
+    expect(parseTouches("no section")).toEqual([]);
+  });
+  it("touchesOverlap is true when either path contains the other", () => {
+    expect(touchesOverlap(["tools/foreman"], ["tools/foreman/src/loop.ts"])).toBe(true);
+    expect(touchesOverlap(["tools/foreman/src/loop.ts"], ["tools/foreman"])).toBe(true);
+    expect(touchesOverlap(["tools/foreman"], ["tools/foreman-web"])).toBe(false);
+    expect(touchesOverlap(["apps/web"], ["apps/api"])).toBe(false);
+    expect(touchesOverlap([], ["apps/api"])).toBe(false);
+  });
   it("parseDependsOn", () => {
     expect(parseDependsOn("## Depends on\n#12, #14\n\n## Spec\nx")).toEqual([12, 14]);
     expect(parseDependsOn("## Depends on\nNone\n\n## Spec")).toEqual([]);
@@ -96,6 +116,8 @@ describe("GitHub reads", () => {
       expect(["success", "pending", "failure", "none"]).toContain(pr.checks);
       expect(pr.issue === null || Number.isInteger(pr.issue)).toBe(true);
     }
+    // GitHub's own verdict, so a conflicting branch gets a rebase job instead of a merge (#237).
+    expect(prs[0]?.mergeable).toBe("CONFLICTING");
   });
   it("resolves status option ids from field-list", async () => {
     const gh = new GitHub(cfg, fakeExec([]), false);

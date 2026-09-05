@@ -180,6 +180,42 @@ describe("describeWaiting", () => {
       detail: "PR #11 fix round 2 queued",
     });
   });
+  it("review_cycle when an approved PR conflicts with main and a rebase is queued (#237)", () => {
+    const i1 = issue({ number: 1, status: "In Review" });
+    const s = snapshot({
+      issues: [i1],
+      prs: [
+        pr({
+          number: 11,
+          issue: 1,
+          labels: ["reviewer:approved", "validator:passed"],
+          mergeable: "CONFLICTING",
+        }),
+      ],
+    });
+    expect(describeWaiting(s, base)[0]).toMatchObject({
+      kind: "review_cycle",
+      subject: "PR #11",
+      detail: "PR #11 conflicts with main; rebase queued",
+    });
+  });
+  it("human: a phase held by too many blocked tasks, once, with the count (#237)", () => {
+    const blocked = (number: number) =>
+      issue({
+        number,
+        labels: ["phase:1", "agent-ready", "blocked"],
+        comments: [comment("blocked by foreman@mac-a: reviewer/validator requested changes")],
+      });
+    const s = snapshot({
+      issues: [blocked(5), blocked(6), issue({ number: 7, labels: ["phase:1", "agent-ready"] })],
+    });
+    const w = describeWaiting(s, base).filter((x) => x.kind === "human");
+    expect(w.map((x) => x.detail)).toEqual([
+      "phase 1 held: 2 blocked tasks need you before any new build starts",
+      "#5 blocked: reviewer/validator requested changes",
+      "#6 blocked: reviewer/validator requested changes",
+    ]);
+  });
   it("dependency on an open issue", () => {
     const dep = issue({ number: 3, status: "In Progress" });
     const i = issue({ number: 4, body: "## Depends on\n#3\n\n## Spec\ndocs/x.md" });

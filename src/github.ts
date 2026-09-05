@@ -1,6 +1,15 @@
 import type { Exec } from "./exec.ts";
 import { log } from "./log.ts";
-import type { BoardItem, CheckState, Comment, Issue, PullRequest, Size, Status } from "./types.ts";
+import type {
+  BoardItem,
+  CheckState,
+  Comment,
+  Issue,
+  Mergeable,
+  PullRequest,
+  Size,
+  Status,
+} from "./types.ts";
 
 export interface GhConfig {
   repo: string;
@@ -33,6 +42,37 @@ export function parseClosesIssue(body: string): number | null {
     body,
   );
   return m ? Number(m[1]) : null;
+}
+
+/** GitHub computes this lazily, so a fresh push reads UNKNOWN for a while; treat that as mergeable. */
+export function parseMergeable(raw: string | undefined): Mergeable {
+  return raw === "CONFLICTING" ? "CONFLICTING" : raw === "MERGEABLE" ? "MERGEABLE" : "UNKNOWN";
+}
+
+/**
+ * The paths an issue's **Touches** section names, one per entry: comma- or line-separated,
+ * with or without list markers and backticks. "None" and a missing section are empty.
+ */
+export function parseTouches(body: string): string[] {
+  const m = /## Touches\s*\n([\s\S]*?)(?:\n## |$)/.exec(body);
+  if (!m) return [];
+  return (m[1] ?? "")
+    .split(/[,\n]/)
+    .map((x) =>
+      x
+        .trim()
+        .replace(/^[-*]\s*/, "")
+        .replace(/`/g, "")
+        .trim()
+        .replace(/\/+$/, ""),
+    )
+    .filter((x) => x.length > 0 && x.toLowerCase() !== "none");
+}
+
+/** True when a path in one list is the other's path or a parent directory of it. */
+export function touchesOverlap(a: string[], b: string[]): boolean {
+  const within = (p: string, q: string) => p === q || p.startsWith(`${q}/`);
+  return a.some((p) => b.some((q) => within(p, q) || within(q, p)));
 }
 
 export function parseDependsOn(body: string): number[] {
@@ -202,7 +242,7 @@ export class GitHub {
         "--limit",
         "100",
         "--json",
-        "number,title,body,headRefName,labels,isDraft,statusCheckRollup,updatedAt",
+        "number,title,body,headRefName,labels,isDraft,mergeable,statusCheckRollup,updatedAt",
       ]),
     ) as Array<{
       number: number;
@@ -210,6 +250,7 @@ export class GitHub {
       body: string;
       headRefName: string;
       isDraft: boolean;
+      mergeable?: string;
       updatedAt: string;
       labels: Array<{ name: string }>;
       statusCheckRollup: Array<{ status?: string; conclusion?: string | null }>;
@@ -222,6 +263,7 @@ export class GitHub {
       labels: names(p.labels),
       isDraft: p.isDraft,
       checks: parseChecks(p.statusCheckRollup ?? []),
+      mergeable: parseMergeable(p.mergeable),
       issue: parseClosesIssue(p.body ?? ""),
       updatedAt: p.updatedAt,
     }));

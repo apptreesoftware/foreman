@@ -6,6 +6,7 @@
     "headRefName": "feat/125-example",
     "labels": [{ "name": "reviewer:approved" }],
     "isDraft": false,
+    "mergeable": "CONFLICTING",
     "statusCheckRollup": [
       { "status": "COMPLETED", "conclusion": "SUCCESS" },
       { "status": "IN_PROGRESS", "conclusion": null }

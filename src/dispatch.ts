@@ -82,7 +82,12 @@ export interface DispatchRequest {
   notes: string;
   /** Run against the isolated `tone_tonic_val` stack; see `needsIsolatedStack`. */
   isolated: boolean;
+  /** A builder round that only merges origin/main into the PR branch (#237). */
+  rebase: boolean;
 }
+
+export const REBASE_NOTES =
+  "This is a rebase round: the PR is approved but its branch conflicts with main. Run `git merge origin/main`, resolve every conflict keeping both sides' intent, run `pnpm lint`, `pnpm typecheck` and `pnpm test`, commit the merge and push. Change nothing else, do not open a new PR, and return `pr_opened` with this PR's number.";
 
 /**
  * The rewrite script to run: the worktree's own, or the clone's when the branch predates the
@@ -257,7 +262,8 @@ export function buildPrompt(req: DispatchRequest, cfg: ForemanConfig): string {
     lines.push(
       `This worktree's \`packages/db/supabase/config.toml\` has been pointed at the isolated ${project} stack, and \`TONE_WEB_PORT\`/\`TONE_API_PORT\` are set, so \`pnpm db:reset\` and \`pnpm --filter @tone/foreman serve start\` stay off the owner's dev stack. Leave that file alone; it is marked skip-worktree so \`git add\` skips it, and the foreman restores it after your session.`,
     );
-  if (req.round > 1)
+  if (req.rebase) lines.push(REBASE_NOTES);
+  else if (req.round > 1)
     lines.push(
       `This is fix round ${req.round}. Address the reviewer/validator feedback on the PR before anything else.`,
     );

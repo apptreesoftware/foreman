@@ -190,6 +190,7 @@ interface RunRole {
   round: number;
   resumeSessionId: string | null;
   notes: string;
+  rebase?: boolean;
 }
 
 /** The model the next session runs as: the owner's live override, else `model` from foreman.json. */
@@ -271,6 +272,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     round: r.round,
     notes,
     isolated,
+    rebase: r.rebase === true,
   };
   const started = Date.now();
   let current: CurrentSession = {
@@ -763,7 +765,14 @@ export async function execute(
         return "continue";
       }
       const issue = fetched;
-      if (action.role === "builder" && action.round === 1 && issue.status !== "In Progress")
+      const rebase = action.rebase === true;
+      // A rebase round is builder work on an In Review issue; the board stays where it is.
+      if (
+        action.role === "builder" &&
+        action.round === 1 &&
+        !rebase &&
+        issue.status !== "In Progress"
+      )
         await setStatus(ctx, issue, "In Progress");
       await runRole(ctx, {
         issue,
@@ -771,8 +780,9 @@ export async function execute(
         pr: action.pr,
         round: action.round,
         resumeSessionId: null,
+        rebase,
         notes:
-          action.round > 1
+          !rebase && action.round > 1
             ? "Read the PR review and the latest validator comment; address every item."
             : "",
       });

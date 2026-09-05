@@ -253,6 +253,24 @@ describe("execute", () => {
       mergedAt: "2026-09-03T12:00:00Z",
     });
   });
+  it("claim: a rebase round keeps the issue In Review and hands the builder the rebase notes (#237)", async () => {
+    const i = issue({ number: 1, status: "In Review" });
+    const { gh, calls } = fakeGh([i]);
+    const inputs: string[] = [];
+    const spawn: Spawner = async (_cmd, _args, opts) => {
+      inputs.push(opts.input);
+      return okSpawn({ outcome: "pr_opened", pr: 9, notes: "" })("", [], opts);
+    };
+    const r = await execute(
+      { type: "claim", issue: 1, role: "builder", pr: 9, round: 2, rebase: true },
+      ctx({ gh, spawn }),
+    );
+    expect(r).toBe("stop");
+    expect(calls[0]).toMatch(/^comment issue 1 claimed by mac-a at \S+ role=builder round=2$/);
+    expect(calls).not.toContain("setStatus PVTI_1 In Progress");
+    expect(inputs[0]).toContain("rebase round");
+    expect(inputs[0]).not.toContain("fix round");
+  });
   it("claim: comments, assigns, sets In Progress, dispatches, applies pr_opened", async () => {
     const i = issue({ number: 1 });
     const { gh, calls } = fakeGh([i]);

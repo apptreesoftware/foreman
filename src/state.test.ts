@@ -32,6 +32,25 @@ describe("plan", () => {
       { type: "claim", issue: 3, role: "builder", pr: null, round: 1 },
     ]);
   });
+  it("claims a rebase for an approved PR that conflicts with main, flagged for the prompt (#237)", () => {
+    const actions = plan(
+      snapshot({
+        issues: [issue({ number: 3, status: "In Review", labels: ["phase:1", "area:infra"] })],
+        prs: [
+          pr({
+            number: 30,
+            issue: 3,
+            labels: ["reviewer:approved", "validator:skipped"],
+            mergeable: "CONFLICTING",
+          }),
+        ],
+      }),
+    );
+    expect(actions.filter((a) => a.type === "merge")).toEqual([]);
+    expect(actions.filter((a) => a.type === "claim")).toEqual([
+      { type: "claim", issue: 3, role: "builder", pr: 30, round: 1, rebase: true },
+    ]);
+  });
   it("idles when nothing is eligible", () => {
     expect(plan(snapshot())).toEqual([{ type: "idle", reason: "nothing eligible" }]);
   });

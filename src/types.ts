@@ -23,6 +23,8 @@ export interface Issue {
 
 export type CheckState = "success" | "pending" | "failure" | "none";
 
+export type Mergeable = "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+
 export interface PullRequest {
   number: number;
   title: string;
@@ -31,6 +33,8 @@ export interface PullRequest {
   labels: string[];
   isDraft: boolean;
   checks: CheckState;
+  /** GitHub's own verdict on the branch; CONFLICTING gets a rebase job instead of a merge (#237). */
+  mergeable: Mergeable;
   issue: number | null; // parsed from "Closes #N"
   updatedAt: string;
 }
@@ -65,7 +69,15 @@ export type Action =
   | { type: "resume"; issue: number; role: Role; sessionId: string | null; pr: number | null }
   | { type: "merge"; pr: number; issue: number }
   | { type: "skip_validator"; pr: number; issue: number }
-  | { type: "claim"; issue: number; role: Role; pr: number | null; round: number }
+  | {
+      type: "claim";
+      issue: number;
+      role: Role;
+      pr: number | null;
+      round: number;
+      /** A builder round that only merges origin/main; does not count as a fix round (#237). */
+      rebase?: boolean;
+    }
   | { type: "release"; issue: number; reason: string }
   | { type: "reclaim"; issue: number; fromHost: string }
   | { type: "block"; issue: number; reason: string }

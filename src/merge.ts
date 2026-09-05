@@ -10,6 +10,7 @@ export function mergeDecision(
 ): { ok: true } | { ok: false; reason: string } {
   if (pr.isDraft) return { ok: false, reason: "draft" };
   if (issue.status !== "In Review") return { ok: false, reason: `issue status ${issue.status}` };
+  if (pr.mergeable === "CONFLICTING") return { ok: false, reason: "conflicts with main" };
   if (pr.checks !== "success") return { ok: false, reason: `checks ${pr.checks}` };
   if (!pr.labels.includes("reviewer:approved"))
     return { ok: false, reason: "no reviewer:approved" };

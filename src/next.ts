@@ -33,7 +33,7 @@ function explain(a: Action, s: Snapshot): string {
     case "apply_plan":
       return `${actionName(a)}: create/update task issues from the approved plan of epic #${a.epic}`;
     case "claim":
-      return `${actionName(a)}: ${a.role} on #${a.issue} "${title(a.issue)}" round ${a.round}${a.pr ? ` (PR #${a.pr})` : ""}`;
+      return `${actionName(a)}: ${a.role} on #${a.issue} "${title(a.issue)}" ${a.rebase ? "rebase" : `round ${a.round}`}${a.pr ? ` (PR #${a.pr})` : ""}`;
     case "resume":
       return `${actionName(a)}: resume ${a.role} session ${a.sessionId ?? "(fresh id)"} on #${a.issue}`;
     case "reclaim":

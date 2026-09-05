@@ -35,6 +35,7 @@ export function pr(over: Partial<PullRequest> = {}): PullRequest {
     labels: [],
     isDraft: false,
     checks: "success",
+    mergeable: "MERGEABLE",
     issue: over.issue ?? 1,
     updatedAt: hoursAgo(1),
     ...over,

@@ -1,7 +1,7 @@
 import { parseDependsOn } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
 import { buildingEpic, planAwaitingOwner } from "./phase.ts";
-import { MAX_FIX_ROUNDS } from "./pick.ts";
+import { heldPhases, issuePhase, MAX_FIX_ROUNDS } from "./pick.ts";
 import { WAIT_KINDS, type WaitItem } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
 
@@ -102,6 +102,23 @@ export function describeWaiting(s: Snapshot, i: WaitingInput): WaitItem[] {
         since: byNumber.get(next.number)?.updatedAt ?? null,
       });
   }
+  // A phase with too many blocked tasks starts no new builds until the owner clears one (#237);
+  // said once per phase, ahead of the per-issue lines that explain which tasks those are.
+  const blockedCount = (phase: number) =>
+    s.issues.filter(
+      (x) =>
+        x.state === "OPEN" &&
+        !isEpic(x.number) &&
+        x.labels.includes("blocked") &&
+        issuePhase(x) === phase,
+    ).length;
+  for (const phase of heldPhases(s))
+    out.push({
+      kind: "human",
+      subject: `phase ${phase}`,
+      detail: `phase ${phase} held: ${blockedCount(phase)} blocked tasks need you before any new build starts`,
+      since: null,
+    });
   for (const x of s.issues) {
     if (x.state === "OPEN" && !isEpic(x.number) && x.labels.includes("blocked")) {
       const why = blockedReason(x.comments);
@@ -153,7 +170,13 @@ export function describeWaiting(s: Snapshot, i: WaitingInput): WaitItem[] {
           detail: `PR #${p.number} fix round ${round} queued`,
           since: p.updatedAt,
         });
-    }
+    } else if (p.labels.includes("reviewer:approved") && p.mergeable === "CONFLICTING")
+      out.push({
+        kind: "review_cycle",
+        subject: `PR #${p.number}`,
+        detail: `PR #${p.number} conflicts with main; rebase queued`,
+        since: p.updatedAt,
+      });
   }
   for (const x of s.issues) {
     if (

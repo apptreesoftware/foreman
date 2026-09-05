@@ -52,6 +52,7 @@ const req: DispatchRequest = {
   round: 1,
   notes: "",
   isolated: false,
+  rebase: false,
 };
 const okJson = (extra = "") =>
   `{"type":"result","subtype":"success","is_error":false,"num_turns":3,"total_cost_usd":1.25,"duration_ms":6000,"session_id":"${req.sessionId}","result":"done","structured_output":{"outcome":"pr_opened","pr":77,"notes":"ok"},"permission_denials":[]${extra}}`;
@@ -92,6 +93,13 @@ describe("buildArgs / buildPrompt", () => {
     // Always pinned, never inherited from the interactive CLI default (#210).
     expect(a.join(" ")).toContain("--model opus");
     expect(buildArgs(req, { ...cfg, model: "sonnet" }).join(" ")).toContain("--model sonnet");
+  });
+  it("a rebase round says so instead of announcing a fix round (#237)", () => {
+    const p = buildPrompt({ ...req, round: 2, rebase: true, notes: "merge main" }, cfg);
+    expect(p).toContain("rebase round");
+    expect(p).toContain("git merge origin/main");
+    expect(p).not.toContain("fix round");
+    expect(buildPrompt({ ...req, round: 2, rebase: false }, cfg)).toContain("fix round 2");
   });
   it("switches to --resume on resume", () => {
     const a = buildArgs({ ...req, resume: true }, cfg).join(" ");

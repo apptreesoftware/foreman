@@ -22,6 +22,16 @@ describe("validatorRequired", () => {
   });
 });
 
+describe("mergeDecision on a conflicting branch (#237)", () => {
+  it("refuses with a reason the page can show, whatever the checks say", () => {
+    const d = mergeDecision(pr({ issue: 20, labels: ready, mergeable: "CONFLICTING" }), inReview());
+    expect(d).toEqual({ ok: false, reason: "conflicts with main" });
+    expect(
+      mergeDecision(pr({ issue: 20, labels: ready, mergeable: "UNKNOWN" }), inReview()).ok,
+    ).toBe(true);
+  });
+});
+
 describe("mergeDecision", () => {
   it("needs In Review, green checks, approval and validation", () => {
     expect(mergeDecision(pr({ issue: 20, labels: ready }), inReview()).ok).toBe(true);
