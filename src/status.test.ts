@@ -288,6 +288,7 @@ describe("live activity and board", () => {
       ],
       pipeline: [],
       owner: [],
+      needsYou: [],
       explain: [],
       prs: [],
     };
@@ -329,6 +330,7 @@ describe("live activity and board", () => {
       ],
       pipeline: [],
       owner: [],
+      needsYou: [],
       explain: [],
       prs: [],
     };
@@ -354,6 +356,7 @@ describe("live activity and board", () => {
       ],
       pipeline: [],
       owner: [],
+      needsYou: [],
       explain: [],
       prs: [],
     };
@@ -377,5 +380,37 @@ describe("live activity and board", () => {
     expect(text).toContain('       "Now I\'ll write the plan."');
     expect(text).toContain("STALLED  no output for 7m (limit 90m; ctl stop to interrupt)");
     expect(text).toContain("waiting  epic #10 awaits plan-approved");
+  });
+  it("formatStatus prints the needs-you list, and says nothing when it is empty", () => {
+    const board = {
+      at: now,
+      waiting: [],
+      pipeline: [],
+      owner: [],
+      needsYou: [
+        {
+          issue: 165,
+          title: "Decision: who owns .claude/**",
+          labels: ["decision", "needs-owner"],
+          // A week old: the case the card exists for, and the one a bare clock time cannot say.
+          since: "2026-08-28T05:03:00.000Z",
+          itemId: "PVTI_165",
+        },
+        {
+          issue: 5,
+          title: "Task 5",
+          labels: ["blocked"],
+          since: "2026-09-04T04:00:00.000Z",
+          itemId: null,
+        },
+      ],
+      explain: [],
+      prs: [],
+    };
+    const text = formatStatus(describeStatus(input({ state: { ...state(), board } })));
+    expect(text).toContain(
+      "needs you  #165 decision,needs-owner Decision: who owns .claude/** (waiting 168h07m) · #5 blocked Task 5 (waiting 1h10m)",
+    );
+    expect(formatStatus(describeStatus(input()))).toContain("needs you  nothing");
   });
 });

@@ -1,3 +1,4 @@
+import { needsYouItems } from "./needs-you.ts";
 import { describeNext } from "./next.ts";
 import { ownerItems } from "./owner.ts";
 import { describePipeline } from "./pipeline.ts";
@@ -13,6 +14,7 @@ export function describeBoard(s: Snapshot, i: WaitingInput): Board {
     waiting: describeWaiting(s, i),
     pipeline: describePipeline(s),
     owner: ownerItems(s),
+    needsYou: needsYouItems(s),
     explain: next.explain,
     prs: next.prs,
   };

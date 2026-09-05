@@ -127,6 +127,7 @@ describe("applyOwnerActionToBoard", () => {
         actions: ["start_planning" as const, "pause" as const],
       },
     ],
+    needsYou: [],
     explain: [],
     prs: [],
   };

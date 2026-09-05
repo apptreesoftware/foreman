@@ -108,12 +108,31 @@ export const OwnerItemSchema = z.object({
 });
 export type OwnerItem = z.infer<typeof OwnerItemSchema>;
 
+/**
+ * The labels that put a non-epic issue on the Needs you card: two the owner has to answer, and
+ * one the owner has to clear. Order is the order they are listed in on a row.
+ */
+export const NEEDS_YOU_LABELS = ["decision", "needs-owner", "blocked"] as const;
+export const NeedsYouItemSchema = z.object({
+  issue: z.number().int(),
+  title: z.string(),
+  /** Which of `NEEDS_YOU_LABELS` the issue carries; `blocked` is what offers the Unblock button. */
+  labels: z.array(z.string()),
+  /** The issue's `updatedAt`, so the page and `ctl status` can say how long it has waited. */
+  since: z.string(),
+  /** Project item id, so Unblock can set Status Ready without another read; null when off board. */
+  itemId: z.string().nullable(),
+});
+export type NeedsYouItem = z.infer<typeof NeedsYouItemSchema>;
+
 export const BoardSchema = z.object({
   at: z.string(),
   waiting: z.array(WaitItemSchema),
   pipeline: z.array(PipelineRowSchema),
   // Older state.json files predate this field; default keeps them readable.
   owner: z.array(OwnerItemSchema).default([]),
+  // Same: added in #224, and an older file must still parse.
+  needsYou: z.array(NeedsYouItemSchema).default([]),
   explain: z.array(z.string()),
   prs: z.array(
     z.object({

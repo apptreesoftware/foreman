@@ -9,6 +9,7 @@ import type { NextReport } from "./next.ts";
 import {
   CapSchema,
   ModelSchema,
+  type NeedsYouItem,
   type OwnerAction,
   OwnerActionSchema,
   type OwnerItem,
@@ -27,6 +28,10 @@ export interface WebDeps {
   owner: (epic: number, action: OwnerAction) => Promise<string>;
   /** The epics the page may act on, as of the last tick. */
   ownerItems: () => OwnerItem[];
+  /** The non-epic issues waiting on the owner, as of the last tick; also the unblock allowlist. */
+  needsYouItems: () => NeedsYouItem[];
+  /** Clears `blocked` and moves the issue back to Ready; only called for a listed blocked issue. */
+  unblock: (issue: number) => Promise<string>;
   /** Sets the model the next dispatch uses; the name has already passed `ModelSchema`. */
   setModel: (model: string) => Promise<string>;
   /** Sets the daily session cap the next tick enforces; null clears the override. */
@@ -44,6 +49,8 @@ const OwnerRequestSchema = z.object({
   epic: z.number().int().positive(),
   action: OwnerActionSchema,
 });
+
+const UnblockRequestSchema = z.object({ issue: z.number().int().positive() });
 
 const ModelRequestSchema = z.object({ model: ModelSchema });
 
@@ -110,6 +117,18 @@ export function createWebServer(d: WebDeps): http.Server {
         if (!item?.actions.includes(action))
           return json(res, 400, { ok: false, error: `#${epic} does not offer ${action}` });
         return json(res, 200, { ok: true, message: await d.owner(epic, action) });
+      }
+      if (url === "/api/unblock") {
+        if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
+        const parsed = UnblockRequestSchema.safeParse(await readJson(req));
+        if (!parsed.success) return json(res, 400, { ok: false, error: "bad request" });
+        const { issue } = parsed.data;
+        // Same allowlist pattern as /api/owner: the board is the list of issues the page is
+        // offering an Unblock for, so nothing else reaches GitHub.
+        const item = d.needsYouItems().find((i) => i.issue === issue);
+        if (!item?.labels.includes("blocked"))
+          return json(res, 400, { ok: false, error: `#${issue} is not blocked` });
+        return json(res, 200, { ok: true, message: await d.unblock(issue) });
       }
       if (url === "/api/model") {
         if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });

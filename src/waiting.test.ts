@@ -102,6 +102,32 @@ describe("describeWaiting", () => {
       "#5 blocked: migration conflicts",
     ]);
   });
+  it("human: a non-epic needs-owner or decision issue, with its title", () => {
+    const s = snapshot({
+      issues: [
+        issue({
+          number: 165,
+          title: "Decision: who owns .claude/**",
+          labels: ["decision", "needs-owner", "phase:0"],
+          updatedAt: hoursAgo(9),
+        }),
+        issue({ number: 171, title: "Phase 0.5 review", labels: ["needs-owner", "phase:0"] }),
+        // The epic's own row is reported once, by the epic loop; it must not double up here.
+        issue({ number: 10, labels: ["epic", "phase:1", "needs-owner"] }),
+      ],
+      epics: [epic({ number: 10, phase: 1, labels: ["epic", "phase:1", "needs-owner"] })],
+    });
+    const w = describeWaiting(s, base);
+    expect(w.map((x) => x.detail)).toEqual([
+      "epic #10 awaits plan-approved",
+      "#165 decision: Decision: who owns .claude/**",
+      "#171 needs owner: Phase 0.5 review",
+    ]);
+    expect(w.find((x) => x.subject === "#165")).toMatchObject({
+      kind: "human",
+      since: hoursAgo(9),
+    });
+  });
   it("human: the planner waits for agent-ready on the next epic", () => {
     const s = snapshot({
       issues: [issue({ number: 20, labels: ["epic", "phase:2"], status: "Backlog" })],

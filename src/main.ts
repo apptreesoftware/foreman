@@ -9,6 +9,7 @@ import { GitHub } from "./github.ts";
 import { launchdInstalled } from "./launchd-status.ts";
 import { log } from "./log.ts";
 import { buildSnapshot, ensureLogin, realCtx, runForever, runOnce } from "./loop.ts";
+import { applyUnblock, applyUnblockToBoard } from "./needs-you.ts";
 import { describeNext } from "./next.ts";
 import { applyOwnerAction, applyOwnerActionToBoard } from "./owner.ts";
 import { checkEnv, preflight } from "./preflight.ts";
@@ -154,6 +155,20 @@ const web = await startWebServer({
     return `cap is now ${maxSessionsPerDay ?? `the configured ${cfg.maxSessionsPerDay}`}`;
   },
   ownerItems: () => store.get().board?.owner ?? [],
+  needsYouItems: () => store.get().board?.needsYou ?? [],
+  unblock: async (issue) => {
+    // The stored row carries the project item id the tick already read, so the gate costs one
+    // label edit, one status write and one comment — no extra GitHub read.
+    const item = store.get().board?.needsYou.find((n) => n.issue === issue) ?? null;
+    const message = await applyUnblock(gh, { issue, itemId: item?.itemId ?? null, host: cfg.host });
+    log("info", "unblocked", { issue });
+    // Same reason as the owner gate: reflect it locally so the button goes now (#204), and wake
+    // the loop so the next tick can actually pick the issue up.
+    const board = store.get().board;
+    if (board) store.patch({ board: applyUnblockToBoard(board, issue) });
+    controller.wake();
+    return message;
+  },
   owner: async (epic, action) => {
     const message = await applyOwnerAction(gh, epic, action);
     log("info", "owner action", { epic, action });

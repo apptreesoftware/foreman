@@ -42,6 +42,8 @@ export interface StatusInput {
 export interface StatusReport {
   host: string;
   repo: string;
+  /** When the report was taken, so `formatStatus` can render durations, not bare clock times. */
+  now: string;
   daemon: DaemonState;
   pid: number | null;
   uptimeMinutes: number | null;
@@ -145,6 +147,7 @@ export function describeStatus(i: StatusInput): StatusReport {
           waiting: [...live, ...(stored?.waiting ?? []).filter((w) => !liveKinds.has(w.kind))],
           pipeline: stored?.pipeline ?? [],
           owner: stored?.owner ?? [],
+          needsYou: stored?.needsYou ?? [],
           explain: stored?.explain ?? [],
           prs: stored?.prs ?? [],
         }
@@ -156,6 +159,7 @@ export function describeStatus(i: StatusInput): StatusReport {
   return {
     host: s?.host ?? i.host,
     repo: i.repo,
+    now: i.now,
     daemon,
     pid: s?.pid ?? null,
     uptimeMinutes: s && daemon === "RUNNING" ? minutesBetween(s.startedAt, i.now) : null,
@@ -272,6 +276,22 @@ export function formatStatus(r: StatusReport): string {
   lines.push(`next   ${r.lastPlan ? r.lastPlan.join(", ") : "–"}   (as of last tick)`);
   if (r.board?.waiting.length)
     lines.push(`waiting  ${r.board.waiting.map((w) => w.detail).join(" · ")}`);
+  // Always printed, empty state included: an owner who cannot see this list does not know they
+  // are the thing holding the queue up (#224). The wait is a duration, not a clock time: these
+  // rows routinely sit for days, and `hhmm` cannot say anything past 24h.
+  const needsYou = r.board?.needsYou ?? [];
+  lines.push(
+    `needs you  ${
+      needsYou.length
+        ? needsYou
+            .map(
+              (n) =>
+                `#${n.issue} ${n.labels.join(",")} ${n.title} (waiting ${mins(minutesBetween(n.since, r.now))})`,
+            )
+            .join(" · ")
+        : "nothing"
+    }`,
+  );
   lines.push(
     `recent ${
       r.recent.length

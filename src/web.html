@@ -136,6 +136,7 @@
     </div>
     <div class="col">
       <section><h2>Owner <small>gates only you can open</small></h2><div id="owner" class="owner"></div></section>
+      <section><h2>Needs you <small>issues waiting on you, oldest first</small></h2><div id="needsYou" class="owner"></div></section>
       <section><h2>Waiting on</h2><ul id="waiting" class="wait"></ul></section>
       <section><h2>Tick</h2><div id="tick" class="tick"></div></section>
       <section><h2>Recent <small>click a row to load its feed</small></h2><div id="recent" class="recent"></div></section>
@@ -150,6 +151,8 @@
   const mins = (m) => (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m` : `${m}m`);
   const k = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
   const ago = (iso) => { if (!iso) return "–"; const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m ago`; };
+  // The same duration as a length rather than a point in time: "waiting 30h12m", not "… ago".
+  const waited = (iso) => ago(iso).replace(/ ago$/, "");
   let repo = null; // owner/repo, learned from /api/status when available
   const gh = (kind, n) => `https://github.com/${repo ?? ""}/${kind}/${n}`;
   const link = (kind, n, label) => repo ? `<a href="${gh(kind, n)}" target="_blank" rel="noopener">${esc(label ?? `#${n}`)}</a>` : esc(label ?? `#${n}`);
@@ -335,6 +338,27 @@
     refresh();
   }
 
+  // Non-epic issues parked on the owner: a decision nobody has answered, and a `blocked` issue
+  // that needs two GitHub edits to restart — which is what the Unblock button does.
+  function renderNeedsYou(items) {
+    const el = $("needsYou");
+    el.innerHTML = items.length
+      ? items.map((i) => {
+          const tags = i.labels.map((l) => `<span class="tag ${l === "blocked" ? "bad" : "human"}">${esc(l)}</span>`).join(" ");
+          const btn = i.labels.includes("blocked") ? `<button type="button" data-unblock="${i.issue}">Unblock</button>` : "";
+          return `<div class="o"><span class="who">${link("issues", i.issue)} ${esc(i.title)}</span><span class="acts">${btn}</span><span class="why">${tags} · waiting <span data-waited="${esc(i.since)}">${waited(i.since)}</span></span></div>`;
+        }).join("")
+      : '<div class="empty">nothing</div>';
+    for (const b of el.querySelectorAll("button[data-unblock]")) b.onclick = () => unblock(Number(b.dataset.unblock));
+  }
+  async function unblock(issue) {
+    if (!window.confirm(`Unblock #${issue}?\n\nRemoves the blocked label, sets Status Ready, and comments on the issue. The foreman may claim it on the next tick — fix whatever blocked it first.`)) return;
+    $("msg").textContent = `unblock #${issue}…`;
+    const j = await (await fetch("/api/unblock", { method: "POST", body: JSON.stringify({ issue }) })).json();
+    $("msg").textContent = j.ok ? j.message : `error: ${j.error}`;
+    refresh();
+  }
+
   async function refresh() {
     let r;
     try { r = await (await fetch("/api/status")).json(); }
@@ -350,6 +374,7 @@
     renderNow(r);
     renderPipeline(r.board?.pipeline ?? []);
     renderOwner(r.board?.owner ?? []);
+    renderNeedsYou(r.board?.needsYou ?? []);
     renderWaiting(r.board?.waiting ?? []);
     renderTick(r);
     if (!feedPinned) feedSession = r.current?.sessionId ?? r.recent[0]?.sessionId ?? null;
@@ -378,7 +403,10 @@
     const lines = j.actions.map((a, i) => (i === j.stopAt ? `${a}  ← would stop here` : a));
     $("nextOut").textContent = [`plan   ${lines.join(", ")}`, ...j.explain.map((e) => `       ${e}`), "", ...j.prs.map((p) => `PR #${p.pr} → ${p.issue == null ? "?" : `#${p.issue}`}  status ${p.status}  checks ${p.checks}  labels [${p.labels.join(",")}]   ${p.reason === "eligible to merge" ? p.reason : `not eligible: ${p.reason}`}`)].join("\n");
   };
-  setInterval(() => { for (const el of document.querySelectorAll("[data-at]")) el.textContent = ago(el.dataset.at); }, 1000);
+  setInterval(() => {
+    for (const el of document.querySelectorAll("[data-at]")) el.textContent = ago(el.dataset.at);
+    for (const el of document.querySelectorAll("[data-waited]")) el.textContent = waited(el.dataset.waited);
+  }, 1000);
   refresh();
   setInterval(refresh, 3000);
 </script>

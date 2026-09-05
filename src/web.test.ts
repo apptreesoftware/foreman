@@ -12,6 +12,7 @@ import { createWebServer, isLocalHost } from "./web.ts";
 const report: StatusReport = {
   host: "mac-a",
   repo: "o/r",
+  now: "2026-09-04T13:27:00.000Z",
   daemon: "RUNNING",
   pid: 1,
   uptimeMinutes: 3,
@@ -43,6 +44,7 @@ describe("web server", () => {
   const owned: string[] = [];
   const models: string[] = [];
   const caps: (number | null)[] = [];
+  const unblocked: number[] = [];
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
     t: `2026-09-04T13:27:0${i}.000Z`,
@@ -67,6 +69,26 @@ describe("web server", () => {
     ownerItems: () => [
       { epic: 124, title: "Phase 0.5", phase: 0, detail: "d", actions: ["sign_off", "pause"] },
     ],
+    needsYouItems: () => [
+      {
+        issue: 5,
+        title: "Task 5",
+        labels: ["blocked"],
+        since: "2026-09-03T03:00:00Z",
+        itemId: "PVTI_5",
+      },
+      {
+        issue: 171,
+        title: "Task 171",
+        labels: ["needs-owner"],
+        since: "2026-09-03T10:00:00Z",
+        itemId: null,
+      },
+    ],
+    unblock: async (issue) => {
+      unblocked.push(issue);
+      return `#${issue} unblocked`;
+    },
     setModel: async (model) => {
       models.push(model);
       return `next session runs ${model}`;
@@ -193,6 +215,26 @@ describe("web server", () => {
     expect((await post({ maxSessionsPerDay: null })).status).toBe(200);
     expect(caps).toEqual([50, null]);
   });
+  it("unblocks an issue the board lists as blocked", async () => {
+    const r = await fetch(`${base}/api/unblock`, {
+      method: "POST",
+      body: JSON.stringify({ issue: 5 }),
+    });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, message: "#5 unblocked" });
+    expect(unblocked).toEqual([5]);
+  });
+  it("refuses an issue the board does not list as blocked", async () => {
+    const post = (body: unknown) =>
+      fetch(`${base}/api/unblock`, { method: "POST", body: JSON.stringify(body) });
+    // Listed, but waiting on the owner rather than blocked: nothing to remove.
+    expect((await post({ issue: 171 })).status).toBe(400);
+    expect((await post({ issue: 999 })).status).toBe(400);
+    expect((await post({ issue: "5" })).status).toBe(400);
+    expect((await post({})).status).toBe(400);
+    expect((await fetch(`${base}/api/unblock`)).status).toBe(405);
+    expect(unblocked).toEqual([5]);
+  });
   it("rejects a session id that is not a uuid", async () => {
     const r = await fetch(`${base}/api/feed?session=../etc/passwd`);
     expect(r.status).toBe(400);
@@ -212,7 +254,7 @@ describe("isLocalHost", () => {
 describe("web.html", () => {
   it("has the five sections and escapes through esc()", () => {
     const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    for (const id of ["now", "waiting", "owner", "pipeline", "feed", "recent", "tick"])
+    for (const id of ["now", "waiting", "owner", "needsYou", "pipeline", "feed", "recent", "tick"])
       expect(html).toContain(`id="${id}"`);
     expect(html).toContain("const esc =");
     expect(html).toContain("/api/feed?session=");
@@ -229,6 +271,14 @@ describe("web.html", () => {
     expect(html).toContain('r.nowPhase === "between_ticks"');
     expect(html).toContain('label: "between ticks"');
     expect(html).toContain(".tag.phase_gate");
+  });
+  it("lists the Needs you rows and confirms before POSTing an unblock", () => {
+    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+    expect(html).toContain("renderNeedsYou(r.board?.needsYou ?? [])");
+    expect(html).toContain("window.confirm(`Unblock #");
+    expect(html).toContain('data-unblock="');
+    expect(html).toContain('fetch("/api/unblock"');
+    expect(html).toContain(">nothing<");
   });
   it("names the parked reason and offers the cap next to today's count", () => {
     const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");

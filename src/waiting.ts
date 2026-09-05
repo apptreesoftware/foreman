@@ -113,6 +113,19 @@ export function describeWaiting(s: Snapshot, i: WaitingInput): WaitItem[] {
       });
     }
   }
+  // Non-epic issues parked on a human. The epics have their own loop above and their own card;
+  // these had nowhere to show at all before #224, so #165, #171 and #172 sat unanswered.
+  for (const x of s.issues) {
+    if (x.state !== "OPEN" || isEpic(x.number)) continue;
+    const decision = x.labels.includes("decision");
+    if (!decision && !x.labels.includes("needs-owner")) continue;
+    out.push({
+      kind: "human",
+      subject: `#${x.number}`,
+      detail: `#${x.number} ${decision ? "decision" : "needs owner"}: ${x.title}`,
+      since: x.updatedAt,
+    });
+  }
   for (const p of s.prs) {
     const x = p.issue === null ? undefined : byNumber.get(p.issue);
     if (x?.status !== "In Review" || openClaim(x.comments) || x.labels.includes("blocked"))

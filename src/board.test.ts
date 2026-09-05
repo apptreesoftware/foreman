@@ -46,6 +46,7 @@ describe("overlayCurrent", () => {
     waiting: [],
     pipeline: [],
     owner: [],
+    needsYou: [],
     explain: [],
     prs: [],
   };
