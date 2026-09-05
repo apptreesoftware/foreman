@@ -14,8 +14,9 @@ export function parseStatusEnv(text: string): Record<string, string> {
 
 /**
  * `ports` defaults to the environment's stack: the owner's dev ports normally, the role ports
- * when the foreman set `TONE_WEB_PORT`/`TONE_API_PORT` for an isolated session (#228). The
- * Supabase URL comes from `supabase status` either way, which reads the config in this worktree.
+ * when the foreman set `TONE_WEB_PORT`/`TONE_API_PORT` for an isolated session (#228), and the
+ * CI `e2e` job's ports when it sets the same variables. The Supabase URL comes from
+ * `supabase status` either way, which reads the config in this worktree.
  */
 export function renderEnvFiles(
   v: Record<string, string>,

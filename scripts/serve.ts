@@ -9,11 +9,28 @@ const root = join(import.meta.dirname, "..", "..", "..");
 const stateDir = join(homedir(), ".tone_tonic");
 const pidFile = join(stateDir, "serve.json");
 const logDir = join(stateDir, "logs");
-// Dev ports normally; the role ports when the foreman set TONE_WEB_PORT/TONE_API_PORT for an
-// isolated session, so a validator never takes the ports the owner needs for `pnpm dev` (#228).
-const ports = stackPorts();
-const WEB = ports.webUrl;
-const API = `${ports.apiUrl}/health`;
+
+/**
+ * The URLs to wait on and the env each server needs. Dev ports normally; the role ports when
+ * the foreman set `TONE_WEB_PORT`/`TONE_API_PORT` for an isolated session (#228), and the same
+ * override is how CI's e2e job runs its own servers — either way they cannot collide with the
+ * ports the owner needs for `pnpm dev` on the same Mac.
+ */
+export function serveConfig(env: NodeJS.ProcessEnv): {
+  webUrl: string;
+  apiHealthUrl: string;
+  apiEnv: Record<string, string>;
+  webEnv: Record<string, string>;
+} {
+  const ports = stackPorts(env);
+  return {
+    webUrl: ports.webUrl,
+    apiHealthUrl: `${ports.apiUrl}/health`,
+    apiEnv: { PORT: String(ports.api), WEB_ORIGIN: ports.webUrl },
+    webEnv: { TONE_WEB_PORT: String(ports.web) },
+  };
+}
+
 const STRIPPED_ENV_VARS = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",
@@ -49,20 +66,24 @@ function killGroup(pid: number): void {
 
 async function start(): Promise<void> {
   if (existsSync(pidFile)) await stop();
+  const cfg = serveConfig(process.env);
   const pids = {
-    api: launch("api", "@tone/api", { PORT: String(ports.api), WEB_ORIGIN: WEB }),
-    web: launch("web", "@tone/web", { TONE_WEB_PORT: String(ports.web) }),
+    api: launch("api", "@tone/api", cfg.apiEnv),
+    web: launch("web", "@tone/web", cfg.webEnv),
     startedAt: new Date().toISOString(),
   };
   writeFileSync(pidFile, JSON.stringify(pids));
-  const [apiOk, webOk] = await Promise.all([waitForHttp(API), waitForHttp(WEB)]);
+  const [apiOk, webOk] = await Promise.all([
+    waitForHttp(cfg.apiHealthUrl),
+    waitForHttp(cfg.webUrl),
+  ]);
   if (!apiOk || !webOk) {
     await stop();
     throw new Error(
       `servers did not come up (api=${apiOk} web=${webOk}); see ${logDir}/serve-*.log`,
     );
   }
-  process.stdout.write(`api ${API} ok, web ${WEB} ok\n`);
+  process.stdout.write(`api ${cfg.apiHealthUrl} ok, web ${cfg.webUrl} ok\n`);
 }
 
 async function stop(): Promise<void> {
@@ -82,20 +103,24 @@ async function stop(): Promise<void> {
 }
 
 async function status(): Promise<void> {
+  const cfg = serveConfig(process.env);
   const [a, w] = await Promise.all([
-    waitForHttp(API, { timeoutMs: 1500 }),
-    waitForHttp(WEB, { timeoutMs: 1500 }),
+    waitForHttp(cfg.apiHealthUrl, { timeoutMs: 1500 }),
+    waitForHttp(cfg.webUrl, { timeoutMs: 1500 }),
   ]);
   process.stdout.write(
     `api=${a ? "up" : "down"} web=${w ? "up" : "down"} pidfile=${existsSync(pidFile)}\n`,
   );
 }
 
-const cmd = process.argv[2];
-if (cmd === "start") await start();
-else if (cmd === "stop") await stop();
-else if (cmd === "status") await status();
-else {
-  process.stderr.write("usage: serve start|stop|status\n");
-  process.exit(2);
+// Only dispatch when run as a script: serve.test.ts imports serveConfig from here.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const cmd = process.argv[2];
+  if (cmd === "start") await start();
+  else if (cmd === "stop") await stop();
+  else if (cmd === "status") await status();
+  else {
+    process.stderr.write("usage: serve start|stop|status\n");
+    process.exit(2);
+  }
 }

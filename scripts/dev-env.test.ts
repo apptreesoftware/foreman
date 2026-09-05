@@ -40,6 +40,16 @@ describe("dev-env", () => {
     expect(f.web).toContain("VITE_SUPABASE_URL=http://127.0.0.1:55621");
     expect(f.web).toContain("VITE_API_URL=http://localhost:3105");
   });
+  it("renders the ports the CI e2e job overrides, against the stack supabase reports", () => {
+    const f = renderEnvFiles(
+      parseStatusEnv(status),
+      stackPorts({ TONE_WEB_PORT: "8182", TONE_API_PORT: "3105" }),
+    );
+    expect(f.api).toContain("PORT=3105");
+    expect(f.api).toContain("WEB_ORIGIN=http://localhost:8182");
+    expect(f.api).toContain("SUPABASE_URL=http://127.0.0.1:55321");
+    expect(f.web).toContain("VITE_API_URL=http://localhost:3105");
+  });
   it("throws when keys are missing", () => {
     expect(() => renderEnvFiles({ API_URL: "x" })).toThrow(/ANON_KEY/);
   });
