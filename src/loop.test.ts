@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { comment, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
+import { comment, epic, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
 import { parseConfig } from "./config.ts";
 import type { Spawner } from "./dispatch.ts";
 import type { Exec } from "./exec.ts";
@@ -63,6 +63,31 @@ function fakeGh(issues: Issue[]) {
   };
   return { gh, calls };
 }
+
+/** Epic #200 plus #190, the task a half-finished earlier apply already created for it (#223). */
+const reusePlanIssues = () => [
+  issue({
+    number: 200,
+    labels: ["epic", "phase:2", "plan-approved"],
+    body: "## Spec\ndocs/superpowers/specs/2026-09-03-phase-02-x-design.md",
+  }),
+  issue({
+    number: 190,
+    title: "t2",
+    body: "## Goal\n…\n\nParent epic: #200",
+    labels: ["phase:2"],
+    status: "Backlog",
+  }),
+];
+
+const reusePlanCtx: Partial<Ctx> = {
+  planFiles: async () => ["docs/superpowers/plans/2026-09-10-phase-02-plan.issues.json"],
+  readPlanFile: async () =>
+    JSON.stringify({
+      epic: 200,
+      tasks: [{ title: "t2", body: "b2", labels: ["phase:2", "size:M"] }],
+    }),
+};
 
 const okSpawn =
   (outcome: object): Spawner =>
@@ -414,7 +439,8 @@ describe("execute", () => {
       { type: "apply_plan", epic: 200 },
       ctx({ gh, planFiles: async () => [], readPlanFile: async () => null }),
     );
-    expect(r).toBe("continue");
+    // "noop": nothing was written, so the tick must not count this as work and re-tick at once.
+    expect(r).toBe("noop");
     // No `plan applied` comment: planApplied() would read it as done and the epic would never
     // get its tasks. The next tick retries instead (#189).
     expect(calls).toEqual([]);
@@ -571,7 +597,7 @@ describe("runForever backoff", () => {
       runForever(ctx({}), {
         iterate: async () => {
           if (outcomes[n++] === "fail") throw new Error("gh: API rate limit exceeded");
-          return { dispatched: false };
+          return { didWork: false, action: null };
         },
         sleep: async (ms) => {
           seconds.push(ms / 1000);
@@ -689,7 +715,9 @@ describe("runForever after a session", () => {
         iterate: async () => {
           const o = outcomes[n++];
           if (o === "fail") throw new Error("gh: API rate limit exceeded");
-          return { dispatched: o === "dispatched" };
+          return o === "dispatched"
+            ? { didWork: true, action: "claim" }
+            : { didWork: false, action: null };
         },
         sleep: async (ms) => {
           seconds.push(ms / 1000);
@@ -718,7 +746,7 @@ describe("runForever after a session", () => {
     await runForever(ctx({ signal: ac.signal, state: st.store }), {
       iterate: async () => {
         ac.abort();
-        return { dispatched: true };
+        return { didWork: true, action: "claim" };
       },
       sleep: async () => {
         throw new Error("should not sleep");
@@ -880,7 +908,7 @@ describe("runForever stop", () => {
       iterate: async () => {
         iterations++;
         ac.abort();
-        return { dispatched: false };
+        return { didWork: false, action: null };
       },
       sleep: async () => {
         throw new Error("should not sleep");
@@ -896,7 +924,7 @@ describe("runForever stop", () => {
     await runForever(ctx({ signal: ac.signal }), {
       iterate: async () => {
         ac.abort();
-        return { dispatched: false };
+        return { didWork: false, action: null };
       },
       sleep: async () => {},
       lock: async (fn) => {
@@ -1053,6 +1081,206 @@ describe("live activity", () => {
         mergedTasks: 0,
       },
     ]);
+  });
+});
+
+describe("tick outcome (#223)", () => {
+  // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
+  const okExec: Exec = async () => ({
+    code: 0,
+    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+    stderr: "",
+  });
+  const stateDir = () => mkdtempSync(join(tmpdir(), "tt-loop-tick-"));
+
+  function mergeableBoard() {
+    const i1 = issue({ number: 1, status: "In Review" });
+    const p1 = pr({ number: 10, issue: 1, labels: ["reviewer:approved", "validator:passed"] });
+    const { gh: base, calls } = fakeGh([]);
+    const gh: GitHubApi = {
+      ...base,
+      listIssues: async () => [i1],
+      getIssue: async () => i1,
+      listOpenPRs: async () => [p1],
+    };
+    return { gh, calls };
+  }
+
+  it("a tick that only merged reports work, naming the action", async () => {
+    const { gh } = mergeableBoard();
+    const out = await runOnce(ctx({ gh, exec: okExec, stateDir: stateDir() }));
+    expect(out).toEqual({ didWork: true, action: "merge" });
+  });
+
+  it("a tick that merged and then dispatched a session names the session, not the merge", async () => {
+    const i1 = issue({ number: 1, status: "In Review" });
+    const i2 = issue({ number: 2 });
+    const p1 = pr({ number: 10, issue: 1, labels: ["reviewer:approved", "validator:passed"] });
+    const { gh: base, calls } = fakeGh([i1, i2]);
+    const gh: GitHubApi = { ...base, listOpenPRs: async () => [p1] };
+    const out = await runOnce(ctx({ gh, exec: okExec, stateDir: stateDir() }));
+    expect(calls.filter((c) => c.startsWith("mergePR"))).toEqual(["mergePR 10"]);
+    expect(out).toEqual({ didWork: true, action: "claim" });
+  });
+
+  it("a tick that found nothing eligible reports no work", async () => {
+    const { gh } = fakeGh([]);
+    const out = await runOnce(ctx({ gh, exec: okExec, stateDir: stateDir() }));
+    expect(out).toEqual({ didWork: false, action: null });
+  });
+
+  it("a dry-run merge tick reports no work, so dry-run never hot-loops", async () => {
+    const { gh, calls } = mergeableBoard();
+    const out = await runOnce(ctx({ gh, exec: okExec, stateDir: stateDir(), dryRun: true }));
+    expect(calls.filter((c) => c.startsWith("mergePR"))).toEqual([]);
+    expect(out).toEqual({ didWork: false, action: null });
+  });
+
+  it("an apply_plan tick whose plan is not on origin/main yet reports no work", async () => {
+    const { gh } = fakeGh([
+      issue({
+        number: 200,
+        labels: ["epic", "phase:2", "plan-approved"],
+        body: "## Spec\ndocs/superpowers/specs/2026-09-03-phase-02-x-design.md",
+      }),
+    ]);
+    const out = await runOnce(
+      ctx({ gh, exec: okExec, stateDir: stateDir(), planFiles: async () => [] }),
+    );
+    expect(out).toEqual({ didWork: false, action: null });
+  });
+
+  it("an apply_plan tick that applied the plan reports work", async () => {
+    const { gh } = fakeGh([
+      issue({
+        number: 200,
+        labels: ["epic", "phase:2", "plan-approved"],
+        body: "## Spec\ndocs/superpowers/specs/2026-09-03-phase-02-x-design.md",
+      }),
+    ]);
+    const file = JSON.stringify({
+      epic: 200,
+      tasks: [{ title: "t2", body: "b2", labels: ["phase:2", "size:M"] }],
+    });
+    const out = await runOnce(
+      ctx({
+        gh,
+        exec: okExec,
+        stateDir: stateDir(),
+        planFiles: async () => ["docs/superpowers/plans/2026-09-10-phase-02-plan.issues.json"],
+        readPlanFile: async () => file,
+      }),
+    );
+    expect(out).toEqual({ didWork: true, action: "apply_plan" });
+  });
+
+  it("runForever ticks again immediately after a tick that did work, and says which action", async () => {
+    const seconds: number[] = [];
+    const lines: string[] = [];
+    const orig = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((s: string) => {
+      lines.push(String(s));
+      return true;
+    }) as typeof process.stdout.write;
+    let n = 0;
+    const stop = new Error("stop");
+    try {
+      await expect(
+        runForever(ctx({}), {
+          iterate: async () =>
+            n++ === 0 ? { didWork: true, action: "merge" } : { didWork: false, action: null },
+          sleep: async (ms) => {
+            seconds.push(ms / 1000);
+            if (n >= 2) throw stop;
+          },
+        }),
+      ).rejects.toThrow("stop");
+    } finally {
+      process.stdout.write = orig;
+    }
+    expect(seconds).toEqual([0, 300]);
+    const line = lines.map((l) => JSON.parse(l)).find((j) => j.msg === "ticking again immediately");
+    expect(line).toMatchObject({ action: "merge" });
+  });
+
+  it("apply_plan reuses an open issue with the task's title under the epic instead of creating a second one", async () => {
+    const { gh: base, calls } = fakeGh(reusePlanIssues());
+    let created = 0;
+    const gh: GitHubApi = {
+      ...base,
+      createIssue: async () => {
+        created += 1;
+        return 999;
+      },
+    };
+    await execute({ type: "apply_plan", epic: 200 }, ctx({ ...reusePlanCtx, gh }));
+    expect(created).toBe(0);
+    expect(calls).toContain("editBody 190 b2");
+    expect(calls).toContain("addLabels issue 190 phase:2,size:M,agent-ready");
+    expect(calls).toContain("setStatus PVTI_190 Ready");
+    expect(calls).not.toContain("addSubIssue 200 999");
+  });
+
+  it("apply_plan links a reused issue that the failed attempt never made a sub-issue of the epic", async () => {
+    // The attempt that created #190 died between createIssue and addSubIssue, so the epic has
+    // no sub-issues: phaseComplete would never see #190 and would close the phase around it.
+    const { gh, calls } = fakeGh(reusePlanIssues());
+    await execute(
+      { type: "apply_plan", epic: 200 },
+      ctx({ ...reusePlanCtx, gh: { ...gh, subIssues: async () => [] } }),
+    );
+    expect(calls).toContain("addSubIssue 200 190");
+  });
+
+  it("apply_plan leaves a reused issue the board has already moved on alone, but still links it", async () => {
+    // The slow retry: #190 was created by the partial apply hours ago and is now In Review with
+    // an approved PR. Re-arming it (agent-ready + Ready) would make mergeDecision reject that PR
+    // forever and buildCandidates dispatch a second builder round on finished work.
+    const issues = reusePlanIssues().map((i) =>
+      i.number === 190 ? { ...i, status: "In Review" as const } : i,
+    );
+    const { gh, calls } = fakeGh(issues);
+    await execute(
+      { type: "apply_plan", epic: 200 },
+      ctx({ ...reusePlanCtx, gh: { ...gh, subIssues: async () => [] } }),
+    );
+    expect(calls).toContain("addSubIssue 200 190");
+    expect(calls).toContain("editBody 190 b2");
+    expect(calls.filter((c) => c.startsWith("addLabels issue 190"))).toEqual([]);
+    expect(calls).not.toContain("setStatus PVTI_190 Ready");
+  });
+
+  it("apply_plan does not re-link a reused issue that is already a sub-issue of the epic", async () => {
+    // addSubIssue on an issue the epic already owns is a 422, which would fail the whole tick.
+    const { gh, calls } = fakeGh(reusePlanIssues());
+    await execute(
+      { type: "apply_plan", epic: 200 },
+      ctx({ ...reusePlanCtx, gh: { ...gh, subIssues: async () => [190] } }),
+    );
+    expect(calls).toContain("editBody 190 b2");
+    expect(calls).not.toContain("addSubIssue 200 190");
+  });
+
+  it("apply_plan reads the epic's sub-issues from the snapshot rather than asking GitHub again", async () => {
+    const issues = reusePlanIssues();
+    const { gh, calls } = fakeGh(issues);
+    let subIssueReads = 0;
+    await execute(
+      { type: "apply_plan", epic: 200 },
+      ctx({
+        ...reusePlanCtx,
+        gh: {
+          ...gh,
+          subIssues: async () => {
+            subIssueReads += 1;
+            return [];
+          },
+        },
+      }),
+      snapshot({ issues, epics: [epic({ number: 200, taskNumbers: [190] })] }),
+    );
+    expect(subIssueReads).toBe(0);
+    expect(calls).not.toContain("addSubIssue 200 190");
   });
 });
 

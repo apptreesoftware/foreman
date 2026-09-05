@@ -523,7 +523,8 @@ export function firstIssueRef(notes: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Promise<void> {
+/** True when the plan's tasks were written to GitHub; false when it was left for a later tick. */
+async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Promise<boolean> {
   const { gh, cfg } = ctx;
   const epic = await issueFor(ctx, epicNumber, snapshot);
   const specPath = parseSpecPath(epic.body) ?? "";
@@ -547,25 +548,76 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
       epic: epicNumber,
       phase: nn ?? null,
     });
-    return;
+    return false;
   }
   const planFile = PlanIssuesSchema.parse(JSON.parse(text));
   // One board read for the whole plan. This used to be one `listIssues` per task, which is a
   // `gh project item-list` each time; a twenty-task plan tripped GitHub's rate limiter, the
   // tick failed, and the retry started the same storm again.
-  const itemIds = new Map(
-    (snapshot?.issues ?? (await gh.listIssues("open"))).map((i) => [i.number, i.itemId]),
-  );
+  const issues = snapshot?.issues ?? (await gh.listIssues("open"));
+  const itemIds = new Map(issues.map((i) => [i.number, i.itemId]));
+  // The epic's sub-issues, read at most once and only when a task is actually being reused: a
+  // reused issue may be unlinked, because the attempt that created it can have died between
+  // createIssue and addSubIssue. phaseComplete() only walks Epic.taskNumbers, so an unlinked task
+  // is invisible to it and the phase closes with the task still open and `agent-ready` (#223).
+  let cache: Set<number> | null = null;
+  const linkedTasks = async () => {
+    cache ??= new Set(
+      snapshot?.epics.find((e) => e.number === epicNumber)?.taskNumbers ??
+        (await gh.subIssues(epicNumber)),
+    );
+    return cache;
+  };
   for (const t of planFile.tasks) {
-    let number = t.number;
-    if (number) await gh.editBody(number, t.body);
-    else {
+    // A task without a number is created — unless an earlier attempt already did. The Phase 1
+    // apply created #190, failed later in the tick, and the retry created #216, an exact
+    // duplicate. The title plus the "Parent epic" line the planner puts in every body is the key.
+    const reused = t.number
+      ? undefined
+      : issues.find(
+          (i) =>
+            i.state === "OPEN" &&
+            i.title === t.title &&
+            i.body.includes(`Parent epic: #${epicNumber}`),
+        )?.number;
+    let number = t.number ?? reused;
+    if (number) {
+      await gh.editBody(number, t.body);
+      // Only for a reused issue: on the t.number path the planner is naming an issue it already
+      // linked, and addSubIssue on an existing link is a 422 that would fail the whole tick.
+      if (reused) {
+        const linked = await linkedTasks();
+        if (!linked.has(reused)) {
+          await gh.addSubIssue(epicNumber, reused);
+          // Two plan tasks with the same title resolve to the same issue; don't link it twice.
+          linked.add(reused);
+        }
+      }
+    } else {
       number = await gh.createIssue({ title: t.title, body: t.body, labels: t.labels });
       await gh.addSubIssue(epicNumber, number);
     }
-    await gh.addLabels("issue", number, [...t.labels, "agent-ready"]);
-    const itemId = itemIds.get(number) ?? (await gh.addToProject(number));
-    await gh.setStatus(itemId, "Ready");
+    // A reused task the board has already moved on (In Progress / In Review / Done) must not be
+    // re-armed: setStatus("Ready") makes mergeDecision reject its approved PR forever, and
+    // buildCandidates would dispatch a second builder round on finished work. The retry that
+    // gets here is slow (apply_plan only re-runs on a tick with nothing claimable), so this is
+    // the common case for a reused issue, not a corner.
+    const existing = reused ? issues.find((i) => i.number === reused) : undefined;
+    const inFlight =
+      existing !== undefined &&
+      existing.status !== null &&
+      existing.status !== "Backlog" &&
+      existing.status !== "Ready";
+    if (inFlight) {
+      log("warn", "reused plan task already in flight; leaving its labels and status alone", {
+        issue: number,
+        status: existing.status,
+      });
+    } else {
+      await gh.addLabels("issue", number, [...t.labels, "agent-ready"]);
+      const itemId = itemIds.get(number) ?? (await gh.addToProject(number));
+      await gh.setStatus(itemId, "Ready");
+    }
   }
   // The plan is applied, so the epic is no longer waiting on the owner: clear the gate that
   // holds the planner (#187) and put the epic back where the phase-closer can see it.
@@ -573,6 +625,7 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   const item = epic.itemId ?? (await gh.addToProject(epicNumber));
   await gh.setStatus(item, "In Progress");
   await gh.comment("issue", epicNumber, fmt.planApplied(cfg.host));
+  return true;
 }
 
 /** When this issue was first claimed, from its ledger; null when nothing ever claimed it. */
@@ -596,7 +649,7 @@ export async function execute(
   action: Action,
   ctx: Ctx,
   snapshot?: Snapshot,
-): Promise<"continue" | "stop"> {
+): Promise<"continue" | "stop" | "noop"> {
   const { gh, cfg } = ctx;
   log("info", "action", { ...action, dryRun: ctx.dryRun });
   // Dry-run must not call any gh method: return before the switch dispatches to a case that would.
@@ -739,23 +792,20 @@ export async function execute(
       return "stop";
     }
     case "apply_plan":
-      await applyPlan(ctx, action.epic, snapshot);
-      return "continue";
+      // A plan whose file is not on origin/main yet is left for the next tick, and that is not
+      // work: counting it would make the loop hot until the plan PR merges.
+      return (await applyPlan(ctx, action.epic, snapshot)) ? "continue" : "noop";
   }
 }
 
-/** Action types whose `execute` "stop" means a `claude -p` session was actually started. */
-const SESSION_ACTIONS: ReadonlySet<Action["type"]> = new Set([
-  "claim",
-  "resume",
-  "reclaim",
-  "phase_close",
-  "plan",
-]);
-
 export interface TickOutcome {
-  /** True when this tick started a session, so the next one need not wait out `pollSeconds`. */
-  dispatched: boolean;
+  /**
+   * True when this tick changed the board — started a session, merged, applied a plan, released
+   * or blocked — so the next tick need not wait out `pollSeconds` (#207, #223).
+   */
+  didWork: boolean;
+  /** The last action that counted as work, for the log line; null when none did. */
+  action: Action["type"] | null;
 }
 
 export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
@@ -776,7 +826,7 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   await ctx.notify.syncParked(pre.ok ? null : pre.reason);
   if (!pre.ok) {
     log("warn", "preflight failed; sleeping", { reason: pre.reason });
-    return { dispatched: false };
+    return { didWork: false, action: null };
   }
   // Free `rateLimit` reads around the tick's two phases, so the page can say whether the hourly
   // GraphQL budget went on the loop's own reads, the session it dispatched, or something else.
@@ -807,18 +857,24 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   );
   ctx.state?.patch({ lastPlan: names, board });
   const afterReads = await graphqlBudget(ctx.exec);
-  let dispatched = false;
+  let didWork = false;
+  let worked: Action["type"] | null = null;
   for (const a of actions) {
     if (ctx.signal.aborted) {
       log("info", "stopping before next action", { next: a.type });
       break;
     }
-    if ((await execute(a, ctx, snapshot)) === "stop") {
-      // A dry run reports "stop" for the same actions without spawning anything, so it must not
-      // shorten the next wait — otherwise `runForever --dry-run` becomes a hot loop.
-      dispatched = !ctx.dryRun && SESSION_ACTIONS.has(a.type);
-      break;
+    const r = await execute(a, ctx, snapshot);
+    // A dry run performs nothing, so it must not shorten the next wait — otherwise
+    // `runForever --dry-run` becomes a hot loop. "noop" is an action that chose to wait.
+    // The *last* action that counted, not the first: a tick that merges and then dispatches a
+    // session should name the session, which is always executed last because dispatching returns
+    // "stop". Naming the first would log "merge" and hide the more interesting event.
+    if (!ctx.dryRun && a.type !== "idle" && r !== "noop") {
+      didWork = true;
+      worked = a.type;
     }
+    if (r === "stop") break;
   }
   const budget = budgetUpdate(
     ctx.state?.get().budget ?? null,
@@ -834,7 +890,7 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
       betweenTicks: budget.betweenTicks,
     });
   }
-  return { dispatched };
+  return { didWork, action: worked };
 }
 
 /**
@@ -863,9 +919,9 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
   let consecutiveFailures = 0;
   for (;;) {
     if (ctx.signal.aborted) return;
-    let dispatched = false;
+    let outcome: TickOutcome = { didWork: false, action: null };
     try {
-      dispatched = (await lock(() => iterate(ctx))).dispatched;
+      outcome = await lock(() => iterate(ctx));
       consecutiveFailures = 0;
     } catch (err) {
       consecutiveFailures++;
@@ -875,14 +931,14 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
         nextAttemptSeconds: backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures),
       });
     }
-    // A tick that dispatched has already spent minutes inside the session it started and has
-    // proved there is work on the board, so waiting out another `pollSeconds` is dead time (#207).
+    // A tick that did work has changed the board — a merge unblocks dependents, a session has
+    // already spent its minutes — so waiting out another `pollSeconds` is dead time (#207, #223).
     // A tick that found nothing eligible still sleeps the interval, and a failure still backs off.
     const delaySeconds =
-      dispatched && consecutiveFailures === 0
+      outcome.didWork && consecutiveFailures === 0
         ? 0
         : backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures);
-    if (delaySeconds === 0) log("info", "session dispatched; ticking again immediately");
+    if (delaySeconds === 0) log("info", "ticking again immediately", { action: outcome.action });
     const at = ctx.now();
     ctx.state?.patch({
       lastTickAt: at,
