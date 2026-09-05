@@ -19,6 +19,7 @@ describe("dev-env", () => {
     });
     expect(f.web).toContain("VITE_SUPABASE_ANON_KEY=pk");
     expect(f.api).toContain("SUPABASE_SERVICE_ROLE_KEY=sk");
+    expect(f.api).toContain("SUPABASE_ANON_KEY=pk");
   });
   it("renders both env files with the fixed ports", () => {
     const f = renderEnvFiles(parseStatusEnv(status));
@@ -26,6 +27,8 @@ describe("dev-env", () => {
     expect(f.api).toContain("WEB_ORIGIN=http://localhost:8082");
     expect(f.api).toContain("SUPABASE_URL=http://127.0.0.1:55321");
     expect(f.api).toContain("SUPABASE_SERVICE_ROLE_KEY=service.jwt");
+    // apps/api needs the anon key too: only an anon-key client can send a magic link (#17).
+    expect(f.api).toContain("SUPABASE_ANON_KEY=anon.jwt");
     expect(f.api).not.toContain("ANTHROPIC_API_KEY=");
     expect(f.web).toContain("VITE_SUPABASE_URL=http://127.0.0.1:55321");
     expect(f.web).toContain("VITE_SUPABASE_ANON_KEY=anon.jwt");

@@ -31,7 +31,9 @@ export function renderEnvFiles(
     );
   if (!service) throw new Error("supabase status did not report SERVICE_ROLE_KEY/SECRET_KEY");
   return {
-    api: `PORT=${ports.api}\nWEB_ORIGIN=${ports.webUrl}\nSUPABASE_URL=${url}\nSUPABASE_SERVICE_ROLE_KEY=${service}\n`,
+    // apps/api holds the anon key as well as the service-role one: the invites module sends
+    // magic links through an anon-key client, which the admin API cannot do (#17).
+    api: `PORT=${ports.api}\nWEB_ORIGIN=${ports.webUrl}\nSUPABASE_URL=${url}\nSUPABASE_SERVICE_ROLE_KEY=${service}\nSUPABASE_ANON_KEY=${anon}\n`,
     web: `VITE_SUPABASE_URL=${url}\nVITE_SUPABASE_ANON_KEY=${anon}\nVITE_API_URL=${ports.apiUrl}\n`,
   };
 }
