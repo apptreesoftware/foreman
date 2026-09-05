@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FeedEntry } from "./feed.ts";
 import type { NextReport } from "./next.ts";
-import { MODEL_CHOICES } from "./state-file.ts";
+import { CAP_CHOICES, MODEL_CHOICES } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
 import { createWebServer, isLocalHost } from "./web.ts";
 
@@ -19,6 +19,7 @@ const report: StatusReport = {
   stopPresent: false,
   nowPhase: "idle",
   model: { current: "opus", configured: "opus", source: "config", choices: MODEL_CHOICES },
+  cap: { current: 20, configured: 20, source: "config", choices: CAP_CHOICES },
   tick: null,
   current: null,
   orphan: null,
@@ -41,6 +42,7 @@ describe("web server", () => {
   const acts: string[] = [];
   const owned: string[] = [];
   const models: string[] = [];
+  const caps: (number | null)[] = [];
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
     t: `2026-09-04T13:27:0${i}.000Z`,
@@ -68,6 +70,10 @@ describe("web server", () => {
     setModel: async (model) => {
       models.push(model);
       return `next session runs ${model}`;
+    },
+    setCap: async (cap) => {
+      caps.push(cap);
+      return `cap is now ${cap ?? "the configured value"}`;
     },
     html: "<title>Foreman</title>",
   });
@@ -170,6 +176,23 @@ describe("web server", () => {
     expect((await fetch(`${base}/api/model`)).status).toBe(405);
     expect(models).toEqual(["sonnet", "claude-haiku-4-5-20251001"]);
   });
+  it("raises the daily cap, and refuses anything that is not a sane session count", async () => {
+    const post = (body: unknown) =>
+      fetch(`${base}/api/cap`, { method: "POST", body: JSON.stringify(body) });
+    const ok = await post({ maxSessionsPerDay: 50 });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, message: "cap is now 50" });
+    expect((await post({ maxSessionsPerDay: 0 })).status).toBe(400);
+    expect((await post({ maxSessionsPerDay: -5 })).status).toBe(400);
+    expect((await post({ maxSessionsPerDay: 100000 })).status).toBe(400);
+    expect((await post({ maxSessionsPerDay: 12.5 })).status).toBe(400);
+    expect((await post({ maxSessionsPerDay: "50" })).status).toBe(400);
+    expect((await post({})).status).toBe(400);
+    expect((await fetch(`${base}/api/cap`)).status).toBe(405);
+    // `null` is the one non-number accepted: it clears the override.
+    expect((await post({ maxSessionsPerDay: null })).status).toBe(200);
+    expect(caps).toEqual([50, null]);
+  });
   it("rejects a session id that is not a uuid", async () => {
     const r = await fetch(`${base}/api/feed?session=../etc/passwd`);
     expect(r.status).toBe(400);
@@ -206,5 +229,14 @@ describe("web.html", () => {
     expect(html).toContain('r.nowPhase === "between_ticks"');
     expect(html).toContain('label: "between ticks"');
     expect(html).toContain(".tag.phase_gate");
+  });
+  it("names the parked reason and offers the cap next to today's count", () => {
+    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+    expect(html).toContain('r.nowPhase === "parked"');
+    expect(html).toContain('label: "parked"');
+    expect(html).toContain("preflight?.reason");
+    expect(html).toContain("capControl(r.cap)");
+    expect(html).toContain('data-cap="');
+    expect(html).toContain('fetch("/api/cap"');
   });
 });

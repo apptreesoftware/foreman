@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialState, MODEL_CHOICES } from "./state-file.ts";
+import { CAP_CHOICES, initialState, MODEL_CHOICES } from "./state-file.ts";
 import { describeStatus, formatStatus, type StatusInput } from "./status.ts";
 import { emptyActivity } from "./stream.ts";
 
@@ -89,6 +89,54 @@ describe("describeStatus", () => {
     ).toBe("idle");
     // A daemon that is not running has no tick coming, whatever the last plan said.
     expect(describeStatus(input({ state: sleeping, pidAlive: () => false })).nowPhase).toBe("idle");
+  });
+  it("is parked, with the reason, when the last preflight failed", () => {
+    const capped = {
+      ...state(),
+      lastTickAt: "2026-09-04T05:09:00.000Z",
+      nextTickAt: "2026-09-04T05:14:00.000Z",
+      lastPlan: ["claim#143"],
+      lastPreflight: { ok: false, reason: "daily session cap reached (20/20)" },
+    };
+    const r = describeStatus(input({ state: capped }));
+    expect(r.nowPhase).toBe("parked");
+    expect(formatStatus(r)).toContain("now    parked · daily session cap reached (20/20)");
+    // A running session still outranks it: the tick that started it had a healthy preflight.
+    expect(describeStatus(input({ state: { ...capped, current } })).nowPhase).toBe("session");
+  });
+  it("reports the config cap, and the live override when one is set", () => {
+    const fromConfig = describeStatus(input());
+    expect(fromConfig.cap).toEqual({
+      current: 20,
+      configured: 20,
+      source: "config",
+      choices: CAP_CHOICES,
+    });
+    expect(fromConfig.today.cap).toBe(20);
+    const raised = describeStatus(input({ state: { ...state(), maxSessionsPerDay: 50 } }));
+    expect(raised.cap.current).toBe(50);
+    expect(raised.cap.source).toBe("override");
+    expect(raised.today.cap).toBe(50);
+    expect(formatStatus(raised)).toContain("of 50 sessions");
+  });
+  it("counts the cap wait against the override, not the configured cap", () => {
+    const sessions = Array.from({ length: 20 }, (_, i) => ({
+      t: `2026-09-04T0${i < 10 ? 0 : 1}:0${i % 10}:00.000Z`,
+      host: "mac-a",
+      role: "builder",
+      issue: i,
+      sessionId: `s-${i}`,
+      attempt: 1,
+      costUsd: 1,
+      outcome: "pr_opened",
+    }));
+    // At the configured cap of 20 the daemon is capped; raising it to 50 must clear that wait.
+    const atCap = describeStatus(input({ sessions }));
+    expect((atCap.board?.waiting ?? []).some((w) => w.kind === "cap")).toBe(true);
+    const raised = describeStatus(
+      input({ sessions, state: { ...state(), maxSessionsPerDay: 50 } }),
+    );
+    expect((raised.board?.waiting ?? []).some((w) => w.kind === "cap")).toBe(false);
   });
   it("STOPPED when exitedAt is set and the pid is dead", () => {
     const r = describeStatus(

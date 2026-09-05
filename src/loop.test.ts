@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -589,6 +589,45 @@ describe("model", () => {
     const argv = await dispatchWith("sonnet");
     expect(argv).toContain("--model sonnet");
     expect(argv).not.toContain("--model opus");
+  });
+});
+
+describe("daily cap override", () => {
+  // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
+  const okExec: Exec = async () => ({
+    code: 0,
+    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+    stderr: "",
+  });
+  // A sessions.log already at the configured cap of 20 for the day the tick runs on.
+  function stateDirAtCap(): string {
+    const dir = mkdtempSync(join(tmpdir(), "tt-loop-cap-"));
+    const t = new Date().toISOString();
+    writeFileSync(
+      join(dir, "sessions.log"),
+      Array.from(
+        { length: 20 },
+        (_, i) =>
+          `${JSON.stringify({ t, host: "mac-a", role: "builder", issue: i, sessionId: `s-${i}`, attempt: 1, costUsd: 1, outcome: "pr_opened" })}\n`,
+      ).join(""),
+    );
+    return dir;
+  }
+  async function preflightReason(override: number | null): Promise<string | null> {
+    const st = memState();
+    st.store.patch({ maxSessionsPerDay: override });
+    const { gh } = fakeGh([]);
+    await runOnce(ctx({ gh, exec: okExec, stateDir: stateDirAtCap(), state: st.store }));
+    const p = st.get().lastPreflight as { ok: boolean; reason: string | null } | undefined;
+    return p?.ok ? null : (p?.reason ?? "no preflight recorded");
+  }
+
+  it("parks at the configured cap when no override is set", async () => {
+    expect(await preflightReason(null)).toBe("daily session cap reached (20/20)");
+  });
+
+  it("un-parks on the next tick when the owner raises the cap, with no restart", async () => {
+    expect(await preflightReason(50)).toBeNull();
   });
 });
 

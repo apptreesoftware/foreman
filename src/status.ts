@@ -4,6 +4,7 @@ import { type SessionLogEntry, todayStats } from "./sessions.ts";
 import {
   type Board,
   type BudgetReport,
+  CAP_CHOICES,
   type CurrentSession,
   type ForemanState,
   MODEL_CHOICES,
@@ -17,9 +18,10 @@ export type DaemonState = "RUNNING" | "STOPPED" | "CRASHED" | "UNKNOWN";
  * What the daemon is doing right now, as opposed to "is a session recorded this instant". Between
  * a session ending and the next tick the foreman sleeps `pollSeconds`, which used to read as
  * "idle" even with work queued; `idle` is now reserved for a tick that found nothing eligible
- * (#206).
+ * (#206). `parked` is the daemon returning early from every tick because preflight fails — the
+ * daily cap, `STOP`, Docker, the GraphQL budget — which is neither idle nor between ticks (#213).
  */
-export type NowPhase = "session" | "ticking" | "between_ticks" | "idle";
+export type NowPhase = "session" | "parked" | "ticking" | "between_ticks" | "idle";
 
 export interface StatusInput {
   state: ForemanState | null;
@@ -77,6 +79,13 @@ export interface StatusReport {
   budget: BudgetReport | null;
   recent: SessionLogEntry[];
   today: { count: number; cap: number; spendUsd: number };
+  /** The daily session cap the next tick will enforce, and the page's one-click choices (#213). */
+  cap: {
+    current: number;
+    configured: number;
+    source: "config" | "override";
+    choices: readonly number[];
+  };
 }
 
 export const RECENT_LIMIT = 5;
@@ -93,10 +102,14 @@ function nowPhaseOf(
   nextTickAt: string | null,
   lastPlan: string[] | null,
   now: string,
+  preflightOk: boolean,
 ): NowPhase {
   if (hasSession) return "session";
   // A daemon that is not RUNNING has no tick coming, whatever the last plan said.
   if (daemon !== "RUNNING" || !nextTickAt) return "idle";
+  // Preflight runs first in every tick and returns early on failure, so until the condition
+  // clears the daemon does nothing at all — it is parked, not resting between ticks.
+  if (!preflightOk) return "parked";
   if (Date.parse(nextTickAt) <= Date.parse(now)) return "ticking";
   return hadWork(lastPlan) ? "between_ticks" : "idle";
 }
@@ -112,12 +125,16 @@ export function describeStatus(i: StatusInput): StatusReport {
       : null;
   const recent = [...i.sessions].sort((a, b) => b.t.localeCompare(a.t)).slice(0, RECENT_LIMIT);
   const today = todayStats(i.sessions, new Date(i.now));
+  // The override is what the next tick's preflight will actually enforce, so the cap wait item
+  // and the reported cap must both use it — otherwise raising the cap leaves a stale "capped"
+  // on the page until the next tick rebuilds the board (#213).
+  const cap = s?.maxSessionsPerDay ?? i.maxSessionsPerDay;
   const live = liveWaits({
     host: i.host,
     preflight: s?.lastPreflight ?? null,
     stopPresent: i.stopPresent,
     todayCount: today.count,
-    cap: i.maxSessionsPerDay,
+    cap,
   });
   const liveKinds = new Set(live.map((w) => w.kind));
   const stored = s?.board ?? null;
@@ -150,7 +167,14 @@ export function describeStatus(i: StatusInput): StatusReport {
       s?.nextTickAt ?? null,
       s?.lastPlan ?? null,
       i.now,
+      s?.lastPreflight?.ok ?? true,
     ),
+    cap: {
+      current: cap,
+      configured: i.maxSessionsPerDay,
+      source: s?.maxSessionsPerDay ? "override" : "config",
+      choices: CAP_CHOICES,
+    },
     model: {
       current: s?.model ?? i.configModel,
       configured: i.configModel,
@@ -184,7 +208,7 @@ export function describeStatus(i: StatusInput): StatusReport {
     board,
     budget: s?.budget ?? null,
     recent,
-    today: { count: today.count, cap: i.maxSessionsPerDay, spendUsd: today.spendUsd },
+    today: { count: today.count, cap, spendUsd: today.spendUsd },
   };
 }
 
@@ -232,7 +256,11 @@ export function formatStatus(r: StatusReport): string {
       lines.push(
         `STALLED  no output for ${mins(c.silentMinutes)} (limit ${c.limitMinutes}m; ctl stop to interrupt)`,
       );
-  } else if (r.nowPhase === "between_ticks")
+  } else if (r.nowPhase === "parked")
+    lines.push(
+      `now    parked · ${r.tick?.preflight?.reason ?? "preflight failed"}   (retrying every tick)`,
+    );
+  else if (r.nowPhase === "between_ticks")
     lines.push(`now    between ticks · next ${hhmm(r.tick?.nextAt ?? null)}`);
   else if (r.nowPhase === "ticking") lines.push("now    ticking");
   else if (r.daemon === "RUNNING") lines.push("now    idle");

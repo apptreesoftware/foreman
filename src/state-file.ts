@@ -80,6 +80,14 @@ export const MODEL_DEFAULT = "default";
 /** Conservative shape check: an alias or a dated model id, never a flag or a path. */
 export const ModelSchema = z.string().regex(/^[a-z0-9][a-z0-9.-]{0,63}$/);
 
+/**
+ * Daily session caps the page and `ctl cap` offer as one-click choices (#213). As with
+ * `MODEL_CHOICES`, any value passing `CapSchema` is accepted; these are only the shortcuts.
+ */
+export const CAP_CHOICES = [20, 40, 60, 100] as const;
+/** A day's worth of sessions, bounded: a typo of 100000 must not uncap the Mac by accident. */
+export const CapSchema = z.number().int().min(1).max(500);
+
 /** The label gates a human owns; the page turns each into a button (#198). */
 export const OWNER_ACTIONS = [
   "sign_off",
@@ -161,6 +169,12 @@ export const ForemanStateSchema = z.object({
    * foreman.json". Older state.json files predate this field; the default keeps them readable.
    */
   model: z.string().nullable().default(null),
+  /**
+   * Live daily-cap override set from the page or `ctl cap`; null means "use `maxSessionsPerDay`
+   * from foreman.json". Read per tick, so raising it un-parks a capped daemon without a restart
+   * (#213). Older state.json files predate this field; the default keeps them readable.
+   */
+  maxSessionsPerDay: z.number().int().nullable().default(null),
 });
 export type ForemanState = z.infer<typeof ForemanStateSchema>;
 
@@ -176,12 +190,15 @@ export function initialState(o: {
   startedAt: string;
   /** Carried over from the previous state.json so a restart keeps the owner's model choice. */
   model?: string | null;
+  /** Carried over from the previous state.json, like `model`, so a restart keeps the override. */
+  maxSessionsPerDay?: number | null;
 }): ForemanState {
   return {
     version: 1,
     ...o,
-    // After the spread: an omitted `model` arrives as undefined, which the schema rejects.
+    // After the spread: an omitted override arrives as undefined, which the schema rejects.
     model: o.model ?? null,
+    maxSessionsPerDay: o.maxSessionsPerDay ?? null,
     exitedAt: null,
     lastTickAt: null,
     nextTickAt: null,

@@ -79,6 +79,7 @@ try {
 }
 
 // Long-running daemon: owns state.json, the web page, and the signal handlers.
+const previous = readState(STATE_DIR);
 const store = new StateStore(
   STATE_DIR,
   initialState({
@@ -87,8 +88,9 @@ const store = new StateStore(
     configPath,
     dryRun,
     startedAt: new Date().toISOString(),
-    // A restart must not silently revert the owner's model choice back to foreman.json (#210).
-    model: readState(STATE_DIR)?.model ?? null,
+    // A restart must not silently revert the owner's overrides back to foreman.json (#210, #213).
+    model: previous?.model ?? null,
+    maxSessionsPerDay: previous?.maxSessionsPerDay ?? null,
   }),
 );
 const controller = new Controller((mode) => {
@@ -142,6 +144,14 @@ const web = await startWebServer({
     store.patch({ model: next });
     log("info", "model set", { model: next, configured: cfg.model });
     return `next session runs ${next ?? cfg.model}`;
+  },
+  setCap: async (maxSessionsPerDay) => {
+    // Read per tick by runOnce's capFor(), so raising it while parked on the cap lets the very
+    // next tick run — no restart, and the sleep is cut short so it happens now (#213).
+    store.patch({ maxSessionsPerDay });
+    log("info", "cap set", { maxSessionsPerDay, configured: cfg.maxSessionsPerDay });
+    controller.wake();
+    return `cap is now ${maxSessionsPerDay ?? `the configured ${cfg.maxSessionsPerDay}`}`;
   },
   ownerItems: () => store.get().board?.owner ?? [],
   owner: async (epic, action) => {

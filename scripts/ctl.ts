@@ -1,7 +1,7 @@
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_CONFIG_PATH, loadConfig, STATE_DIR } from "../src/config.ts";
-import { ctlGo, ctlModel, ctlStop } from "../src/ctl.ts";
+import { ctlCap, ctlGo, ctlModel, ctlStop } from "../src/ctl.ts";
 import { realExec } from "../src/exec.ts";
 import { GitHub } from "../src/github.ts";
 import { LAUNCHD_LABEL, launchdInstalled, launchdUid } from "../src/launchd-status.ts";
@@ -105,16 +105,26 @@ const deps = {
   out: (line: string) => process.stdout.write(`${line}\n`),
   startCommand: `pnpm --filter @tone/foreman start   (config: ${args.config ?? process.env.TONE_FOREMAN_CONFIG ?? DEFAULT_CONFIG_PATH})`,
   configModel: cfg.model,
-  postModel: async (model: string) => {
-    const r = await fetch(`http://127.0.0.1:${cfg.webPort}/api/model`, {
-      method: "POST",
-      body: JSON.stringify({ model }),
-    });
-    const body = (await r.json()) as { ok: boolean; message?: string; error?: string };
-    if (!r.ok || !body.ok) throw new Error(body.error ?? `daemon refused (${r.status})`);
-    return body.message ?? `next session runs ${model}`;
-  },
+  configCap: cfg.maxSessionsPerDay,
+  postModel: (model: string) => postToDaemon("model", { model }, `next session runs ${model}`),
+  postCap: (maxSessionsPerDay: number | null) =>
+    postToDaemon(
+      "cap",
+      { maxSessionsPerDay },
+      `cap is now ${maxSessionsPerDay ?? "the configured value"}`,
+    ),
 };
+
+/** POSTs to the running daemon's page, which owns state.json while it lives. */
+async function postToDaemon(path: string, body: unknown, fallback: string): Promise<string> {
+  const r = await fetch(`http://127.0.0.1:${cfg.webPort}/api/${path}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  const j = (await r.json()) as { ok: boolean; message?: string; error?: string };
+  if (!r.ok || !j.ok) throw new Error(j.error ?? `daemon refused (${r.status})`);
+  return j.message ?? fallback;
+}
 
 switch (args.cmd) {
   case "status":
@@ -133,6 +143,13 @@ switch (args.cmd) {
     await ctlGo(deps);
     break;
   case "model":
-    await ctlModel(deps, args.model);
+    await ctlModel(deps, args.value);
+    break;
+  case "cap":
+    // A non-numeric value other than `default` becomes NaN, which ctlCap refuses by name.
+    await ctlCap(
+      deps,
+      args.value === null || args.value === "default" ? args.value : Number(args.value),
+    );
     break;
 }

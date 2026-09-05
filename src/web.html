@@ -52,8 +52,10 @@
   .col > section + section { margin-top: 22px; }
   .now { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 14px 16px 12px; }
   .now.idle { border-left-color: var(--line); color: var(--ink-2); }
+  .now.parked { border-left-color: var(--warn); }
   .now .title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
   .now .role { font: 600 18px/1.2 var(--sans); color: var(--ink); } .now .sub { color: var(--ink-2); }
+  .now.parked .role { color: var(--warn); }
   .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, max-content)); gap: 6px 26px; margin-top: 10px; font: 12.5px var(--mono); color: var(--ink-2); }
   .kv b { color: var(--ink); font-weight: 500; }
   .bar { position: relative; height: 6px; background: var(--panel-2); border-radius: 3px; margin: 12px 0 6px; overflow: hidden; }
@@ -164,12 +166,14 @@
       const first = r.board?.waiting?.[0];
       // "idle" is reserved for a tick that found nothing eligible; between a finished session and
       // the next tick the daemon is asleep on a schedule, and says so.
-      const phase = r.nowPhase === "between_ticks"
-        ? { label: "between ticks", sub: `next ${t(r.tick?.nextAt)}` }
-        : r.nowPhase === "ticking"
-          ? { label: "ticking", sub: `since ${t(r.tick?.lastAt)}` }
-          : { label: "idle", sub: `since ${t(r.tick?.lastAt)}` };
-      el.className = "now idle";
+      const phase = r.nowPhase === "parked"
+        ? { label: "parked", sub: esc(r.tick?.preflight?.reason ?? "preflight failed") }
+        : r.nowPhase === "between_ticks"
+          ? { label: "between ticks", sub: `next ${t(r.tick?.nextAt)}` }
+          : r.nowPhase === "ticking"
+            ? { label: "ticking", sub: `since ${t(r.tick?.lastAt)}` }
+            : { label: "idle", sub: `since ${t(r.tick?.lastAt)}` };
+      el.className = r.nowPhase === "parked" ? "now parked" : "now idle";
       el.innerHTML = `<div class="title"><span class="role">${phase.label}</span><span class="sub">${phase.sub}</span></div>${first ? `<div class="kv"><span>first wait: <b>${esc(first.detail)}</b></span></div>` : ""}${r.daemon !== "RUNNING" ? `<div class="kv"><span>daemon <b>${esc(r.daemon)}</b></span></div>` : ""}`;
       return;
     }
@@ -221,7 +225,7 @@
     if (r.orphan) rows.push(["orphan", `child ${r.orphan.pid} still running for #${r.orphan.issue}`]);
     if (r.unfinished) rows.push(["unfinished", `${esc(r.unfinished.mode)} bookkeeping for ${esc(r.unfinished.role)} #${r.unfinished.issue}; run ctl abort`]);
     rows.push(["plan", r.lastPlan ? r.lastPlan.map(esc).join(", ") : "–"]);
-    rows.push(["today", `${r.today.count} of ${r.today.cap} sessions · $${r.today.spendUsd.toFixed(2)}`]);
+    rows.push(["today", `${r.today.count} of ${r.today.cap} sessions · $${r.today.spendUsd.toFixed(2)}${r.cap ? capControl(r.cap) : ""}`]);
     if (r.budget) {
       const b = r.budget;
       rows.push(["gh budget", `${b.remaining} of ${b.limit} points · resets ${hm(b.resetAt)}`]);
@@ -231,6 +235,25 @@
     rows.push(["launchd", r.launchdInstalled ? "installed" : "not installed"]);
     $("tick").innerHTML = rows.map(([a, b]) => `<div><span>${a}</span><span>${b}</span></div>`).join("");
     for (const b of $("tick").querySelectorAll("button[data-model]")) b.onclick = () => setModel(b.dataset.model);
+    for (const b of $("tick").querySelectorAll("button[data-cap]")) b.onclick = () => setCap(b.dataset.cap === "default" ? null : Number(b.dataset.cap));
+  }
+
+  // The daily session cap. Parking on it is the single most likely reason the foreman is doing
+  // nothing, and it is the one knob you want at exactly that moment, so it lives next to the count.
+  function capControl(c) {
+    const choices = c.source === "override" ? [...c.choices, "default"] : c.choices;
+    const btns = choices.filter((n) => n !== c.current)
+      .map((n) => `<button type="button" data-cap="${esc(String(n))}">${esc(n === "default" ? `default (${c.configured})` : String(n))}</button>`).join("");
+    const from = c.source === "override" ? `<span class="from"> override · foreman.json says ${esc(String(c.configured))}</span>` : "";
+    return `${from}<span class="acts">${btns}</span>`;
+  }
+  async function setCap(cap) {
+    const what = cap === null ? "the value in foreman.json" : `${cap} sessions a day`;
+    if (!window.confirm(`Set the daily session cap to ${what}?\n\nEach session costs money; today's spend is on this card. Takes effect on the next tick.`)) return;
+    $("msg").textContent = `cap ${cap ?? "default"}…`;
+    const j = await (await fetch("/api/cap", { method: "POST", body: JSON.stringify({ maxSessionsPerDay: cap }) })).json();
+    $("msg").textContent = j.ok ? j.message : `error: ${j.error}`;
+    refresh();
   }
 
   // What the next session runs as. The buttons are the common choices only; foreman.json and

@@ -40,6 +40,7 @@ foreman — Tone & Tonic daemon control
   foreman abort                       stop it and release the running session
   foreman go                          clear STOP and wake it
   foreman model [<name>]              show, or set, the model sessions run as
+  foreman cap [<n>|default]           show, or set, the daily session cap
   foreman restart                     stop, then start
   foreman update                      pull the clone and install deps
   foreman logs [-f]                   tail the daemon log
@@ -83,7 +84,7 @@ cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift
 
 case "$cmd" in
-  status|next|stop|abort|go|model)
+  status|next|stop|abort|go|model|cap)
     ctl "$cmd" "$@"
     if [[ "$cmd" == "status" ]]; then
       owner="$(port_owner)"

@@ -2,6 +2,8 @@ import { KILL_GRACE_MS } from "./dispatch.ts";
 import type { InterruptInput } from "./release.ts";
 import { GH_TIMEOUT_MS } from "./release.ts";
 import {
+  CAP_CHOICES,
+  CapSchema,
   type CurrentSession,
   MODEL_CHOICES,
   MODEL_DEFAULT,
@@ -30,6 +32,10 @@ export interface CtlDeps {
   configModel: string;
   /** POSTs /api/model to a running daemon, which owns state.json while it lives. */
   postModel: (model: string) => Promise<string>;
+  /** `maxSessionsPerDay` from foreman.json, so `ctl cap` can name what an override is hiding. */
+  configCap: number;
+  /** POSTs /api/cap to a running daemon, for the same reason as `postModel`. */
+  postCap: (maxSessionsPerDay: number | null) => Promise<string>;
 }
 
 // Worst case: the daemon's interrupt path kills the child (KILL_GRACE_MS) and then makes up to
@@ -162,6 +168,44 @@ export async function ctlModel(d: CtlDeps, model: string | null): Promise<void> 
     next
       ? `model set to ${next}; it applies when the daemon next starts`
       : `override cleared; foreman.json's ${d.configModel} applies when the daemon next starts`,
+  );
+}
+
+/**
+ * Reads or sets the daily session cap. Same ownership rule as `ctlModel`: a live daemon owns
+ * state.json, so a set goes through `/api/cap` while it is running and straight to the file only
+ * when it is not. `default` clears the override.
+ */
+export async function ctlCap(d: CtlDeps, cap: number | "default" | null): Promise<void> {
+  const s = readState(d.stateDir);
+  if (cap === null) {
+    const current = s?.maxSessionsPerDay ?? d.configCap;
+    d.out(
+      `cap ${current} ${s?.maxSessionsPerDay ? `(override; foreman.json says ${d.configCap})` : "(foreman.json)"}`,
+    );
+    d.out(`choices: ${CAP_CHOICES.join(", ")}, default   (default clears an override)`);
+    return;
+  }
+  const next = cap === "default" ? null : cap;
+  if (next !== null && !CapSchema.safeParse(next).success) {
+    d.out(`${cap} is not a session count; expected a whole number from 1 to 500`);
+    return;
+  }
+  if (s && d.pidAlive(s.pid)) {
+    d.out(await d.postCap(next));
+    return;
+  }
+  if (!s) {
+    d.out(
+      `no state file: the daemon has never run here. Set "maxSessionsPerDay": ${next ?? d.configCap} in foreman.json instead.`,
+    );
+    return;
+  }
+  writeState(d.stateDir, { ...s, maxSessionsPerDay: next });
+  d.out(
+    next === null
+      ? `override cleared; foreman.json's ${d.configCap} applies when the daemon next starts`
+      : `cap set to ${next}; it applies when the daemon next starts`,
   );
 }
 

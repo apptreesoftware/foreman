@@ -173,6 +173,11 @@ export function modelFor(ctx: Ctx): string {
   return ctx.state?.get().model ?? ctx.cfg.model;
 }
 
+/** The daily session cap this tick enforces: the owner's live override, else foreman.json's. */
+export function capFor(ctx: Ctx): number {
+  return ctx.state?.get().maxSessionsPerDay ?? ctx.cfg.maxSessionsPerDay;
+}
+
 async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   const { cfg, gh } = ctx;
   if (ctx.dryRun) {
@@ -647,12 +652,17 @@ export interface TickOutcome {
 }
 
 export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
-  const pre = await preflight(ctx.cfg, {
-    env: process.env,
-    exec: ctx.exec,
-    stateDir: ctx.stateDir,
-    now: new Date(),
-  });
+  // Read per tick, so raising the cap from the page un-parks the daemon on the next tick rather
+  // than needing a restart to reload foreman.json (#213).
+  const pre = await preflight(
+    { ...ctx.cfg, maxSessionsPerDay: capFor(ctx) },
+    {
+      env: process.env,
+      exec: ctx.exec,
+      stateDir: ctx.stateDir,
+      now: new Date(),
+    },
+  );
   ctx.state?.patch({ lastPreflight: { ok: pre.ok, reason: pre.ok ? null : pre.reason } });
   if (!pre.ok) {
     log("warn", "preflight failed; sleeping", { reason: pre.reason });
@@ -675,7 +685,7 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
     preflight: { ok: true, reason: null },
     stopPresent: false,
     todayCount: today.count,
-    cap: ctx.cfg.maxSessionsPerDay,
+    cap: capFor(ctx),
   });
   ctx.state?.patch({ lastPlan: names, board });
   const afterReads = await graphqlBudget(ctx.exec);

@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { type CtlDeps, ctlGo, ctlModel, ctlStop } from "./ctl.ts";
+import { type CtlDeps, ctlCap, ctlGo, ctlModel, ctlStop } from "./ctl.ts";
 import { initialState, readState, writeState } from "./state-file.ts";
 
 const current = {
@@ -57,9 +57,14 @@ function deps(over: Partial<CtlDeps> & { alive?: number[] } = {}) {
     },
     startCommand: "pnpm --filter @tone/foreman start",
     configModel: "opus",
+    configCap: 20,
     postModel: async (m) => {
       log.out.push(`posted ${m}`);
       return `next session runs ${m}`;
+    },
+    postCap: async (c) => {
+      log.out.push(`posted cap ${c}`);
+      return `cap is now ${c ?? "the configured value"}`;
     },
     ...over,
   };
@@ -177,6 +182,45 @@ describe("ctlModel", () => {
     const { d, log } = deps();
     await ctlModel(d, "sonnet");
     expect(log.out.join("\n")).toContain("foreman.json");
+  });
+});
+
+describe("ctlCap", () => {
+  it("with no argument, reports the cap and where it came from", async () => {
+    const a = deps();
+    writeState(a.dir, base());
+    await ctlCap(a.d, null);
+    expect(a.log.out.join("\n")).toContain("cap 20 (foreman.json)");
+    const b = deps();
+    writeState(b.dir, { ...base(), maxSessionsPerDay: 50 });
+    await ctlCap(b.d, null);
+    expect(b.log.out.join("\n")).toContain("cap 50 (override; foreman.json says 20)");
+  });
+  it("posts to a live daemon, so the next tick un-parks without a restart", async () => {
+    const { d, dir, log } = deps({ alive: [100] });
+    writeState(dir, base());
+    await ctlCap(d, 50);
+    expect(log.out).toContain("posted cap 50");
+  });
+  it("writes state.json itself when no daemon is running", async () => {
+    const { d, dir } = deps();
+    writeState(dir, base());
+    await ctlCap(d, 40);
+    expect(readState(dir)?.maxSessionsPerDay).toBe(40);
+  });
+  it("clears the override with `default`", async () => {
+    const { d, dir } = deps();
+    writeState(dir, { ...base(), maxSessionsPerDay: 50 });
+    await ctlCap(d, "default");
+    expect(readState(dir)?.maxSessionsPerDay).toBeNull();
+  });
+  it("refuses a cap that is not a sane session count, and touches nothing", async () => {
+    const { d, dir, log } = deps({ alive: [100] });
+    writeState(dir, base());
+    for (const bad of [0, -5, 100000, 12.5]) await ctlCap(d, bad);
+    expect(readState(dir)?.maxSessionsPerDay).toBeNull();
+    expect(log.out.join("\n")).not.toContain("posted");
+    expect(log.out.join("\n")).toContain("not a session count");
   });
 });
 
