@@ -44,8 +44,10 @@ describe("role prompts", () => {
     for (const r of roles) expect(preamble(r), r).toBe(preamble("builder"));
   });
   it("validator and phase-closer know the URLs, logins and artifacts dir", () => {
+    // The validator runs against the isolated stack (#228), so its serve URLs are either the dev
+    // ports or the role ports — the owner rewrites `.claude/**` by hand (decision #165).
+    expect(read("validator")).toMatch(/http:\/\/localhost:(8082|8182)/);
     for (const s of [
-      "http://localhost:8082",
       "teacher@local.test",
       "student@local.test",
       "password123",

@@ -7,12 +7,15 @@ import { budgetUpdate } from "./budget.ts";
 import { conflictOn } from "./claim.ts";
 import type { ForemanConfig } from "./config.ts";
 import {
+  applyRoleConfig,
   branchFor,
   type DispatchRequest,
   dispatchWithRetry,
+  needsIsolatedStack,
   ensureWorktree as realEnsureWorktree,
   removeWorktree as realRemoveWorktree,
   realSpawn,
+  restoreRoleConfig,
   type SessionResult,
   type Spawner,
   transcriptPath,
@@ -245,6 +248,13 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   }
   if (r.round > 1 && r.pr)
     await gh.removeLabels("pr", r.pr, ["reviewer:changes", "validator:failed"]);
+  // Sessions that may `pnpm db:reset` or serve the app run against the isolated `tone_tonic_val`
+  // stack, not the owner's (#228). The rewrite lives only in the worktree and is undone below, so
+  // it never reaches a commit. The restore is unconditional and runs first, so a rewrite left
+  // behind by a crashed isolated session cannot be committed by a later non-isolated one.
+  const isolated = needsIsolatedStack(r.role);
+  await restoreRoleConfig(worktree, ctx.exec);
+  if (isolated) await applyRoleConfig(worktree, cfg.repoDir, ctx.exec);
   // Controller ruling (Task 6 review): always dispatch with attempt: 1 — dispatchWithRetry owns
   // retry counting internally, and no attempt count carries across loop iterations.
   const req: DispatchRequest = {
@@ -260,6 +270,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     attempt: 1,
     round: r.round,
     notes,
+    isolated,
   };
   const started = Date.now();
   let current: CurrentSession = {
@@ -316,26 +327,34 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   // The owner can change the model from the page or `ctl model` mid-run; it lands in state.json
   // and is read here, per dispatch, so it takes effect without restarting the daemon (#210).
   const model = modelFor(ctx);
-  const result = await dispatchWithRetry(
-    req,
-    { ...cfg, model },
-    {
-      spawn: ctx.spawn,
-      signal: ctx.signal,
-      onSpawn: (pid) => setCurrent({ childPid: pid }),
-      onActivity,
-      onAttempt: async (a) => {
-        setCurrent({
-          attempt: a.attempt,
-          sessionId: a.sessionId,
-          resume: a.resume,
-          childPid: null,
-          activity: null,
-        });
-        await gh.comment("issue", a.issue, fmt.session(a.sessionId, cfg.host, a.role, a.attempt));
+  let result: SessionResult;
+  try {
+    result = await dispatchWithRetry(
+      req,
+      { ...cfg, model },
+      {
+        spawn: ctx.spawn,
+        signal: ctx.signal,
+        onSpawn: (pid) => setCurrent({ childPid: pid }),
+        onActivity,
+        onAttempt: async (a) => {
+          setCurrent({
+            attempt: a.attempt,
+            sessionId: a.sessionId,
+            resume: a.resume,
+            childPid: null,
+            activity: null,
+          });
+          await gh.comment("issue", a.issue, fmt.session(a.sessionId, cfg.host, a.role, a.attempt));
+        },
       },
-    },
-  );
+    );
+  } finally {
+    // Unconditional, even on a throw or an operator abort, and even for a session that was never
+    // isolated: a rewrite an earlier crashed session left behind would otherwise be committed by
+    // this one, or block `ensureWorktree`'s `git pull --ff-only`.
+    await restoreRoleConfig(worktree, ctx.exec);
+  }
   if (flushTimer) clearTimeout(flushTimer);
   flush();
   const minutes = Math.round((Date.now() - started) / 60_000);

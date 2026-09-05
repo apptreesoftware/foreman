@@ -1,9 +1,11 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { BudgetSample } from "./budget.ts";
 import type { ForemanConfig } from "./config.ts";
 import type { Exec } from "./exec.ts";
+import { log } from "./log.ts";
+import { ROLE_SUPABASE_PROJECT } from "./ports.ts";
 
 export const FORBIDDEN_ENV = [
   "ANTHROPIC_API_KEY",
@@ -74,6 +76,71 @@ export async function graphqlBudget(exec: Exec): Promise<BudgetSample | null> {
   }
 }
 
+/** The Supabase workdir the role stack runs from: `<stateDir>/val-stack/supabase/config.toml`. */
+export function roleStackDir(stateDir: string): string {
+  return join(stateDir, "val-stack");
+}
+
+export interface RoleStackDeps {
+  exec: Exec;
+  mkdirp?: (path: string) => void;
+}
+
+/**
+ * Brings up the isolated `tone_tonic_val` stack role sessions use (#228), and leaves it up
+ * between sessions the way the dev stack stays up.
+ *
+ * It runs from a copy of `packages/db/supabase` under the state dir with
+ * `packages/db/scripts/role-config.sh` applied, so the clone itself is never rewritten and
+ * `supabase start` here can never touch project `tone_tonic`. Returns a warning string instead of
+ * throwing: a stack that will not start should not park the daemon, and a role session can start
+ * it itself (`supabase stop` stays denied to sessions, `supabase start` does not).
+ */
+export async function ensureRoleStack(
+  cfg: ForemanConfig,
+  stateDir: string,
+  deps: RoleStackDeps,
+): Promise<string | null> {
+  const dir = roleStackDir(stateDir);
+  const supabase = join(dir, "supabase");
+  const warn = (why: string) => {
+    const message = `${ROLE_SUPABASE_PROJECT} stack unavailable: ${why}`;
+    log("warn", "role Supabase stack unavailable", { dir, why });
+    return message;
+  };
+  try {
+    (deps.mkdirp ?? ((p: string) => mkdirSync(p, { recursive: true })))(supabase);
+  } catch (err) {
+    return warn(`cannot create ${supabase}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  // A mirror, not an additive copy: a migration deleted on `main` has to disappear here too, or
+  // `supabase start` keeps applying it to the role stack long after it is gone from the repo. The
+  // CLI's own scratch dirs are excluded in both directions — they belong to whichever stack owns
+  // the directory, not to the repo.
+  const copy = await deps.exec("rsync", [
+    "-a",
+    "--delete",
+    "--exclude",
+    ".branches",
+    "--exclude",
+    ".temp",
+    `${join(cfg.repoDir, "packages", "db", "supabase")}/`,
+    `${supabase}/`,
+  ]);
+  if (copy.code !== 0) return warn(`cannot copy the Supabase project: ${copy.stderr.trim()}`);
+  const rewrite = await deps.exec("bash", [
+    join(cfg.repoDir, "packages", "db", "scripts", "role-config.sh"),
+    join(supabase, "config.toml"),
+  ]);
+  if (rewrite.code !== 0) return warn(`role-config.sh failed: ${rewrite.stderr.trim()}`);
+  const status = await deps.exec("supabase", ["status", "-o", "env", "--workdir", dir]);
+  if (status.code === 0) return null;
+  log("info", "starting the role Supabase stack", { project: ROLE_SUPABASE_PROJECT, dir });
+  const start = await deps.exec("supabase", ["start", "--workdir", dir]);
+  if (start.code !== 0) return warn(`supabase start failed: ${start.stderr.trim()}`);
+  return null;
+}
+
 function chromiumInstalled(): boolean {
   const dir = join(homedir(), "Library", "Caches", "ms-playwright");
   return existsSync(dir) && readdirSync(dir).some((d) => d.startsWith("chromium"));
@@ -123,5 +190,7 @@ export async function preflight(cfg: ForemanConfig, deps: PreflightDeps): Promis
 
   const warnings: string[] = [];
   if (!chromiumInstalled()) warnings.push("playwright chromium not installed; validator will fail");
+  const roleStack = await ensureRoleStack(cfg, deps.stateDir, { exec: deps.exec });
+  if (roleStack) warnings.push(roleStack);
   return { ok: true, warnings };
 }

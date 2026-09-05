@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { type StackPorts, stackPorts } from "../src/ports.ts";
 
 export function parseStatusEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -11,8 +12,16 @@ export function parseStatusEnv(text: string): Record<string, string> {
   return out;
 }
 
-export function renderEnvFiles(v: Record<string, string>): { api: string; web: string } {
-  const url = v.API_URL ?? "http://127.0.0.1:55321";
+/**
+ * `ports` defaults to the environment's stack: the owner's dev ports normally, the role ports
+ * when the foreman set `TONE_WEB_PORT`/`TONE_API_PORT` for an isolated session (#228). The
+ * Supabase URL comes from `supabase status` either way, which reads the config in this worktree.
+ */
+export function renderEnvFiles(
+  v: Record<string, string>,
+  ports: StackPorts = stackPorts(),
+): { api: string; web: string } {
+  const url = v.API_URL ?? ports.supabaseUrl;
   const anon = v.ANON_KEY ?? v.PUBLISHABLE_KEY;
   const service = v.SERVICE_ROLE_KEY ?? v.SECRET_KEY;
   if (!anon)
@@ -21,19 +30,24 @@ export function renderEnvFiles(v: Record<string, string>): { api: string; web: s
     );
   if (!service) throw new Error("supabase status did not report SERVICE_ROLE_KEY/SECRET_KEY");
   return {
-    api: `PORT=3005\nWEB_ORIGIN=http://localhost:8082\nSUPABASE_URL=${url}\nSUPABASE_SERVICE_ROLE_KEY=${service}\n`,
-    web: `VITE_SUPABASE_URL=${url}\nVITE_SUPABASE_ANON_KEY=${anon}\nVITE_API_URL=http://localhost:3005\n`,
+    api: `PORT=${ports.api}\nWEB_ORIGIN=${ports.webUrl}\nSUPABASE_URL=${url}\nSUPABASE_SERVICE_ROLE_KEY=${service}\n`,
+    web: `VITE_SUPABASE_URL=${url}\nVITE_SUPABASE_ANON_KEY=${anon}\nVITE_API_URL=${ports.apiUrl}\n`,
   };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const root = join(import.meta.dirname, "..", "..", "..");
+  // Run from this worktree's `packages/db`, so the Supabase project named in its `config.toml`
+  // is the one reported — the isolated `tone_tonic_val` stack inside a role session.
   const text = execFileSync("supabase", ["status", "-o", "env"], {
     cwd: join(root, "packages", "db"),
     encoding: "utf8",
   });
-  const files = renderEnvFiles(parseStatusEnv(text));
+  const ports = stackPorts();
+  const files = renderEnvFiles(parseStatusEnv(text), ports);
   writeFileSync(join(root, "apps", "api", ".env.local"), files.api);
   writeFileSync(join(root, "apps", "web", ".env.local"), files.web);
-  process.stdout.write("wrote apps/api/.env.local and apps/web/.env.local\n");
+  process.stdout.write(
+    `wrote apps/api/.env.local and apps/web/.env.local (supabase ${parseStatusEnv(text).API_URL ?? ports.supabaseUrl}, web :${ports.web}, api :${ports.api})\n`,
+  );
 }

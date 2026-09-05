@@ -276,6 +276,72 @@ describe("execute", () => {
     ).toBe(true);
     expect(calls).toContain("setStatus PVTI_1 In Review");
   });
+  it("claim: applies the isolated Supabase config and restores it afterwards", async () => {
+    const execCalls = (over: Parameters<typeof ctx>[0], calls: string[]) =>
+      ctx({
+        exec: async (cmd, args) => {
+          calls.push(`${cmd} ${args.join(" ")}`);
+          return { code: 0, stdout: "", stderr: "" };
+        },
+        ...over,
+      });
+    const restore = [
+      "git -C /work/1 update-index --no-skip-worktree packages/db/supabase/config.toml",
+      "git -C /work/1 checkout -- packages/db/supabase/config.toml",
+    ];
+    const apply = [
+      ...restore,
+      // The stub worktree has no checkout on disk, so this exercises the clone fallback.
+      "bash /repo/packages/db/scripts/role-config.sh /work/1/packages/db/supabase/config.toml",
+      // skip-worktree keeps the rewrite out of the session's `git add -A`.
+      "git -C /work/1 update-index --skip-worktree packages/db/supabase/config.toml",
+      ...restore,
+    ];
+
+    const reviewer: string[] = [];
+    await execute(
+      { type: "claim", issue: 1, role: "reviewer", pr: 5, round: 1 },
+      execCalls(
+        {
+          gh: fakeGh([issue({ number: 1, status: "In Review" })]).gh,
+          spawn: okSpawn({ outcome: "approved", pr: 5, notes: "" }),
+        },
+        reviewer,
+      ),
+    );
+    expect(reviewer).toEqual(apply);
+
+    const dbBuilder: string[] = [];
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      execCalls(
+        { gh: fakeGh([issue({ number: 1, labels: ["phase:1", "area:db"] })]).gh },
+        dbBuilder,
+      ),
+    );
+    expect(dbBuilder).toEqual(apply);
+
+    // Every builder is isolated, not just the `area:db` ones: a builder on any issue may add a
+    // migration and run `pnpm db:reset`.
+    const webBuilder: string[] = [];
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      execCalls(
+        { gh: fakeGh([issue({ number: 1, labels: ["phase:1", "area:web"] })]).gh },
+        webBuilder,
+      ),
+    );
+    expect(webBuilder).toEqual(apply);
+
+    // A role that is never isolated still restores, before and after: a rewrite a crashed session
+    // left behind must not survive into this one's commits.
+    const planner: string[] = [];
+    await execute(
+      { type: "claim", issue: 1, role: "planner", pr: null, round: 1 },
+      execCalls({ gh: fakeGh([issue({ number: 1 })]).gh }, planner),
+    );
+    expect(planner).toEqual([...restore, ...restore]);
+  });
   it("claim: releases on conflict with an alphabetically earlier host", async () => {
     const i = issue({
       number: 1,
