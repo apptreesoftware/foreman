@@ -100,10 +100,19 @@
   .owner .o { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); }
   .owner .who { color: var(--ink-2); } .owner .why { grid-column: 1 / -1; color: var(--ink-3); font-size: 12px; }
   .owner .acts { display: flex; gap: 6px; } .owner .empty { color: var(--ink-3); padding: 6px 0; }
+  .phases { font: 12.5px/1.6 var(--mono); }
+  .phases .p { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .phases .p:last-child { border-bottom: 0; }
+  .phases .who { display: flex; justify-content: space-between; gap: 10px; }
+  .phases .who b { font-weight: 500; }
+  .phases .bar { margin: 8px 0 5px; }
+  .phases .facts { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-2); }
+  .phases .empty { color: var(--ink-3); padding: 6px 0; }
   .tick, .recent { font: 12.5px/1.6 var(--mono); }
   .tick div { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--line); } .tick div span:first-child { color: var(--ink-2); }
   .tick .acts { display: inline-flex; gap: 6px; margin-left: 8px; } .tick .from { color: var(--ink-3); }
-  .recent .r { display: grid; grid-template-columns: 52px 1fr auto auto; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .recent .r { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto auto; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .recent .r > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .recent .r:hover, .recent .r.sel { background: var(--panel-2); }
   .recent .r:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .recent .o { font-weight: 500; } .recent .o.ok { color: var(--ok); } .recent .o.bad { color: var(--bad); } .recent .o.warn { color: var(--warn); } .recent .c { color: var(--ink-3); }
@@ -135,6 +144,7 @@
       <section><h2>Feed <small id="feedMeta"></small></h2><div id="feed" class="feed"></div></section>
     </div>
     <div class="col">
+      <section><h2>Phase <small>tasks done, spend and cycle time</small></h2><div id="phases" class="phases"></div></section>
       <section><h2>Owner <small>gates only you can open</small></h2><div id="owner" class="owner"></div></section>
       <section><h2>Needs you <small>issues waiting on you, oldest first</small></h2><div id="needsYou" class="owner"></div></section>
       <section><h2>Waiting on</h2><ul id="waiting" class="wait"></ul></section>
@@ -150,6 +160,9 @@
   const hm = (iso) => (iso ? `${iso.slice(11, 16)}Z` : "–");
   const mins = (m) => (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m` : `${m}m`);
   const k = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+  // "claude-opus-5" → "opus": what the Recent row has space for, and what opus-vs-sonnet needs.
+  // A session logged before #226, or a model outside the family list, keeps whatever it recorded.
+  const family = (model) => (/(opus|sonnet|haiku|fable)/.exec(model ?? "") ?? [])[1] ?? (model || "–");
   const ago = (iso) => { if (!iso) return "–"; const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m ago`; };
   // The same duration as a length rather than a point in time: "waiting 30h12m", not "… ago".
   const waited = (iso) => ago(iso).replace(/ ago$/, "");
@@ -277,10 +290,24 @@
     refresh();
   }
 
+  // How far each approved phase has come and what it has cost. Everything here is computed inside
+  // the tick from the snapshot and the local logs, so it costs no GitHub reads.
+  function renderPhases(items) {
+    $("phases").innerHTML = items.length
+      ? items.map((p) => {
+          const pct = p.tasksTotal ? Math.round((p.tasksDone / p.tasksTotal) * 100) : 0;
+          const median = p.medianMergeMinutes === null ? "no merge yet" : `median ${mins(p.medianMergeMinutes)} claim→merge`;
+          return `<div class="p"><div class="who"><span>${link("issues", p.epic)} phase ${esc(p.phase)} ${esc(p.title)}</span><b>${p.tasksDone}/${p.tasksTotal}</b></div>
+            <div class="bar"><i style="width:${pct}%"></i></div>
+            <div class="facts"><span>$${Number(p.spendUsd).toFixed(2)} · ${p.sessions} sessions</span><span>${esc(median)}</span></div></div>`;
+        }).join("")
+      : '<div class="empty">no approved phase in flight</div>';
+  }
+
   function renderRecent(list) {
     const cls = (o) => (/^(pr_opened|approved|passed|phase_closed|plan_drafted)$/.test(o) ? "ok" : /^(blocked|failed|aborted|error_max_turns|interrupted)$/.test(o) ? "bad" : "warn");
     $("recent").innerHTML = list.length
-      ? list.map((e) => `<div class="r${e.sessionId === feedSession ? " sel" : ""}" data-sid="${esc(e.sessionId)}" tabindex="0" role="button"><span class="c">${hm(e.t)}</span><span>${esc(e.role)} #${e.issue}</span><span class="o ${cls(e.outcome)}">${esc(e.outcome)}</span><span class="c">$${e.costUsd.toFixed(2)}</span></div>`).join("")
+      ? list.map((e) => `<div class="r${e.sessionId === feedSession ? " sel" : ""}" data-sid="${esc(e.sessionId)}" tabindex="0" role="button" title="${esc(e.model || "model unknown")} · ${e.turns ?? 0} turns · ${mins(Math.round(e.durationMinutes ?? 0))} · ${e.denials ?? 0} denials · ${esc(e.subtype || "?")}"><span class="c">${hm(e.t)}</span><span>${esc(e.role)} #${e.issue}</span><span class="o ${cls(e.outcome)}">${esc(e.outcome)}</span><span class="c">${esc(family(e.model))} ${e.turns ?? 0}t</span><span class="c">$${e.costUsd.toFixed(2)}</span></div>`).join("")
       : '<div class="c">none</div>';
     for (const row of $("recent").querySelectorAll(".r")) {
       row.onclick = () => {
@@ -373,6 +400,7 @@
     $("hmeta").textContent = r.daemon === "UNKNOWN" ? "no state.json: restart the daemon" : "";
     renderNow(r);
     renderPipeline(r.board?.pipeline ?? []);
+    renderPhases(r.board?.phases ?? []);
     renderOwner(r.board?.owner ?? []);
     renderNeedsYou(r.board?.needsYou ?? []);
     renderWaiting(r.board?.waiting ?? []);

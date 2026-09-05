@@ -1,13 +1,25 @@
 import { needsYouItems } from "./needs-you.ts";
 import { describeNext } from "./next.ts";
 import { ownerItems } from "./owner.ts";
+import { phaseProgress } from "./phase-progress.ts";
 import { describePipeline } from "./pipeline.ts";
+import type { MergeRecord, SessionLogEntry } from "./sessions.ts";
 import type { Board, CurrentSession, PipelineRow } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
 import { describeWaiting, type WaitingInput } from "./waiting.ts";
 
+/** The local logs the phase card is aggregated from; empty is a valid (first-run) input. */
+export interface BoardLogs {
+  sessions: SessionLogEntry[];
+  merges: MergeRecord[];
+}
+
 /** Everything the page shows between ticks, from the snapshot the planner already fetched. */
-export function describeBoard(s: Snapshot, i: WaitingInput): Board {
+export function describeBoard(
+  s: Snapshot,
+  i: WaitingInput,
+  logs: BoardLogs = { sessions: [], merges: [] },
+): Board {
   const next = describeNext(s);
   return {
     at: s.now,
@@ -15,6 +27,7 @@ export function describeBoard(s: Snapshot, i: WaitingInput): Board {
     pipeline: describePipeline(s),
     owner: ownerItems(s),
     needsYou: needsYouItems(s),
+    phases: phaseProgress(s, logs.sessions, logs.merges),
     explain: next.explain,
     prs: next.prs,
   };

@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
+import type { SessionLogEntry } from "./sessions.ts";
 import { CAP_CHOICES, initialState, MODEL_CHOICES } from "./state-file.ts";
 import { describeStatus, formatStatus, type StatusInput } from "./status.ts";
 import { emptyActivity } from "./stream.ts";
 
 const now = "2026-09-04T05:10:00.000Z";
+const session = (over: Partial<SessionLogEntry> = {}): SessionLogEntry => ({
+  t: now,
+  host: "mac-a",
+  role: "builder",
+  issue: 1,
+  sessionId: "s",
+  attempt: 1,
+  costUsd: 1,
+  outcome: "pr_opened",
+  model: "claude-opus-5",
+  turns: 30,
+  durationMinutes: 12,
+  denials: 0,
+  subtype: "success",
+  ...over,
+});
 const state = () =>
   initialState({
     pid: 100,
@@ -120,16 +137,13 @@ describe("describeStatus", () => {
     expect(formatStatus(raised)).toContain("of 50 sessions");
   });
   it("counts the cap wait against the override, not the configured cap", () => {
-    const sessions = Array.from({ length: 20 }, (_, i) => ({
-      t: `2026-09-04T0${i < 10 ? 0 : 1}:0${i % 10}:00.000Z`,
-      host: "mac-a",
-      role: "builder",
-      issue: i,
-      sessionId: `s-${i}`,
-      attempt: 1,
-      costUsd: 1,
-      outcome: "pr_opened",
-    }));
+    const sessions = Array.from({ length: 20 }, (_, i) =>
+      session({
+        t: `2026-09-04T0${i < 10 ? 0 : 1}:0${i % 10}:00.000Z`,
+        issue: i,
+        sessionId: `s-${i}`,
+      }),
+    );
     // At the configured cap of 20 the daemon is capped; raising it to 50 must clear that wait.
     const atCap = describeStatus(input({ sessions }));
     expect((atCap.board?.waiting ?? []).some((w) => w.kind === "cap")).toBe(true);
@@ -158,16 +172,7 @@ describe("describeStatus", () => {
     expect(r.pid).toBeNull();
   });
   it("today's count and spend come from the session log", () => {
-    const e = (t: string, costUsd: number) => ({
-      t,
-      host: "mac-a",
-      role: "reviewer",
-      issue: 1,
-      sessionId: "s",
-      attempt: 1,
-      costUsd,
-      outcome: "approved",
-    });
+    const e = (t: string, costUsd: number) => session({ t, role: "reviewer", costUsd });
     const r = describeStatus(
       input({ sessions: [e("2026-09-04T01:00:00.000Z", 1), e("2026-09-04T02:00:00.000Z", 2)] }),
     );
@@ -289,6 +294,7 @@ describe("live activity and board", () => {
       pipeline: [],
       owner: [],
       needsYou: [],
+      phases: [],
       explain: [],
       prs: [],
     };
@@ -303,16 +309,7 @@ describe("live activity and board", () => {
           board,
           lastPreflight: { ok: false, reason: "daily session cap reached (20/20)" },
         },
-        sessions: Array.from({ length: 20 }, (_, i) => ({
-          t: now,
-          host: "mac-a",
-          role: "builder",
-          issue: i,
-          sessionId: "s",
-          attempt: 1,
-          costUsd: 1,
-          outcome: "pr_opened",
-        })),
+        sessions: Array.from({ length: 20 }, (_, i) => session({ issue: i })),
       }),
     );
     expect(capped.board?.waiting.map((w) => w.kind)).toEqual(["cap", "ci"]);
@@ -331,6 +328,7 @@ describe("live activity and board", () => {
       pipeline: [],
       owner: [],
       needsYou: [],
+      phases: [],
       explain: [],
       prs: [],
     };
@@ -357,6 +355,7 @@ describe("live activity and board", () => {
       pipeline: [],
       owner: [],
       needsYou: [],
+      phases: [],
       explain: [],
       prs: [],
     };
@@ -404,6 +403,7 @@ describe("live activity and board", () => {
           itemId: null,
         },
       ],
+      phases: [],
       explain: [],
       prs: [],
     };
@@ -412,5 +412,34 @@ describe("live activity and board", () => {
       "needs you  #165 decision,needs-owner Decision: who owns .claude/** (waiting 168h07m) · #5 blocked Task 5 (waiting 1h10m)",
     );
     expect(formatStatus(describeStatus(input()))).toContain("needs you  nothing");
+  });
+  it("formatStatus prints a phase line per approved phase, and says so when there is none", () => {
+    const board = {
+      at: now,
+      waiting: [],
+      pipeline: [],
+      owner: [],
+      needsYou: [],
+      phases: [
+        {
+          epic: 10,
+          phase: 1,
+          title: "Phase 1 — lessons",
+          tasksDone: 7,
+          tasksTotal: 12,
+          spendUsd: 42.5,
+          sessions: 23,
+          medianMergeMinutes: 95,
+          mergedTasks: 7,
+        },
+      ],
+      explain: [],
+      prs: [],
+    };
+    const text = formatStatus(describeStatus(input({ state: { ...state(), board } })));
+    expect(text).toContain(
+      "phase  #10 phase 1 Phase 1 — lessons   7/12 tasks   $42.50 over 23 sessions   median 1h35m claim→merge (7 merged)",
+    );
+    expect(formatStatus(describeStatus(input()))).toContain("phase  no approved phase in flight");
   });
 });

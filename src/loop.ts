@@ -21,7 +21,7 @@ import type { Exec } from "./exec.ts";
 import { realExec } from "./exec.ts";
 import { appendFeed, type FeedEntry } from "./feed.ts";
 import { type GitHubApi, phaseOf } from "./github.ts";
-import { fmt, openClaim } from "./ledger.ts";
+import { fmt, openClaim, parseClaim } from "./ledger.ts";
 import { log } from "./log.ts";
 import {
   PlanIssuesSchema,
@@ -32,7 +32,14 @@ import {
 import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts";
 import { graphqlBudget, preflight } from "./preflight.ts";
 import { ledgerInterrupt } from "./release.ts";
-import { appendSession, readSessions, todayStats } from "./sessions.ts";
+import {
+  appendMerge,
+  appendSession,
+  readMerges,
+  readSessions,
+  type SessionLogEntry,
+  todayStats,
+} from "./sessions.ts";
 import { plan } from "./state.ts";
 import type { CurrentSession, StateStore, StopMode } from "./state-file.ts";
 import type { Activity } from "./stream.ts";
@@ -178,6 +185,26 @@ export function capFor(ctx: Ctx): number {
   return ctx.state?.get().maxSessionsPerDay ?? ctx.cfg.maxSessionsPerDay;
 }
 
+/**
+ * The comparable half of a `sessions.log` line: what the session ran as and what it spent getting
+ * there. `activity.model` is the id the CLI reported at init (`claude-opus-5`), which is what
+ * makes opus-vs-sonnet comparable; the dispatched name is the fallback for a session that never
+ * emitted an init event (#226).
+ */
+function sessionMetrics(
+  result: SessionResult,
+  current: CurrentSession,
+  model: string,
+): Pick<SessionLogEntry, "model" | "turns" | "durationMinutes" | "denials" | "subtype"> {
+  return {
+    model: current.activity?.model ?? model,
+    turns: result.numTurns,
+    durationMinutes: Math.round(result.durationMs / 6_000) / 10,
+    denials: result.denials,
+    subtype: result.subtype,
+  };
+}
+
 async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   const { cfg, gh } = ctx;
   if (ctx.dryRun) {
@@ -274,9 +301,10 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   };
   // The owner can change the model from the page or `ctl model` mid-run; it lands in state.json
   // and is read here, per dispatch, so it takes effect without restarting the daemon (#210).
+  const model = modelFor(ctx);
   const result = await dispatchWithRetry(
     req,
-    { ...cfg, model: modelFor(ctx) },
+    { ...cfg, model },
     {
       spawn: ctx.spawn,
       signal: ctx.signal,
@@ -312,6 +340,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
       attempt: current.attempt,
       costUsd: result.costUsd,
       outcome: mode === "abort" ? "aborted" : "interrupted",
+      ...sessionMetrics(result, current, model),
     });
     try {
       const writes = await ledgerInterrupt(gh, {
@@ -352,6 +381,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     attempt: req.attempt,
     costUsd: result.costUsd,
     outcome: result.outcome?.outcome ?? result.subtype,
+    ...sessionMetrics(result, current, model),
   });
   await gh.comment(
     "issue",
@@ -499,6 +529,15 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   await gh.comment("issue", epicNumber, fmt.planApplied(cfg.host));
 }
 
+/** When this issue was first claimed, from its ledger; null when nothing ever claimed it. */
+function firstClaimAt(issue: Issue): string | null {
+  return (
+    [...issue.comments]
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .find((c) => parseClaim(c.body) !== null)?.createdAt ?? null
+  );
+}
+
 /**
  * The issue as this tick's snapshot already saw it, falling back to a single-issue read. Only
  * the claim paths below re-read from GitHub on purpose, to spot a competing host's claim (#192).
@@ -538,6 +577,15 @@ export async function execute(
       await gh.mergePR(action.pr);
       await gh.comment("issue", action.issue, fmt.merged(cfg.host));
       await gh.closeIssue(action.issue);
+      // The issue closes here and drops out of every later snapshot (`gh issue list --state
+      // open`), so its claim→merge span is recorded now, while the ledger is still in hand.
+      appendMerge(ctx.stateDir, {
+        issue: action.issue,
+        pr: action.pr,
+        host: cfg.host,
+        claimedAt: firstClaimAt(issue),
+        mergedAt: ctx.now(),
+      });
       await setStatus(ctx, issue, "Done");
       await ctx.removeWorktree(cfg, action.issue, ctx.exec);
       return "continue";
@@ -679,14 +727,19 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
     a.type === "idle" ? `idle(${a.reason})` : `${a.type}#${"issue" in a ? a.issue : a.epic}`,
   );
   log("info", "plan", { actions: names });
-  const today = todayStats(readSessions(ctx.stateDir), new Date(snapshot.now));
-  const board = describeBoard(snapshot, {
-    host: ctx.cfg.host,
-    preflight: { ok: true, reason: null },
-    stopPresent: false,
-    todayCount: today.count,
-    cap: capFor(ctx),
-  });
+  const sessions = readSessions(ctx.stateDir);
+  const today = todayStats(sessions, new Date(snapshot.now));
+  const board = describeBoard(
+    snapshot,
+    {
+      host: ctx.cfg.host,
+      preflight: { ok: true, reason: null },
+      stopPresent: false,
+      todayCount: today.count,
+      cap: capFor(ctx),
+    },
+    { sessions, merges: readMerges(ctx.stateDir) },
+  );
   ctx.state?.patch({ lastPlan: names, board });
   const afterReads = await graphqlBudget(ctx.exec);
   let dispatched = false;

@@ -125,6 +125,25 @@ export const NeedsYouItemSchema = z.object({
 });
 export type NeedsYouItem = z.infer<typeof NeedsYouItemSchema>;
 
+/**
+ * How far one approved phase has come and what it has cost (#226). Computed inside the tick from
+ * the snapshot plus `sessions.log`/`merges.log`, so the card is free of extra GitHub reads.
+ */
+export const PhaseProgressSchema = z.object({
+  epic: z.number().int(),
+  phase: z.number(),
+  title: z.string(),
+  tasksDone: z.number().int(),
+  tasksTotal: z.number().int(),
+  spendUsd: z.number(),
+  /** Sessions logged against this phase's tasks, so the spend has a denominator. */
+  sessions: z.number().int(),
+  /** Median claim→merge minutes of the merged tasks; null until one has merged. */
+  medianMergeMinutes: z.number().nullable(),
+  mergedTasks: z.number().int(),
+});
+export type PhaseProgress = z.infer<typeof PhaseProgressSchema>;
+
 export const BoardSchema = z.object({
   at: z.string(),
   waiting: z.array(WaitItemSchema),
@@ -133,6 +152,8 @@ export const BoardSchema = z.object({
   owner: z.array(OwnerItemSchema).default([]),
   // Same: added in #224, and an older file must still parse.
   needsYou: z.array(NeedsYouItemSchema).default([]),
+  // Same: added in #226.
+  phases: z.array(PhaseProgressSchema).default([]),
   explain: z.array(z.string()),
   prs: z.array(
     z.object({

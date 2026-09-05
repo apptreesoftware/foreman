@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { issue, pr, snapshot } from "../test/helpers.ts";
+import { epic, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
 import { describeBoard, overlayCurrent } from "./board.ts";
 import type { Board, CurrentSession } from "./state-file.ts";
 
@@ -21,6 +21,60 @@ describe("describeBoard", () => {
     expect(b.pipeline.map((r) => r.issue)).toEqual([1]);
     expect(b.prs[0]).toMatchObject({ pr: 11, reason: "checks pending" });
     expect(b.explain.length).toBeGreaterThan(0);
+    // No logs passed: the phase card still lists the approved epic, at zero spend.
+    expect(b.phases).toMatchObject([{ tasksTotal: 0, spendUsd: 0, medianMergeMinutes: null }]);
+  });
+
+  it("folds the local session and merge logs into the phase card", () => {
+    const s = snapshot({
+      epics: [epic({ number: 10, phase: 1, taskNumbers: [1, 2] })],
+      issues: [issue({ number: 10, title: "Phase 1" }), issue({ number: 1 })],
+    });
+    const b = describeBoard(
+      s,
+      { host: "mac-a", preflight: null, stopPresent: false, todayCount: 0, cap: 20 },
+      {
+        sessions: [
+          {
+            t: hoursAgo(2),
+            host: "mac-a",
+            role: "builder",
+            issue: 1,
+            sessionId: "s",
+            attempt: 1,
+            costUsd: 3,
+            outcome: "pr_opened",
+            model: "claude-opus-5",
+            turns: 10,
+            durationMinutes: 5,
+            denials: 0,
+            subtype: "success",
+          },
+        ],
+        merges: [
+          {
+            issue: 2,
+            pr: 20,
+            host: "mac-a",
+            claimedAt: hoursAgo(5),
+            mergedAt: hoursAgo(3),
+          },
+        ],
+      },
+    );
+    expect(b.phases).toEqual([
+      {
+        epic: 10,
+        phase: 1,
+        title: "Phase 1",
+        tasksDone: 1,
+        tasksTotal: 2,
+        spendUsd: 3,
+        sessions: 1,
+        medianMergeMinutes: 120,
+        mergedTasks: 1,
+      },
+    ]);
   });
 });
 
@@ -47,6 +101,7 @@ describe("overlayCurrent", () => {
     pipeline: [],
     owner: [],
     needsYou: [],
+    phases: [],
     explain: [],
     prs: [],
   };

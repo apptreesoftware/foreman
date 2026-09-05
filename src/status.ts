@@ -148,6 +148,7 @@ export function describeStatus(i: StatusInput): StatusReport {
           pipeline: stored?.pipeline ?? [],
           owner: stored?.owner ?? [],
           needsYou: stored?.needsYou ?? [],
+          phases: stored?.phases ?? [],
           explain: stored?.explain ?? [],
           prs: stored?.prs ?? [],
         }
@@ -274,6 +275,19 @@ export function formatStatus(r: StatusReport): string {
       `UNFINISHED ${r.unfinished.mode} bookkeeping for ${r.unfinished.role} #${r.unfinished.issue}; run ctl abort`,
     );
   lines.push(`next   ${r.lastPlan ? r.lastPlan.join(", ") : "–"}   (as of last tick)`);
+  // How far the phase has come and what it has cost, so a glance answers "are we nearly there"
+  // and "what has this phase spent" without opening GitHub (#226).
+  const phases = r.board?.phases ?? [];
+  if (phases.length)
+    for (const p of phases)
+      lines.push(
+        `phase  #${p.epic} phase ${p.phase} ${p.title}   ${p.tasksDone}/${p.tasksTotal} tasks   $${p.spendUsd.toFixed(2)} over ${p.sessions} sessions   median ${
+          p.medianMergeMinutes === null
+            ? "–"
+            : `${mins(p.medianMergeMinutes)} claim→merge (${p.mergedTasks} merged)`
+        }`,
+      );
+  else lines.push("phase  no approved phase in flight");
   if (r.board?.waiting.length)
     lines.push(`waiting  ${r.board.waiting.map((w) => w.detail).join(" · ")}`);
   // Always printed, empty state included: an owner who cannot see this list does not know they

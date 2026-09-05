@@ -128,6 +128,7 @@ describe("applyOwnerActionToBoard", () => {
       },
     ],
     needsYou: [],
+    phases: [],
     explain: [],
     prs: [],
   };

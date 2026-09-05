@@ -9,6 +9,7 @@ const board = (over: Partial<Board> = {}): Board => ({
   pipeline: [],
   owner: [],
   needsYou: [],
+  phases: [],
   explain: [],
   prs: [],
   ...over,

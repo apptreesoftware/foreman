@@ -254,10 +254,28 @@ describe("isLocalHost", () => {
 describe("web.html", () => {
   it("has the five sections and escapes through esc()", () => {
     const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    for (const id of ["now", "waiting", "owner", "needsYou", "pipeline", "feed", "recent", "tick"])
+    for (const id of [
+      "now",
+      "waiting",
+      "owner",
+      "needsYou",
+      "phases",
+      "pipeline",
+      "feed",
+      "recent",
+      "tick",
+    ])
       expect(html).toContain(`id="${id}"`);
     expect(html).toContain("const esc =");
     expect(html).toContain("/api/feed?session=");
+  });
+  it("shows phase progress and puts model and turns next to each session's cost", () => {
+    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+    expect(html).toContain("renderPhases(r.board?.phases ?? [])");
+    expect(html).toContain("claim→merge");
+    expect(html).toContain(">no approved phase in flight<");
+    expect(html).toContain("esc(family(e.model))");
+    expect(html).toContain("e.turns ?? 0");
   });
   it("offers the model choices and confirms before POSTing one", () => {
     const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");

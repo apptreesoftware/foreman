@@ -181,6 +181,32 @@ describe("execute", () => {
     );
     expect(removed).toBe(true);
   });
+  it("merge: records the claim→merge span in merges.log", async () => {
+    const i = issue({
+      number: 1,
+      status: "In Review",
+      comments: [
+        comment(
+          "claimed by mac-a at 2026-09-03T10:00:00Z role=builder round=1",
+          "2026-09-03T10:00:00Z",
+        ),
+      ],
+    });
+    const { gh } = fakeGh([i]);
+    const dir = mkdtempSync(join(tmpdir(), "tt-loop-"));
+    await execute(
+      { type: "merge", pr: 9, issue: 1 },
+      ctx({ gh, stateDir: dir }),
+      snapshot({ issues: [i] }),
+    );
+    expect(JSON.parse(readFileSync(join(dir, "merges.log"), "utf8").trim())).toEqual({
+      issue: 1,
+      pr: 9,
+      host: "mac-a",
+      claimedAt: "2026-09-03T10:00:00Z",
+      mergedAt: "2026-09-03T12:00:00Z",
+    });
+  });
   it("claim: comments, assigns, sets In Progress, dispatches, applies pr_opened", async () => {
     const i = issue({ number: 1 });
     const { gh, calls } = fakeGh([i]);
@@ -739,7 +765,40 @@ describe("operator interrupt", () => {
     expect(calls).toContain("unassign 1 matthewtsmith");
     expect(calls).toContain("setStatus PVTI_1 Ready");
     const line = readFileSync(join(dir, "sessions.log"), "utf8").trim();
-    expect(JSON.parse(line).outcome).toBe("aborted");
+    expect(JSON.parse(line)).toMatchObject({
+      outcome: "aborted",
+      // Recorded on an interrupt too, so an aborted session's spend is still comparable (#226).
+      model: "opus",
+      turns: 0,
+      subtype: "interrupted",
+    });
+  });
+  it("sessions.log records the model, turns, duration, denials and subtype", async () => {
+    const i = issue({ number: 1 });
+    const { gh } = fakeGh([i]);
+    const dir = mkdtempSync(join(tmpdir(), "tt-loop-"));
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        stateDir: dir,
+        spawn: async (...a) => {
+          const r = await okSpawn({ outcome: "pr_opened", pr: 5, notes: "" })(...a);
+          return {
+            ...r,
+            stdout: r.stdout.replace('"duration_ms":100', '"duration_ms":222000'),
+          };
+        },
+      }),
+    );
+    // No stream events reach the fake spawner, so `model` falls back to the dispatched name.
+    expect(JSON.parse(readFileSync(join(dir, "sessions.log"), "utf8").trim())).toMatchObject({
+      model: "opus",
+      turns: 2,
+      durationMinutes: 3.7,
+      denials: 0,
+      subtype: "success",
+    });
   });
   it("records unfinished when the ledger write fails", async () => {
     const i = issue({ number: 1, status: "In Progress" });
@@ -938,5 +997,40 @@ describe("live activity", () => {
     const board = m.get().board as { waiting: Array<{ kind: string }>; pipeline: unknown[] };
     expect(board.waiting.map((w) => w.kind)).toEqual(["ci"]);
     expect(board.pipeline).toHaveLength(1);
+  });
+
+  it("runOnce stores phase progress computed from the snapshot and the local logs", async () => {
+    const issues = [
+      issue({ number: 10, title: "Phase 1", labels: ["epic", "phase:1", "plan-approved"] }),
+      issue({ number: 1, status: "In Review", body: "## Goal\n\nParent epic: #10" }),
+    ];
+    const { gh } = fakeGh(issues);
+    gh.listOpenPRs = async () => [pr({ number: 11, issue: 1, checks: "pending" })];
+    const m = memState();
+    const dir = mkdtempSync(join(tmpdir(), "tt-loop-"));
+    writeFileSync(
+      join(dir, "sessions.log"),
+      `${JSON.stringify({ t: "2026-09-03T11:00:00Z", host: "mac-a", role: "builder", issue: 1, sessionId: "s", attempt: 1, costUsd: 2.5, outcome: "pr_opened" })}\n`,
+    );
+    const exec: Exec = async () => ({
+      code: 0,
+      stderr: "",
+      stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+    });
+    await runOnce(ctx({ gh, exec, state: m.store, stateDir: dir }));
+    const board = m.get().board as { phases: Array<Record<string, unknown>> };
+    expect(board.phases).toEqual([
+      {
+        epic: 10,
+        phase: 1,
+        title: "Phase 1",
+        tasksDone: 0,
+        tasksTotal: 1,
+        spendUsd: 2.5,
+        sessions: 1,
+        medianMergeMinutes: null,
+        mergedTasks: 0,
+      },
+    ]);
   });
 });
