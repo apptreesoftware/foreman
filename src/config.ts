@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { NotifyConfigSchema } from "./notify.ts";
 
 export const STATE_DIR = join(homedir(), ".tone_tonic");
 export const DEFAULT_CONFIG_PATH = join(STATE_DIR, "foreman.json");
@@ -27,6 +28,13 @@ export const ConfigSchema = z.object({
   stallMinutes: z.number().int().min(1).default(5),
   /** Preflight refuses to start a tick with fewer GitHub GraphQL points left than this (#192). */
   minGraphqlPoints: z.number().int().min(0).default(500),
+  /**
+   * Push notifications for the events that change what the owner has to do (#225). Absent, or
+   * with neither channel set, the foreman notifies nothing — the page stays the only view.
+   * `slackWebhookUrl` is a credential: it never leaves this process (no log line, no role prompt,
+   * nothing on the page), so keep `foreman.json` out of the repo as it already is.
+   */
+  notify: NotifyConfigSchema.optional(),
 });
 export type ForemanConfig = Omit<z.infer<typeof ConfigSchema>, "workDir"> & {
   owner: string;

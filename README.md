@@ -72,7 +72,7 @@ An iteration that started a session does **not** then sleep `pollSeconds`: it ha
    mkdir -p ~/.tone_tonic
    cp tools/foreman/foreman.example.json ~/.tone_tonic/foreman.json
    ```
-   Edit `~/.tone_tonic/foreman.json`: set `host` to something unique to this Mac (lowercase, no spaces — it's how ledger comments tell Macs apart), `repoDir` to the clone path from step 2, and `slackUser` to the Slack handle that should get DMs. The schema (`src/config.ts`) is `repo`, `project`, `host`, `repoDir`, `slackUser`, and the optional `workDir`, `model`, `pollSeconds`, `maxSessionsPerDay`, `maxTurns`, `wallClockMinutes`, `stallMinutes`, `webPort`, `minGraphqlPoints`.
+   Edit `~/.tone_tonic/foreman.json`: set `host` to something unique to this Mac (lowercase, no spaces — it's how ledger comments tell Macs apart), `repoDir` to the clone path from step 2, and `slackUser` to the Slack handle that should get DMs. The schema (`src/config.ts`) is `repo`, `project`, `host`, `repoDir`, `slackUser`, and the optional `workDir`, `model`, `pollSeconds`, `maxSessionsPerDay`, `maxTurns`, `wallClockMinutes`, `stallMinutes`, `webPort`, `minGraphqlPoints`, `notify`.
 
    Two of those defaults matter:
 
@@ -158,12 +158,47 @@ The wrapper reads `repoDir` and `webPort` from `~/.tone_tonic/foreman.json`, so 
 - **This phase, every Mac:** `gh issue edit <epic> --add-label foreman:pause`. No new claims are picked for issues under that phase on any Mac; in-flight sessions finish normally.
 - **The planning backstop, every Mac:** the planner never runs on an epic that is not labeled `agent-ready`, and never on a second epic while a drafted plan is still waiting on the owner. Starting a phase is therefore always an explicit `gh issue edit <epic> --add-label agent-ready`; leaving every epic unlabeled leaves the foreman idle. `ctl status` says `epic #N awaits agent-ready before the planner runs` when this is what is holding it.
 - **Owner gates, from the page:** the **Owner** card lists every open epic with the label gates only a human can open — **Sign off** (adds `signed-off`, drops `needs-owner`, closes the epic), **Approve plan** (`plan-approved`), **Start planning** (`agent-ready`), **Pause** / **Resume** (`foreman:pause`). Each button confirms the exact label change first, and the daemon wakes straight after so the next tick acts on it. The same gates are still just labels, so `gh issue edit <epic> --add-label <label>` works identically.
+- **Get told instead of looking:** the page is localhost-only, so add `notify` to `~/.tone_tonic/foreman.json` to have the foreman push a one-line notification on the events that change what you have to do — see below.
 - **Issues waiting on you, from the page:** the **Needs you** card lists every open *non-epic* issue labelled `needs-owner`, `decision` or `blocked` — the ones that have no epic card to sit on and used to be invisible everywhere. Oldest first, each linked to GitHub with how long it has waited; `ctl status` prints the same list on a `needs you` line (`nothing` when there is none), and each one is also a `human` item on the `waiting` line. A `blocked` row carries an **Unblock** button: it confirms, then removes `blocked`, sets Status **Ready**, and comments `unblocked by owner via foreman@<host>` — the two GitHub edits that otherwise have to be made by hand before the picker will consider the issue again. The daemon wakes straight after, so the next tick can claim it; fix whatever caused the block first, because nothing else about the issue is changed. The server only accepts an issue the page is currently offering, the same allowlist rule as the Owner buttons.
 - **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.tonetonic.foreman` (a clean stop, as above).
 
 `foreman start` refuses when the daemon recorded in `state.json` is still alive, and `foreman status` warns when the web port is held by a different process — the symptom of a stale daemon serving a frozen page while a newer one does the work.
 
 A killed daemon (`kill -9`) does no bookkeeping: `ctl status` then shows `CRASHED` and, if the child is still alive, `ORPHAN child <pid>`; `ctl stop` or `ctl abort` kills it.
+
+### Push notifications
+
+Optional, off by default: `foreman.example.json` carries no `notify` block, so a config copied from it notifies nothing until you add one. Both channels are independent; set either, both, or neither.
+
+```json
+{
+  "notify": {
+    "slackWebhookUrl": "https://hooks.slack.com/services/T000/B000/xxxxxxxx",
+    "macos": true
+  }
+}
+```
+
+- `slackWebhookUrl` — a Slack **incoming webhook**. Create one at <https://api.slack.com/apps> → your app (or **Create New App** → *From scratch*, pick the workspace) → **Incoming Webhooks** → toggle on → **Add New Webhook to Workspace** → choose the channel or your own DM. Copy the `https://hooks.slack.com/services/…` URL into `foreman.json`. That URL is a credential: `foreman.json` lives in `~/.tone_tonic/`, outside the repo, and the foreman never logs it, never puts it in a role session's prompt, and never serves it on the page. Rotate it from the same Slack page if it leaks.
+- `macos` — `true` shows a Notification Center banner via `osascript`. It appears on whichever Mac the daemon runs on, so it is the fallback when you are at the machine rather than away from it. The first banner may need Notification Center permission for whatever runs the daemon (Terminal, or `launchd` → **System Settings → Notifications → Script Editor**).
+
+Seven events, one line each, with the GitHub link:
+
+| Event | Line |
+|---|---|
+| PR merged | `merged #<pr> → closes #<issue>: <title>` |
+| Issue blocked | `blocked #<issue> <title> — <first line of the reason>` |
+| Decision issue opened | `decision needed #<issue>: <title>` |
+| Phase closed | `phase <epic> closed: <title> — review #<n>` |
+| Plan drafted | `plan drafted for #<epic>: <title>` (links the plan PR) |
+| Daemon parked | `foreman parked on <host>: <reason>` |
+| Daemon resumed | `foreman resumed on <host> (was: <reason>)` |
+
+A notification carries issue and PR numbers, titles, and the foreman's own reason strings — never tool inputs, session transcripts, or the stderr excerpt that goes into the `blocked by foreman@…` GitHub comment. Reasons are cut to one line.
+
+Parked fires once per parked spell, not once per tick, and resumed once when preflight passes again; if the reason changes mid-spell (the daily cap clears but Docker is down) the daemon stays quiet and the resume line names the latest reason. Decision issues are announced once each; enabling notifications on a repo that already has open decision issues seeds them silently rather than replaying the backlog. That bookkeeping lives in `~/.tone_tonic/notify.json` — delete it to re-announce everything.
+
+A send that fails (webhook down, no network, `osascript` denied) logs a `warn` line and is dropped; it never fails a tick and is never retried. Sends have a 5 s timeout. `--dry-run` notifies nothing.
 
 ## 6. Budget
 

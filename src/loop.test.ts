@@ -18,6 +18,7 @@ import {
   runForever,
   runOnce,
 } from "./loop.ts";
+import type { LabelledIssue, NotifyEvent, NotifyPort } from "./notify.ts";
 import type { Issue } from "./types.ts";
 
 const cfg = parseConfig(
@@ -83,11 +84,31 @@ const okSpawn =
     }),
   });
 
+function recordNotify() {
+  const events: NotifyEvent[] = [];
+  const parked: (string | null)[] = [];
+  const decisions: number[][] = [];
+  const port: NotifyPort = {
+    send: async (e) => {
+      events.push(e);
+    },
+    syncParked: async (r) => {
+      parked.push(r);
+    },
+    syncDecisions: async (issues: LabelledIssue[]) => {
+      decisions.push(issues.map((i) => i.number));
+    },
+  };
+  const kinds = () => events.map((e) => e.kind);
+  return { events, parked, decisions, port, kinds };
+}
+
 function ctx(over: Partial<Ctx>): Ctx {
   const { gh } = fakeGh([]);
   return {
     cfg,
     gh,
+    notify: recordNotify().port,
     exec: async () => ({ code: 0, stdout: "", stderr: "" }),
     spawn: okSpawn({ outcome: "pr_opened", pr: 5, notes: "" }),
     dryRun: false,
@@ -1032,5 +1053,166 @@ describe("live activity", () => {
         mergedTasks: 0,
       },
     ]);
+  });
+});
+
+// Each notification fires exactly once for its trigger, and carries only numbers, titles and the
+// foreman's own reason strings — never the stderr excerpt that goes into the GitHub comment (#225).
+describe("notifications", () => {
+  // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
+  const okExec: Exec = async () => ({
+    code: 0,
+    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+    stderr: "",
+  });
+  const tmp = () => mkdtempSync(join(tmpdir(), "tt-notify-loop-"));
+
+  it("merge fires one merged event naming the PR, the issue and its title", async () => {
+    const i = issue({ number: 1, title: "feat(db): lessons", status: "In Review" });
+    const { gh } = fakeGh([i]);
+    const n = recordNotify();
+    await execute(
+      { type: "merge", pr: 9, issue: 1 },
+      ctx({ gh, notify: n.port }),
+      snapshot({ issues: [i] }),
+    );
+    expect(n.events).toEqual([{ kind: "merged", pr: 9, issue: 1, title: "feat(db): lessons" }]);
+  });
+
+  it("a block action fires one blocked event with the foreman's reason", async () => {
+    const i = issue({ number: 1, title: "feat(db): lessons" });
+    const { gh } = fakeGh([i]);
+    const n = recordNotify();
+    await execute(
+      { type: "block", issue: 1, reason: "3 fix rounds without an approval" },
+      ctx({ gh, notify: n.port }),
+      snapshot({ issues: [i] }),
+    );
+    expect(n.events).toEqual([
+      {
+        kind: "blocked",
+        issue: 1,
+        title: "feat(db): lessons",
+        reason: "3 fix rounds without an approval",
+      },
+    ]);
+  });
+
+  it("a blocked outcome fires one blocked event carrying the role's notes", async () => {
+    const { gh } = fakeGh([issue({ number: 1, title: "feat(db): lessons" })]);
+    const n = recordNotify();
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        notify: n.port,
+        stateDir: tmp(),
+        spawn: okSpawn({ outcome: "blocked", pr: null, notes: "opened decision #99" }),
+      }),
+    );
+    expect(n.events).toEqual([
+      { kind: "blocked", issue: 1, title: "feat(db): lessons", reason: "opened decision #99" },
+    ]);
+  });
+
+  it("exhausted retries fire one blocked event without the stderr excerpt", async () => {
+    const { gh, calls } = fakeGh([issue({ number: 1, title: "feat(db): lessons" })]);
+    const n = recordNotify();
+    const spawn: Spawner = async () => ({
+      code: 1,
+      stdout: "",
+      stderr: "boom /Users/matthew/.tone_tonic/foreman.json",
+      timedOut: true,
+      interrupted: false,
+    });
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, notify: n.port, spawn, stateDir: tmp() }),
+    );
+    expect(n.events).toEqual([
+      { kind: "blocked", issue: 1, title: "feat(db): lessons", reason: "timed out after retries" },
+    ]);
+    // The excerpt still reaches GitHub, where it belongs; it must not reach a phone.
+    expect(calls.some((c) => c.includes("boom"))).toBe(true);
+  });
+
+  it("phase_closed fires once and links the review issue named in the notes", async () => {
+    const { gh } = fakeGh([
+      issue({ number: 200, title: "Phase 1", labels: ["epic", "phase:1", "plan-approved"] }),
+    ]);
+    const n = recordNotify();
+    await execute(
+      { type: "phase_close", epic: 200 },
+      ctx({
+        gh,
+        notify: n.port,
+        stateDir: tmp(),
+        spawn: okSpawn({ outcome: "phase_closed", pr: null, notes: "review issue #55; DM sent" }),
+      }),
+    );
+    expect(n.events).toEqual([{ kind: "phase_closed", epic: 200, title: "Phase 1", review: 55 }]);
+  });
+
+  it("phase_closed with no issue number in the notes falls back to the epic", async () => {
+    const { gh } = fakeGh([
+      issue({ number: 200, title: "Phase 1", labels: ["epic", "phase:1", "plan-approved"] }),
+    ]);
+    const n = recordNotify();
+    await execute(
+      { type: "phase_close", epic: 200 },
+      ctx({
+        gh,
+        notify: n.port,
+        stateDir: tmp(),
+        spawn: okSpawn({ outcome: "phase_closed", pr: null, notes: "DM sent" }),
+      }),
+    );
+    expect(n.events).toEqual([{ kind: "phase_closed", epic: 200, title: "Phase 1", review: null }]);
+  });
+
+  it("plan_drafted fires once with the plan PR", async () => {
+    const { gh } = fakeGh([
+      issue({ number: 200, title: "Phase 2", labels: ["epic", "phase:2", "agent-ready"] }),
+    ]);
+    const n = recordNotify();
+    await execute(
+      { type: "plan", epic: 200 },
+      ctx({
+        gh,
+        notify: n.port,
+        stateDir: tmp(),
+        spawn: okSpawn({ outcome: "plan_drafted", pr: 7, notes: "" }),
+      }),
+    );
+    expect(n.events).toEqual([{ kind: "plan_drafted", epic: 200, title: "Phase 2", pr: 7 }]);
+  });
+
+  it("a pr_opened outcome says nothing: the owner has nothing to do about it", async () => {
+    const { gh } = fakeGh([issue({ number: 1 })]);
+    const n = recordNotify();
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, notify: n.port, stateDir: tmp() }),
+    );
+    expect(n.events).toEqual([]);
+  });
+
+  it("runOnce hands the tick's issues to syncDecisions and reports a healthy preflight", async () => {
+    const issues = [issue({ number: 1 }), issue({ number: 40, labels: ["decision", "phase:1"] })];
+    const { gh } = fakeGh(issues);
+    const n = recordNotify();
+    await runOnce(ctx({ gh, exec: okExec, notify: n.port, stateDir: tmp() }));
+    expect(n.decisions).toEqual([[1, 40]]);
+    expect(n.parked).toEqual([null]);
+  });
+
+  it("a failed preflight parks with its reason and skips the decision sync", async () => {
+    const dir = tmp();
+    writeFileSync(join(dir, "STOP"), "");
+    const { gh } = fakeGh([]);
+    const n = recordNotify();
+    await runOnce(ctx({ gh, exec: okExec, notify: n.port, stateDir: dir }));
+    expect(n.parked).toEqual(["STOP file present"]);
+    expect(n.decisions).toEqual([]);
   });
 });

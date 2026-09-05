@@ -23,6 +23,7 @@ import { appendFeed, type FeedEntry } from "./feed.ts";
 import { type GitHubApi, phaseOf } from "./github.ts";
 import { fmt, openClaim, parseClaim } from "./ledger.ts";
 import { log } from "./log.ts";
+import { createNotifier, type NotifyPort, noopNotify } from "./notify.ts";
 import {
   PlanIssuesSchema,
   parseDirectionCritical,
@@ -53,6 +54,8 @@ export interface Ctx {
   gh: GitHubApi;
   exec: Exec;
   spawn: Spawner;
+  /** Push notifications; `noopNotify` when `notify` is absent from foreman.json (#225). */
+  notify: NotifyPort;
   dryRun: boolean;
   stateDir: string;
   /** Where validator screenshots are archived: `<artifactsDir>/<pr>/`. */
@@ -94,6 +97,17 @@ export function realCtx(
     ...control,
     exec: realExec,
     spawn: realSpawn,
+    // A dry run must stay silent: it reports what it would do without doing it, so it has no
+    // business waking the owner's phone.
+    notify: dryRun
+      ? noopNotify
+      : createNotifier(cfg.notify, {
+          fetch: globalThis.fetch,
+          exec: realExec,
+          stateDir,
+          repo: cfg.repo,
+          host: cfg.host,
+        }),
     dryRun,
     stateDir,
     artifactsDir: join(stateDir, "artifacts"),
@@ -423,13 +437,17 @@ async function applyOutcome(
   const pr = res.outcome?.pr ?? r.pr;
   if (!res.outcome) {
     const excerpt = [res.resultText ?? "", res.stderr].join("\n").trim().slice(-1500);
+    const reason = `${res.timedOut ? "timed out" : res.subtype} after retries`;
     await gh.addLabels("issue", n, ["blocked"]);
     await gh.comment(
       "issue",
       n,
-      `blocked by foreman@${cfg.host}: ${res.timedOut ? "timed out" : res.subtype} after retries\n\n\`\`\`\n${excerpt}\n\`\`\``,
+      `blocked by foreman@${cfg.host}: ${reason}\n\n\`\`\`\n${excerpt}\n\`\`\``,
     );
     await gh.unassign(n, ctx.login);
+    // The excerpt is session output — stderr, the model's last words — so it stays on GitHub.
+    // Only the foreman's own one-line reason is pushed.
+    await ctx.notify.send({ kind: "blocked", issue: n, title: r.issue.title, reason });
     return;
   }
   switch (res.outcome.outcome) {
@@ -440,6 +458,12 @@ async function applyOutcome(
       await gh.addLabels("issue", n, ["blocked"]);
       await gh.comment("issue", n, `blocked by ${r.role}: ${res.outcome.notes}`);
       await gh.unassign(n, ctx.login);
+      await ctx.notify.send({
+        kind: "blocked",
+        issue: n,
+        title: r.issue.title,
+        reason: res.outcome.notes,
+      });
       break;
     case "approved":
       if (pr) {
@@ -464,6 +488,12 @@ async function applyOutcome(
     case "phase_closed":
       await setStatus(ctx, r.issue, "In Review");
       await gh.addLabels("issue", n, ["needs-owner"]);
+      await ctx.notify.send({
+        kind: "phase_closed",
+        epic: n,
+        title: r.issue.title,
+        review: firstIssueRef(res.outcome.notes),
+      });
       break;
     // The plan is drafted; hand the epic back to the owner. `needs-owner` and the dropped
     // `agent-ready` are both gates on the next planner session (#187) — either one alone stops
@@ -473,8 +503,24 @@ async function applyOutcome(
       await gh.removeLabels("issue", n, ["agent-ready"]);
       await setStatus(ctx, r.issue, "In Review");
       await gh.unassign(n, ctx.login);
+      await ctx.notify.send({
+        kind: "plan_drafted",
+        epic: n,
+        title: r.issue.title,
+        pr: res.outcome.pr,
+      });
       break;
   }
+}
+
+/**
+ * The phase-closer returns the review issue it opened in its notes ("review issue #55; DM sent");
+ * the number is what the owner actually wants to open. Null when the notes name none, and the
+ * notification falls back to linking the epic.
+ */
+export function firstIssueRef(notes: string): number | null {
+  const m = /#(\d+)/.exec(notes);
+  return m ? Number(m[1]) : null;
 }
 
 async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Promise<void> {
@@ -588,6 +634,12 @@ export async function execute(
       });
       await setStatus(ctx, issue, "Done");
       await ctx.removeWorktree(cfg, action.issue, ctx.exec);
+      await ctx.notify.send({
+        kind: "merged",
+        pr: action.pr,
+        issue: action.issue,
+        title: issue.title,
+      });
       return "continue";
     }
     case "skip_validator":
@@ -602,6 +654,13 @@ export async function execute(
       await gh.addLabels("issue", action.issue, ["blocked"]);
       await gh.comment("issue", action.issue, `blocked by foreman@${cfg.host}: ${action.reason}`);
       await gh.unassign(action.issue, ctx.login);
+      // The title is a nicety here: take it from the tick's snapshot rather than spending a read.
+      await ctx.notify.send({
+        kind: "blocked",
+        issue: action.issue,
+        title: snapshot?.issues.find((i) => i.number === action.issue)?.title ?? "",
+        reason: action.reason,
+      });
       return "continue";
     case "reclaim": {
       await gh.comment("issue", action.issue, fmt.reclaimed(action.fromHost, cfg.host, ctx.now()));
@@ -712,6 +771,9 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
     },
   );
   ctx.state?.patch({ lastPreflight: { ok: pre.ok, reason: pre.ok ? null : pre.reason } });
+  // Preflight fails on every tick of a parked spell, so the notifier — not the loop — decides
+  // whether this transition is worth a push (#225).
+  await ctx.notify.syncParked(pre.ok ? null : pre.reason);
   if (!pre.ok) {
     log("warn", "preflight failed; sleeping", { reason: pre.reason });
     return { dispatched: false };
@@ -720,6 +782,9 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   // GraphQL budget went on the loop's own reads, the session it dispatched, or something else.
   const before = await graphqlBudget(ctx.exec);
   const snapshot = await buildSnapshot(ctx);
+  // A decision issue is opened by a role session, not by the foreman, so the snapshot is the only
+  // place it shows up; the notifier announces each one once.
+  await ctx.notify.syncDecisions(snapshot.issues);
   const actions = plan(snapshot);
   const names = actions.map((a) =>
     // Every non-idle Action variant carries either "issue" or "epic" — never neither — so a

@@ -45,6 +45,26 @@ describe("parseConfig", () => {
     expect(parseConfig(JSON.stringify(base)).webPort).toBe(8090);
     expect(parseConfig(JSON.stringify({ ...base, webPort: 8091 })).webPort).toBe(8091);
   });
+  it("notify is optional, and both channels parse", () => {
+    expect(parseConfig(JSON.stringify(base)).notify).toBeUndefined();
+    const cfg = parseConfig(
+      JSON.stringify({
+        ...base,
+        notify: { slackWebhookUrl: "https://hooks.slack.com/services/T0/B0/xxx", macos: true },
+      }),
+    );
+    expect(cfg.notify?.slackWebhookUrl).toBe("https://hooks.slack.com/services/T0/B0/xxx");
+    expect(cfg.notify?.macos).toBe(true);
+    // Either channel alone is a valid block.
+    expect(parseConfig(JSON.stringify({ ...base, notify: { macos: true } })).notify?.macos).toBe(
+      true,
+    );
+  });
+  it("rejects a slackWebhookUrl that is not a URL", () => {
+    expect(() =>
+      parseConfig(JSON.stringify({ ...base, notify: { slackWebhookUrl: "T0/B0/xxx" } })),
+    ).toThrow();
+  });
   it("stallMinutes defaults to 5 and must be ≥ 1", () => {
     const base = {
       repo: "o/r",
