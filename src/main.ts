@@ -16,6 +16,7 @@ import { checkEnv, preflight } from "./preflight.ts";
 import { readSessions } from "./sessions.ts";
 import { initialState, MODEL_DEFAULT, readState, StateStore } from "./state-file.ts";
 import { describeStatus } from "./status.ts";
+import { applyTaskModel, applyTaskModelToBoard, phaseTasks } from "./task-model.ts";
 import { startWebServer } from "./web.ts";
 
 const bad = checkEnv(process.env);
@@ -155,6 +156,18 @@ const web = await startWebServer({
     return `cap is now ${maxSessionsPerDay ?? `the configured ${cfg.maxSessionsPerDay}`}`;
   },
   ownerItems: () => store.get().board?.owner ?? [],
+  phaseTasks: () => phaseTasks(store.get().board),
+  setTaskModel: async (issue, model) => {
+    // The stored task row says which label is on the issue now, so the swap costs at most two
+    // label edits and no GitHub read. Read per dispatch by runRole's modelFor(), so it applies
+    // to the issue's next session and never to one already running (#259).
+    const current = phaseTasks(store.get().board).find((t) => t.issue === issue)?.model ?? null;
+    const message = await applyTaskModel(gh, { issue, current }, model);
+    log("info", "task model set", { issue, model, was: current });
+    const board = store.get().board;
+    if (board) store.patch({ board: applyTaskModelToBoard(board, issue, model) });
+    return message;
+  },
   needsYouItems: () => store.get().board?.needsYou ?? [],
   unblock: async (issue) => {
     // The stored row carries the project item id the tick already read, so the gate costs one

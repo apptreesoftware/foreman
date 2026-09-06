@@ -23,7 +23,7 @@ import {
 import type { Exec } from "./exec.ts";
 import { realExec } from "./exec.ts";
 import { appendFeed, type FeedEntry } from "./feed.ts";
-import { type GitHubApi, phaseOf } from "./github.ts";
+import { type GitHubApi, modelOf, phaseOf } from "./github.ts";
 import { fmt, openClaim, parseClaim } from "./ledger.ts";
 import { log } from "./log.ts";
 import { createNotifier, type NotifyPort, noopNotify } from "./notify.ts";
@@ -193,9 +193,12 @@ interface RunRole {
   rebase?: boolean;
 }
 
-/** The model the next session runs as: the owner's live override, else `model` from foreman.json. */
-export function modelFor(ctx: Ctx): string {
-  return ctx.state?.get().model ?? ctx.cfg.model;
+/**
+ * The model a session on this issue runs as: the issue's `model:<name>` label (#259), else the
+ * owner's live override, else `model` from foreman.json.
+ */
+export function modelFor(ctx: Ctx, labels: string[]): string {
+  return modelOf(labels) ?? ctx.state?.get().model ?? ctx.cfg.model;
 }
 
 /** The daily session cap this tick enforces: the owner's live override, else foreman.json's. */
@@ -327,8 +330,9 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     }
   };
   // The owner can change the model from the page or `ctl model` mid-run; it lands in state.json
-  // and is read here, per dispatch, so it takes effect without restarting the daemon (#210).
-  const model = modelFor(ctx);
+  // and is read here, per dispatch, so it takes effect without restarting the daemon (#210). A
+  // `model:<name>` label on the issue outranks both, for every role that runs on it (#259).
+  const model = modelFor(ctx, r.issue.labels);
   let result: SessionResult;
   try {
     result = await dispatchWithRetry(

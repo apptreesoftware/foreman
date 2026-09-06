@@ -73,6 +73,10 @@ describe("describeBoard", () => {
         sessions: 1,
         medianMergeMinutes: 120,
         mergedTasks: 1,
+        tasks: [
+          { issue: 1, title: "Task 1", status: "Ready", closed: false, model: null },
+          { issue: 2, title: "#2", status: null, closed: true, model: null },
+        ],
       },
     ]);
   });
@@ -126,6 +130,7 @@ describe("overlayCurrent", () => {
           claim: null,
           fixRound: 1,
           blocked: false,
+          model: null,
         },
       ],
     };

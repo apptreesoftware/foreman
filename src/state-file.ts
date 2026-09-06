@@ -51,6 +51,8 @@ export const PipelineRowSchema = z.object({
     .nullable(),
   fixRound: z.number().int(),
   blocked: z.boolean(),
+  /** The issue's `model:<name>` label, so the row can say which model its sessions run as. */
+  model: z.string().nullable().default(null),
 });
 export type PipelineRow = z.infer<typeof PipelineRowSchema>;
 
@@ -79,6 +81,15 @@ export const MODEL_CHOICES = ["opus", "sonnet", "haiku", "fable"] as const;
 export const MODEL_DEFAULT = "default";
 /** Conservative shape check: an alias or a dated model id, never a flag or a path. */
 export const ModelSchema = z.string().regex(/^[a-z0-9][a-z0-9.-]{0,63}$/);
+/**
+ * The label that pins one issue's sessions to a model, outranking the live override and
+ * `foreman.json`. A label has to exist in the repo, so the page offers only `MODEL_CHOICES`
+ * here (plus `MODEL_DEFAULT`, which removes the label); `gh issue edit --add-label` can still
+ * attach any `model:<name>` whose name passes `ModelSchema`.
+ */
+export const MODEL_LABEL_PREFIX = "model:";
+export const TaskModelChoiceSchema = z.enum([...MODEL_CHOICES, MODEL_DEFAULT]);
+export type TaskModelChoice = z.infer<typeof TaskModelChoiceSchema>;
 
 /**
  * Daily session caps the page and `ctl cap` offer as one-click choices (#213). As with
@@ -126,6 +137,20 @@ export const NeedsYouItemSchema = z.object({
 export type NeedsYouItem = z.infer<typeof NeedsYouItemSchema>;
 
 /**
+ * One task of a phase as the tick saw it. A closed task has left the snapshot, so it keeps only
+ * its number (`title` is `#<n>`), and the page offers it no model button.
+ */
+export const PhaseTaskSchema = z.object({
+  issue: z.number().int(),
+  title: z.string(),
+  status: z.string().nullable(),
+  closed: z.boolean(),
+  /** The issue's `model:<name>` label, or null when the global model applies. */
+  model: z.string().nullable(),
+});
+export type PhaseTask = z.infer<typeof PhaseTaskSchema>;
+
+/**
  * How far one approved phase has come and what it has cost (#226). Computed inside the tick from
  * the snapshot plus `sessions.log`/`merges.log`, so the card is free of extra GitHub reads.
  */
@@ -141,6 +166,8 @@ export const PhaseProgressSchema = z.object({
   /** Median claim→merge minutes of the merged tasks; null until one has merged. */
   medianMergeMinutes: z.number().nullable(),
   mergedTasks: z.number().int(),
+  /** Every task of the phase, by number, so the page can offer a per-task model (#259). */
+  tasks: z.array(PhaseTaskSchema).default([]),
 });
 export type PhaseProgress = z.infer<typeof PhaseProgressSchema>;
 

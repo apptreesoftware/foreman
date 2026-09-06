@@ -45,6 +45,7 @@ describe("web server", () => {
   const models: string[] = [];
   const caps: (number | null)[] = [];
   const unblocked: number[] = [];
+  const taskModels: string[] = [];
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
     t: `2026-09-04T13:27:0${i}.000Z`,
@@ -96,6 +97,14 @@ describe("web server", () => {
     setCap: async (cap) => {
       caps.push(cap);
       return `cap is now ${cap ?? "the configured value"}`;
+    },
+    phaseTasks: () => [
+      { issue: 101, title: "One", status: "Ready", closed: false, model: null },
+      { issue: 102, title: "Two", status: "In Progress", closed: false, model: "sonnet" },
+    ],
+    setTaskModel: async (issue, model) => {
+      taskModels.push(`${issue} ${model}`);
+      return `#${issue} runs as ${model}`;
     },
     html: "<title>Foreman</title>",
   });
@@ -215,6 +224,23 @@ describe("web server", () => {
     expect((await post({ maxSessionsPerDay: null })).status).toBe(200);
     expect(caps).toEqual([50, null]);
   });
+  it("sets a task's model when the board lists the task, and offers only the label choices", async () => {
+    const post = (body: unknown) =>
+      fetch(`${base}/api/task-model`, { method: "POST", body: JSON.stringify(body) });
+    const ok = await post({ issue: 101, model: "sonnet" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, message: "#101 runs as sonnet" });
+    expect((await post({ issue: 102, model: "default" })).status).toBe(200);
+    // A label has to exist in the repo, so unlike /api/model only the one-click names pass.
+    expect((await post({ issue: 101, model: "claude-haiku-4-5-20251001" })).status).toBe(400);
+    expect((await post({ issue: 101, model: "--dangerously-skip-permissions" })).status).toBe(400);
+    // Not a task of any phase on the board: refused before it reaches GitHub.
+    expect((await post({ issue: 999, model: "sonnet" })).status).toBe(400);
+    expect((await post({ issue: "101", model: "sonnet" })).status).toBe(400);
+    expect((await post({ model: "sonnet" })).status).toBe(400);
+    expect((await fetch(`${base}/api/task-model`)).status).toBe(405);
+    expect(taskModels).toEqual(["101 sonnet", "102 default"]);
+  });
   it("unblocks an issue the board lists as blocked", async () => {
     const r = await fetch(`${base}/api/unblock`, {
       method: "POST",
@@ -283,6 +309,15 @@ describe("web.html", () => {
     expect(html).toContain("window.confirm(`Run foreman sessions as ");
     expect(html).toContain('data-model="');
     expect(html).toContain('fetch("/api/model"');
+  });
+  it("lists each phase's tasks with model buttons and confirms before POSTing one", () => {
+    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+    expect(html).toContain("renderTasks(");
+    expect(html).toContain('data-task-model="');
+    expect(html).toContain("window.confirm(`Run every foreman session on #");
+    expect(html).toContain('fetch("/api/task-model"');
+    // Pipeline rows show the override when one is set.
+    expect(html).toContain("p.model ?");
   });
   it("renders the Now card from nowPhase, not from the absence of a session", () => {
     const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");

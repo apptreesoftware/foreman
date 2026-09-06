@@ -1,3 +1,4 @@
+import { modelOf } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
 import { mergeDecision } from "./merge.ts";
 import { issuePhase, validatorRequired } from "./pick.ts";
@@ -49,6 +50,7 @@ export function describePipeline(s: Snapshot): PipelineRow[] {
         : null,
       fixRound: fixRound(i.comments),
       blocked: i.labels.includes("blocked"),
+      model: modelOf(i.labels),
     });
   }
   return rows.sort(

@@ -134,6 +134,7 @@ describe("applyUnblockToBoard", () => {
           claim: null,
           fixRound: 1,
           blocked: true,
+          model: null,
         },
       ],
     });

@@ -431,6 +431,7 @@ describe("live activity and board", () => {
           sessions: 23,
           medianMergeMinutes: 95,
           mergedTasks: 7,
+          tasks: [],
         },
       ],
       explain: [],

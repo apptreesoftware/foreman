@@ -150,6 +150,43 @@ describe("ctlModel", () => {
     await ctlModel(b.d, null);
     expect(b.log.out.join("\n")).toContain("model sonnet (override; foreman.json says opus)");
   });
+  it("with no argument, lists the tasks whose label pins a different model", async () => {
+    const a = deps();
+    writeState(a.dir, {
+      ...base(),
+      board: {
+        at: "2026-09-05T10:00:00Z",
+        waiting: [],
+        pipeline: [],
+        owner: [],
+        needsYou: [],
+        explain: [],
+        prs: [],
+        phases: [
+          {
+            epic: 10,
+            phase: 1,
+            title: "Phase 1",
+            tasksDone: 0,
+            tasksTotal: 2,
+            spendUsd: 0,
+            sessions: 0,
+            medianMergeMinutes: null,
+            mergedTasks: 0,
+            tasks: [
+              { issue: 101, title: "One", status: "Ready", closed: false, model: null },
+              { issue: 102, title: "Two", status: "Ready", closed: false, model: "sonnet" },
+            ],
+          },
+        ],
+      },
+    });
+    await ctlModel(a.d, null);
+    const out = a.log.out.join("\n");
+    expect(out).toContain("model opus (foreman.json)");
+    expect(out).toContain("#102 sonnet");
+    expect(out).not.toContain("#101");
+  });
   it("posts to a live daemon, so the change lands without a restart", async () => {
     const { d, dir, log } = deps({ alive: [100] });
     writeState(dir, base());

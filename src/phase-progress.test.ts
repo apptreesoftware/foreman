@@ -44,6 +44,34 @@ describe("phaseProgress", () => {
   const e = epic({ number: 10, phase: 1, taskNumbers: [101, 102, 103, 104] });
   const epicIssue = issue({ number: 10, title: "Phase 1 — lessons", labels: ["epic", "phase:1"] });
 
+  it("lists the phase's tasks with status, closed flag and model override, by number", () => {
+    const s = snapshot({
+      epics: [e],
+      issues: [
+        epicIssue,
+        issue({
+          number: 102,
+          title: "Two",
+          status: "In Progress",
+          labels: ["phase:1", "model:sonnet"],
+        }),
+        issue({ number: 101, title: "One", status: "Ready" }),
+        // Names the epic in its body but is not a linked sub-issue: still a task.
+        issue({ number: 105, title: "Five", status: "Backlog", body: "Parent epic: #10" }),
+      ],
+    });
+    const [p] = phaseProgress(s, [], []);
+    expect(p?.tasks).toEqual([
+      { issue: 101, title: "One", status: "Ready", closed: false, model: null },
+      { issue: 102, title: "Two", status: "In Progress", closed: false, model: "sonnet" },
+      // Closed tasks are gone from the snapshot, so only their number is known.
+      { issue: 103, title: "#103", status: null, closed: true, model: null },
+      { issue: 104, title: "#104", status: null, closed: true, model: null },
+      { issue: 105, title: "Five", status: "Backlog", closed: false, model: null },
+    ]);
+    expect(p).toMatchObject({ tasksTotal: 5, tasksDone: 2 });
+  });
+
   it("counts tasks done out of total from the snapshot's open issues", () => {
     // 101 and 102 are still open; 103 and 104 are gone from the snapshot, so they are closed.
     const s = snapshot({

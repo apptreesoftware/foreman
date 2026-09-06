@@ -13,6 +13,9 @@ import {
   type OwnerAction,
   OwnerActionSchema,
   type OwnerItem,
+  type PhaseTask,
+  type TaskModelChoice,
+  TaskModelChoiceSchema,
 } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
 
@@ -36,6 +39,10 @@ export interface WebDeps {
   setModel: (model: string) => Promise<string>;
   /** Sets the daily session cap the next tick enforces; null clears the override. */
   setCap: (maxSessionsPerDay: number | null) => Promise<string>;
+  /** The open tasks of every phase on the board, as of the last tick; the task-model allowlist. */
+  phaseTasks: () => PhaseTask[];
+  /** Swaps the issue's `model:<name>` label; only called for a task `phaseTasks` lists (#259). */
+  setTaskModel: (issue: number, model: TaskModelChoice) => Promise<string>;
   /** Page HTML; defaults to src/web.html. Injectable for tests. */
   html?: string;
 }
@@ -53,6 +60,12 @@ const OwnerRequestSchema = z.object({
 const UnblockRequestSchema = z.object({ issue: z.number().int().positive() });
 
 const ModelRequestSchema = z.object({ model: ModelSchema });
+
+// Only the one-click names: the label has to exist in the repo, and `default` removes it.
+const TaskModelRequestSchema = z.object({
+  issue: z.number().int().positive(),
+  model: TaskModelChoiceSchema,
+});
 
 // `null` is the clear-the-override case; everything else must be a sane session count, so a
 // fat-fingered 100000 cannot quietly uncap the Mac's daily spend.
@@ -137,6 +150,16 @@ export function createWebServer(d: WebDeps): http.Server {
         // a path, an empty string — is refused here rather than passed through.
         if (!parsed.success) return json(res, 400, { ok: false, error: "bad model name" });
         return json(res, 200, { ok: true, message: await d.setModel(parsed.data.model) });
+      }
+      if (url === "/api/task-model") {
+        if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
+        const parsed = TaskModelRequestSchema.safeParse(await readJson(req));
+        if (!parsed.success) return json(res, 400, { ok: false, error: "bad request" });
+        const { issue, model } = parsed.data;
+        // Same allowlist pattern as /api/owner: only a task the board lists under a phase.
+        if (!d.phaseTasks().some((t) => t.issue === issue))
+          return json(res, 400, { ok: false, error: `#${issue} is not a task on the board` });
+        return json(res, 200, { ok: true, message: await d.setTaskModel(issue, model) });
       }
       if (url === "/api/cap") {
         if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Exec } from "./exec.ts";
 import {
   GitHub,
+  modelOf,
   parseChecks,
   parseClosesIssue,
   parseDependsOn,
@@ -96,6 +97,14 @@ describe("pure parsers", () => {
     expect(phaseOf(["size:M"])).toBeNull();
     expect(sizeOf(["size:M"])).toBe("M");
     expect(sizeOf([])).toBeNull();
+  });
+  it("modelOf reads a model:<name> label and ignores anything that is not a plain model name", () => {
+    expect(modelOf(["phase:1", "model:sonnet"])).toBe("sonnet");
+    expect(modelOf(["model:claude-haiku-4-5-20251001"])).toBe("claude-haiku-4-5-20251001");
+    // It reaches `claude` as argv, so a label that is not a plain name is treated as absent.
+    expect(modelOf(["model:--dangerously-skip-permissions"])).toBeNull();
+    expect(modelOf(["model:"])).toBeNull();
+    expect(modelOf(["size:M"])).toBeNull();
   });
 });
 

@@ -6,6 +6,18 @@ const claim = (host: string, role: string, round = 1) =>
   comment(`claimed by ${host} at 2026-09-04T13:00:00Z role=${role} round=${round}`);
 
 describe("describePipeline", () => {
+  it("carries the issue's model label so the page can show the override", () => {
+    const s = snapshot({
+      issues: [
+        issue({ number: 3, status: "In Progress", labels: ["phase:1", "model:sonnet"] }),
+        issue({ number: 4, status: "In Progress", labels: ["phase:1"] }),
+      ],
+    });
+    expect(describePipeline(s).map((r) => [r.issue, r.model])).toEqual([
+      [3, "sonnet"],
+      [4, null],
+    ]);
+  });
   it("lists only in-flight, non-epic issues, sorted by phase then status then number", () => {
     const s = snapshot({
       issues: [

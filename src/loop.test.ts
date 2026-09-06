@@ -15,6 +15,7 @@ import {
   ensureLogin,
   execute,
   MAX_BACKOFF_SECONDS,
+  modelFor,
   runForever,
   runOnce,
 } from "./loop.ts";
@@ -1163,6 +1164,7 @@ describe("live activity", () => {
         sessions: 1,
         medianMergeMinutes: null,
         mergedTasks: 0,
+        tasks: [{ issue: 1, title: "Task 1", status: "In Review", closed: false, model: null }],
       },
     ]);
   });
@@ -1526,5 +1528,17 @@ describe("notifications", () => {
     await runOnce(ctx({ gh, exec: okExec, notify: n.port, stateDir: dir }));
     expect(n.parked).toEqual(["STOP file present"]);
     expect(n.decisions).toEqual([]);
+  });
+});
+
+describe("modelFor", () => {
+  it("prefers the issue's model label to the live override, and the override to foreman.json", () => {
+    const st = memState();
+    expect(modelFor(ctx({ state: null }), [])).toBe(cfg.model);
+    st.store.patch({ model: "sonnet" });
+    expect(modelFor(ctx({ state: st.store }), [])).toBe("sonnet");
+    expect(modelFor(ctx({ state: st.store }), ["phase:1", "model:haiku"])).toBe("haiku");
+    // A malformed label is no label: the override still applies.
+    expect(modelFor(ctx({ state: st.store }), ["model:--flag"])).toBe("sonnet");
   });
 });

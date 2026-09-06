@@ -1,5 +1,6 @@
 import type { Exec } from "./exec.ts";
 import { log } from "./log.ts";
+import { MODEL_LABEL_PREFIX, ModelSchema } from "./state-file.ts";
 import type {
   BoardItem,
   CheckState,
@@ -90,6 +91,16 @@ export function sizeOf(labels: string[]): Size | null {
   const l = labels.find((x) => x.startsWith("size:"));
   const s = l?.slice(5);
   return s === "S" || s === "M" || s === "L" ? s : null;
+}
+
+/**
+ * The model a `model:<name>` label pins the issue's sessions to (#259). The name reaches `claude`
+ * as argv, so one that fails `ModelSchema` — a flag, a path, an empty string — reads as no label.
+ */
+export function modelOf(labels: string[]): string | null {
+  const l = labels.find((x) => x.startsWith(MODEL_LABEL_PREFIX));
+  const name = l?.slice(MODEL_LABEL_PREFIX.length);
+  return name && ModelSchema.safeParse(name).success ? name : null;
 }
 
 function names(labels: Array<{ name: string }> | undefined): string[] {

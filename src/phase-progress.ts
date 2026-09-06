@@ -1,6 +1,7 @@
+import { modelOf } from "./github.ts";
 import { parseClaim } from "./ledger.ts";
 import type { MergeRecord, SessionLogEntry } from "./sessions.ts";
-import type { PhaseProgress } from "./state-file.ts";
+import type { PhaseProgress, PhaseTask } from "./state-file.ts";
 import type { Epic, Issue, Snapshot } from "./types.ts";
 
 /** What the planner writes in every task body it creates (`.claude/roles/planner.md`). */
@@ -84,6 +85,15 @@ export function phaseProgress(
         sessions: mine.length,
         medianMergeMinutes: median([...spans.values()]),
         mergedTasks: spans.size,
+        tasks: [...tasks].sort((a, b) => a - b).map((n) => taskRow(n, s.issues)),
       };
     });
+}
+
+/** One task as the page lists it; a closed task has left the snapshot and keeps only its number. */
+function taskRow(n: number, issues: Issue[]): PhaseTask {
+  const i = issues.find((x) => x.number === n);
+  return i
+    ? { issue: n, title: i.title, status: i.status, closed: false, model: modelOf(i.labels) }
+    : { issue: n, title: `#${n}`, status: null, closed: true, model: null };
 }
