@@ -204,6 +204,16 @@ describe("execute", () => {
     await execute({ type: "merge", pr: 9, issue: 1 }, ctx({ gh: counting }));
     expect(reads).toBe(1);
   });
+  it("adopt: adds the issue to the board, sets Ready, and says so on the issue (#249)", async () => {
+    const i = issue({ number: 7, itemId: null, status: null });
+    const { gh, calls } = fakeGh([i]);
+    const r = await execute({ type: "adopt", issue: 7 }, ctx({ gh }), snapshot({ issues: [i] }));
+    expect(r).toBe("continue");
+    expect(calls).toEqual([
+      "setStatus PVTI_new Ready",
+      `comment issue 7 ${fmt.adopted("foreman@mac-a")}`,
+    ]);
+  });
   it("merge: merges, comments, closes, marks Done, removes worktree", async () => {
     const i = issue({ number: 1, status: "In Review" });
     const { gh, calls } = fakeGh([i]);

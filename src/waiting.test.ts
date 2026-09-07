@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { comment, epic, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
+import { fmt } from "./ledger.ts";
 import { describeWaiting, liveWaits, type WaitingInput } from "./waiting.ts";
 
 const base: WaitingInput = {
@@ -35,6 +36,22 @@ describe("liveWaits", () => {
 describe("describeWaiting", () => {
   it("is empty when nothing blocks", () => {
     expect(kinds(snapshot({ issues: [issue({ number: 1 })] }))).toEqual([]);
+  });
+  it("an agent-ready issue parked at Backlog is explained, not hidden (#249)", () => {
+    const s = snapshot({ issues: [issue({ number: 7, status: "Backlog" })] });
+    expect(describeWaiting(s, base)[0]).toMatchObject({
+      kind: "human",
+      subject: "#7",
+      detail: "#7 is agent-ready but Status Backlog",
+    });
+  });
+  it("stays quiet for an agent-ready issue that is In Progress or claimed", () => {
+    const claimed = issue({
+      number: 7,
+      status: "In Progress",
+      comments: [comment(fmt.claimed("mac-a", hoursAgo(1), "builder", 1))],
+    });
+    expect(kinds(snapshot({ issues: [claimed] }))).toEqual([]);
   });
   it("paused phase", () => {
     const s = snapshot({

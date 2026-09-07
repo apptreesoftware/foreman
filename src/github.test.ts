@@ -147,13 +147,20 @@ describe("GitHub reads", () => {
     expect(calls.some((c) => c[1] === "issue" && c[2] === "list")).toBe(false);
     expect(calls.some((c) => c[1] === "issue" && c[2] === "view")).toBe(true);
   });
-  it("fetches the board once and reuses it", async () => {
+  it("fetches the board once per listIssues and reuses it in between", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, fakeExec(calls), false);
+    await gh.listIssues();
+    await gh.listBoard();
+    await gh.getIssue(93);
+    expect(calls.filter((c) => c[2] === "item-list")).toHaveLength(1);
+  });
+  it("re-reads the board on the next listIssues, so a hand board edit is seen (#249)", async () => {
     const calls: string[][] = [];
     const gh = new GitHub(cfg, fakeExec(calls), false);
     await gh.listIssues();
     await gh.listIssues();
-    await gh.listBoard();
-    expect(calls.filter((c) => c[2] === "item-list")).toHaveLength(1);
+    expect(calls.filter((c) => c[2] === "item-list")).toHaveLength(2);
   });
   it("re-reads the board after a status write", async () => {
     const calls: string[][] = [];

@@ -155,6 +155,15 @@ const web = await startWebServer({
     controller.wake();
     return `cap is now ${maxSessionsPerDay ?? `the configured ${cfg.maxSessionsPerDay}`}`;
   },
+  refresh: async () => {
+    // The sidebar cards are rebuilt by a tick from `listIssues`, which now re-reads the board
+    // itself; dropping the cache here as well covers the getIssue path, and waking the loop
+    // makes the tick happen now rather than at the end of the poll interval (#249).
+    gh.invalidateBoard();
+    controller.wake();
+    log("info", "project refresh requested");
+    return "project re-read; tick requested";
+  },
   ownerItems: () => store.get().board?.owner ?? [],
   phaseTasks: () => phaseTasks(store.get().board),
   setTaskModel: async (issue, model) => {

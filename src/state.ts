@@ -1,3 +1,4 @@
+import { adoptActions } from "./adopt.ts";
 import { reclaimActions, resumeAction } from "./claim.ts";
 import { blockActions, mergeActions, skipValidatorActions } from "./merge.ts";
 import { phaseActions } from "./phase.ts";
@@ -13,6 +14,8 @@ export function plan(s: Snapshot): Action[] {
   const resume = resumeAction(s);
   if (resume) return [resume];
   const out: Action[] = [
+    // Before the pick: an adopted issue lands on the board Ready, and the next tick can claim it.
+    ...adoptActions(s),
     ...mergeActions(s),
     ...skipValidatorActions(s),
     ...reclaimActions(s),

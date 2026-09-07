@@ -207,7 +207,14 @@ export class GitHub {
     };
   }
 
+  /**
+   * The tick's one full read: issues plus the board they sit on. It drops `boardCache` first, so a
+   * board change made by hand — `gh project item-add`, a Status edit in the UI — is seen by the
+   * next tick instead of surviving until the foreman's own next write or a restart (#249). The
+   * cache still serves every `getIssue`/`listBoard` for the rest of the tick.
+   */
   async listIssues(state: "open" | "all" = "open"): Promise<Issue[]> {
+    this.invalidateBoard();
     const raw = JSON.parse(
       await this.gh([
         "issue",

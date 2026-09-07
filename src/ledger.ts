@@ -29,6 +29,7 @@ export const fmt = {
     `session ${id} interrupted on ${host}: stopped by operator after ${minutes}m`,
   aborted: (host: string) => `released by ${host}: aborted by operator`,
   unblocked: (host: string) => `unblocked by owner via foreman@${host}`,
+  adopted: (host: string) => `adopted onto board by ${host}`,
 };
 
 const CLAIM =

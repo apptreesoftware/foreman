@@ -46,6 +46,7 @@ describe("web server", () => {
   const caps: (number | null)[] = [];
   const unblocked: number[] = [];
   const taskModels: string[] = [];
+  let refreshes = 0;
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
     t: `2026-09-04T13:27:0${i}.000Z`,
@@ -98,6 +99,10 @@ describe("web server", () => {
       caps.push(cap);
       return `cap is now ${cap ?? "the configured value"}`;
     },
+    refresh: async () => {
+      refreshes += 1;
+      return "project re-read; tick requested";
+    },
     phaseTasks: () => [
       { issue: 101, title: "One", status: "Ready", closed: false, model: null },
       { issue: 102, title: "Two", status: "In Progress", closed: false, model: "sonnet" },
@@ -121,6 +126,13 @@ describe("web server", () => {
     expect(await page.text()).toContain("<title>Foreman</title>");
     const s = await fetch(`${base}/api/status`);
     expect(await s.json()).toMatchObject({ daemon: "RUNNING", lastPlan: ["plan#10"] });
+  });
+  it("refreshes the project on demand, POST only (#249)", async () => {
+    const r = await fetch(`${base}/api/refresh`, { method: "POST" });
+    expect(await r.json()).toEqual({ ok: true, message: "project re-read; tick requested" });
+    expect(refreshes).toBe(1);
+    expect((await fetch(`${base}/api/refresh`)).status).toBe(405);
+    expect(refreshes).toBe(1);
   });
   it("computes next on demand", async () => {
     const r = await fetch(`${base}/api/next`);

@@ -728,6 +728,16 @@ export async function execute(
         `validator skipped by foreman@${cfg.host}: issue areas are infra/db/shared only`,
       );
       return "continue";
+    case "adopt": {
+      // The picker only reads Status Ready, so an agent-ready issue that nobody added to the
+      // board is invisible to it. Put it on the board, set it Ready, and say so on the issue so
+      // the change is not silent (#249).
+      const itemId = await gh.addToProject(action.issue);
+      await gh.setStatus(itemId, "Ready");
+      await gh.comment("issue", action.issue, fmt.adopted(`foreman@${cfg.host}`));
+      log("info", "adopted onto board", { issue: action.issue, status: "Ready" });
+      return "continue";
+    }
     case "block":
       await gh.addLabels("issue", action.issue, ["blocked"]);
       await gh.comment("issue", action.issue, `blocked by foreman@${cfg.host}: ${action.reason}`);

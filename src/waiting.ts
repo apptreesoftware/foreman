@@ -197,6 +197,20 @@ export function describeWaiting(s: Snapshot, i: WaitingInput): WaitItem[] {
         });
     }
   }
+  // `agent-ready` but parked in a Status the picker never reads. Backlog and Done are the two
+  // that no other line explains: Backlog is where the planner leaves a task whose dependencies
+  // were still open, and Done on an open issue is a stale write. In Progress and In Review are
+  // normal mid-flight states, so they stay quiet (#249).
+  for (const x of s.issues) {
+    if (x.state !== "OPEN" || isEpic(x.number) || !x.labels.includes("agent-ready")) continue;
+    if ((x.status !== "Backlog" && x.status !== "Done") || openClaim(x.comments)) continue;
+    out.push({
+      kind: "human",
+      subject: `#${x.number}`,
+      detail: `#${x.number} is agent-ready but Status ${x.status}`,
+      since: x.updatedAt,
+    });
+  }
   for (const x of s.issues) {
     const open = openClaim(x.comments);
     if (x.state === "OPEN" && open && open.claim.host !== i.host)

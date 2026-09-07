@@ -39,6 +39,8 @@ export interface WebDeps {
   setModel: (model: string) => Promise<string>;
   /** Sets the daily session cap the next tick enforces; null clears the override. */
   setCap: (maxSessionsPerDay: number | null) => Promise<string>;
+  /** Drops the cached project board and wakes the loop, so the page shows the board as it is now. */
+  refresh: () => Promise<string>;
   /** The open tasks of every phase on the board, as of the last tick; the task-model allowlist. */
   phaseTasks: () => PhaseTask[];
   /** Swaps the issue's `model:<name>` label; only called for a task `phaseTasks` lists (#259). */
@@ -166,6 +168,12 @@ export function createWebServer(d: WebDeps): http.Server {
         const parsed = CapRequestSchema.safeParse(await readJson(req));
         if (!parsed.success) return json(res, 400, { ok: false, error: "bad cap" });
         return json(res, 200, { ok: true, message: await d.setCap(parsed.data.maxSessionsPerDay) });
+      }
+      if (url === "/api/refresh") {
+        // No body and no allowlist: the button only re-reads GitHub and wakes the loop, so there
+        // is nothing to validate and nothing it can write (#249).
+        if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
+        return json(res, 200, { ok: true, message: await d.refresh() });
       }
       const m = /^\/api\/(stop|abort|go)$/.exec(url);
       if (m) {

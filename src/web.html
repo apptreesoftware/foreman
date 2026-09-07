@@ -140,6 +140,7 @@
       <button id="stop" class="danger" type="button">Stop</button>
       <button id="abort" class="danger" type="button">Abort</button>
       <button id="next" type="button">Compute next</button>
+      <button id="refresh" type="button" title="Re-read the project board from GitHub and run a tick now">Refresh project</button>
       <span id="msg"></span>
     </div>
   </header>
@@ -467,6 +468,14 @@
   }
   for (const cmd of ["stop", "abort"]) $(cmd).onclick = () => { if (armed(cmd, $(cmd))) act(cmd); };
   $("go").onclick = () => act("go");
+  // Board edits made by hand (Status, item-add, labels) reach the cards on the next tick; this
+  // asks for that tick now instead of waiting out the poll interval (#249).
+  $("refresh").onclick = async () => {
+    $("msg").textContent = "refreshing…";
+    const j = await (await fetch("/api/refresh", { method: "POST" })).json();
+    $("msg").textContent = j.ok ? j.message : `error: ${j.error}`;
+    refresh();
+  };
   $("next").onclick = async () => {
     $("nextOut").hidden = false; $("nextOut").textContent = "computing…";
     const j = await (await fetch("/api/next")).json();

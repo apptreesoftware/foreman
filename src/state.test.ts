@@ -19,6 +19,20 @@ describe("plan", () => {
     expect(actions).toHaveLength(1);
     expect(actions[0]?.type).toBe("resume");
   });
+  it("adopts an off-board agent-ready issue before it picks anything (#249)", () => {
+    const actions = plan(
+      snapshot({
+        issues: [
+          issue({ number: 7, itemId: null, status: null }),
+          issue({ number: 8, labels: ["phase:1", "agent-ready", "size:S"] }),
+        ],
+      }),
+    );
+    expect(actions[0]).toEqual({ type: "adopt", issue: 7 });
+    expect(actions.filter((a) => a.type === "claim")).toEqual([
+      { type: "claim", issue: 8, role: "builder", pr: null, round: 1 },
+    ]);
+  });
   it("emits one claim for the best candidate", () => {
     const actions = plan(
       snapshot({
