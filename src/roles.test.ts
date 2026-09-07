@@ -73,4 +73,29 @@ describe("role prompts carry the .claude/ denial convention", () => {
       expect(text, role).toContain("decision #165");
     }
   });
+
+  /**
+   * The other half of #165: `gh … --body` with embedded newlines is denied, which cost builders a
+   * turn on every PR while the prompt still prescribed the heredoc form. `--body-file` and a
+   * gitignored scratch file are what get through.
+   */
+  it("every role is told to pass a multi-line body as a file", () => {
+    for (const role of roles) {
+      const text = read(role);
+      expect(text, role).toContain("Never pass a multi-line body inline");
+      expect(text, role).toContain(".gh-body.md");
+      expect(text, role).toContain("--body-file");
+    }
+  });
+
+  it("no role still prescribes the heredoc body that the allowlist denies", () => {
+    for (const role of roles) {
+      // Only the ground rule may name the form, and it names it as the thing not to do.
+      const prescriptions = read(role)
+        .split("\n")
+        .filter((line) => line.includes('--body "$(cat'))
+        .filter((line) => !line.includes("Never pass a multi-line body inline"));
+      expect(prescriptions, role).toEqual([]);
+    }
+  });
 });

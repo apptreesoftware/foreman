@@ -60,7 +60,6 @@ describe(".claude/headless-settings.json headless allowlist", () => {
       "Read(~/.aws/**)",
       "Read(~/.claude.json)",
       "Bash(gh api *)",
-      "Bash(cat ~/.ssh*)",
     ])
       expect(deny, rule).toContain(rule);
   });
@@ -73,12 +72,43 @@ describe(".claude/headless-settings.json headless allowlist", () => {
     expect(allow.some((r) => r.startsWith("Bash(gh api"))).toBe(false);
   });
   it("protects only foreman.json under ~/.tone_tonic, not the whole directory", () => {
-    expect(deny).toContain("Bash(cat ~/.tone_tonic/foreman.json*)");
-    expect(deny).toContain("Bash(cp ~/.tone_tonic/foreman.json*)");
-    expect(deny).toContain("Bash(mv ~/.tone_tonic/foreman.json*)");
-    expect(deny).not.toContain("Bash(cat ~/.tone_tonic*)");
-    expect(deny).not.toContain("Bash(cp ~/.tone_tonic*)");
-    expect(deny).not.toContain("Bash(mv ~/.tone_tonic*)");
+    expect(deny).toContain("Read(~/.tone_tonic/foreman.json)");
+    expect(deny.some((r) => r.startsWith("Read(~/.tone_tonic/**"))).toBe(false);
+  });
+
+  /**
+   * #171. The deny list used to name `Bash(cat ~/.ssh*)`, `Bash(cp …)`, `Bash(mv …)` and the
+   * same three for `~/.aws`, `~/.claude` and `foreman.json` — one rule per command that might
+   * print a file. That enumeration cannot hold: `sed -n`, `grep`, `head`, `tail` and `diff` are
+   * all allowlisted and all read a file just as well, an absolute path or a leading `../` evades
+   * every `~/`-prefixed pattern, and each new allowlisted command would need three more rules.
+   *
+   * The decision on #171 was to stop pretending: the exposure is **accepted and documented**
+   * rather than papered over. A role session runs as the owner's user with `git` and `gh`
+   * credentials already in force, so the machine's secrets are within its reach by construction;
+   * the deny list's job is to stop the destructive and the irreversible, not to be a sandbox.
+   * The `Read`/`Edit`/`Write` rules below are kept because those are tool-scoped and do hold.
+   *
+   * This test exists so the enumeration is not quietly reintroduced one command at a time.
+   */
+  it("does not enumerate per-command denies for the sensitive paths (#171)", () => {
+    const enumerated = deny.filter((rule) =>
+      /^Bash\((cat|cp|mv|sed|grep|head|tail|diff|less|more|xxd|od|strings) /.test(rule),
+    );
+    expect(enumerated).toEqual([]);
+  });
+
+  it("keeps the tool-scoped denies, which are the ones that actually hold", () => {
+    for (const rule of [
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.claude.json)",
+      "Read(~/.claude/**)",
+      "Read(~/.tone_tonic/foreman.json)",
+      "Edit(~/.claude/**)",
+      "Write(~/.claude/**)",
+    ])
+      expect(deny, rule).toContain(rule);
   });
 });
 
