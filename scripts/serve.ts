@@ -31,8 +31,8 @@ export function serveConfig(env: NodeJS.ProcessEnv): {
       WEB_ORIGIN: ports.webUrl,
       // A served api never has ANTHROPIC_API_KEY (stripped below), so it answers the organize
       // job from the recorded fixture (#43); without this, `validateEnv` refuses to boot a
-      // worker that would need the key. Set ORGANIZE_FIXTURE yourself to override.
-      ORGANIZE_FIXTURE: env.ORGANIZE_FIXTURE ?? "1",
+      // worker that would need the key. Set AI_FIXTURE yourself to override.
+      AI_FIXTURE: env.AI_FIXTURE ?? "1",
     },
     webEnv: { TONE_WEB_PORT: String(ports.web) },
   };

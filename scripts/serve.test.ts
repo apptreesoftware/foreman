@@ -9,7 +9,7 @@ describe("serveConfig", () => {
     expect(c.apiEnv).toEqual({
       PORT: "3005",
       WEB_ORIGIN: "http://localhost:8082",
-      ORGANIZE_FIXTURE: "1",
+      AI_FIXTURE: "1",
     });
     expect(c.webEnv).toEqual({ TONE_WEB_PORT: "8082" });
   });
@@ -21,14 +21,14 @@ describe("serveConfig", () => {
     expect(c.apiEnv).toEqual({
       PORT: "3105",
       WEB_ORIGIN: "http://localhost:8182",
-      ORGANIZE_FIXTURE: "1",
+      AI_FIXTURE: "1",
     });
     expect(c.webEnv).toEqual({ TONE_WEB_PORT: "8182" });
   });
 
   it("runs the served api on the organize fixture unless told otherwise", () => {
     // The key is stripped from a served api, so a worker off the fixture could never boot (#43).
-    expect(serveConfig({}).apiEnv.ORGANIZE_FIXTURE).toBe("1");
-    expect(serveConfig({ ORGANIZE_FIXTURE: "0" }).apiEnv.ORGANIZE_FIXTURE).toBe("0");
+    expect(serveConfig({}).apiEnv.AI_FIXTURE).toBe("1");
+    expect(serveConfig({ AI_FIXTURE: "0" }).apiEnv.AI_FIXTURE).toBe("0");
   });
 });
