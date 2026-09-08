@@ -78,6 +78,24 @@ describe("actions", () => {
     expect(skipValidatorActions(s)).toEqual([{ type: "skip_validator", pr: 3, issue: 20 }]);
     expect(skipValidatorActions(snapshot({ issues: [inReview()], prs: s.prs }))).toEqual([]);
   });
+  it("blockActions ends the line for a PR whose CI stays red (#362)", () => {
+    const sha = "1111111111111111111111111111111111111111";
+    const tired = inReview({
+      comments: [
+        comment(fmt.claimed("mac-a", hoursAgo(9), "builder", 2), hoursAgo(9)),
+        comment(fmt.finished("x", "mac-a", "pr_opened", 1, 0, 1), hoursAgo(8)),
+        comment(fmt.ciRerun("mac-a", sha), hoursAgo(7)),
+      ],
+    });
+    const red = pr({ issue: 20, labels: ready, checks: "failure" as const, headSha: sha });
+    expect(blockActions(snapshot({ issues: [tired], prs: [red] }))).toEqual([
+      { type: "block", issue: 20, reason: "CI still red after a rerun and 2 fix rounds" },
+    ]);
+    // Still owed its free rerun: the foreman reruns rather than blocks.
+    const owed = inReview({ comments: tired.comments.slice(0, 2) });
+    expect(blockActions(snapshot({ issues: [owed], prs: [red] }))).toEqual([]);
+  });
+
   it("blockActions blocks a task that needs a third fix round", () => {
     const tired = inReview({
       comments: [

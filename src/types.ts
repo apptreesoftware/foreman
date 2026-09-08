@@ -30,6 +30,11 @@ export interface PullRequest {
   title: string;
   body: string;
   headRefName: string;
+  /**
+   * The head commit. A CI rerun is budgeted per sha (#362), so a new push starts the count over
+   * on its own without anything having to remember what the last one was.
+   */
+  headSha: string;
   labels: string[];
   isDraft: boolean;
   checks: CheckState;
@@ -68,6 +73,8 @@ export interface Snapshot {
 export type Action =
   | { type: "resume"; issue: number; role: Role; sessionId: string | null; pr: number | null }
   | { type: "merge"; pr: number; issue: number }
+  /** Rerun the failed jobs of a red PR's newest run. Costs no session, only a `gh` call (#362). */
+  | { type: "ci_rerun"; pr: number; issue: number; sha: string }
   | { type: "skip_validator"; pr: number; issue: number }
   | {
       type: "claim";

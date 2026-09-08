@@ -58,6 +58,10 @@ function fakeGh(issues: Issue[]) {
     editBody: rec("editBody"),
     closeIssue: rec("closeIssue"),
     mergePR: rec("mergePR"),
+    rerunFailedChecks: async (sha: string) => {
+      calls.push(`rerunFailedChecks ${sha}`);
+      return 99;
+    },
     createIssue: async () => 999,
     addSubIssue: rec("addSubIssue"),
     viewerLogin: async () => "matthewtsmith",
@@ -212,6 +216,23 @@ describe("execute", () => {
     expect(calls).toEqual([
       "setStatus PVTI_new Ready",
       `comment issue 7 ${fmt.adopted("foreman@mac-a")}`,
+    ]);
+  });
+  it("ci_rerun: reruns the failed jobs and records the sha, starting no session (#362)", async () => {
+    const sha = "1111111111111111111111111111111111111111";
+    const i = issue({ number: 1, status: "In Review" });
+    const { gh, calls } = fakeGh([i]);
+    const r = await execute(
+      { type: "ci_rerun", pr: 9, issue: 1, sha },
+      ctx({ gh }),
+      snapshot({ issues: [i] }),
+    );
+    // "noop": nothing spends a claude session here, and the checks stay pending for minutes, so
+    // the tick must not treat the rerun as work worth an immediate re-tick.
+    expect(r).toBe("noop");
+    expect(calls).toEqual([
+      `rerunFailedChecks ${sha}`,
+      `comment issue 1 ${fmt.ciRerun("mac-a", sha)}`,
     ]);
   });
   it("merge: merges, comments, closes, marks Done, removes worktree", async () => {

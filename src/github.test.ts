@@ -38,6 +38,7 @@ function fakeExec(calls: string[][]): Exec {
       return { code: 0, stdout: '{"id":"PVT_kwHOAIlXYM4BiXbz"}', stderr: "" };
     if (a.includes("/sub_issues"))
       return { code: 0, stdout: '[{"number":125},{"number":126}]', stderr: "" };
+    if (a.includes("/actions/runs?head_sha=")) return { code: 0, stdout: "77\n", stderr: "" };
     if (a.startsWith("api user"))
       return { code: 0, stdout: '{"login":"matthewtsmith"}', stderr: "" };
     return { code: 0, stdout: "", stderr: "" };
@@ -127,6 +128,8 @@ describe("GitHub reads", () => {
     }
     // GitHub's own verdict, so a conflicting branch gets a rebase job instead of a merge (#237).
     expect(prs[0]?.mergeable).toBe("CONFLICTING");
+    // The head commit: a CI rerun is budgeted per sha (#362).
+    expect(prs[0]?.headSha).toMatch(/^[0-9a-f]{40}$/);
   });
   it("resolves status option ids from field-list", async () => {
     const gh = new GitHub(cfg, fakeExec([]), false);
@@ -198,6 +201,35 @@ describe("GitHub writes", () => {
       "--squash",
       "--delete-branch",
     ]);
+  });
+  it("rerunFailedChecks posts to the newest run for the sha (#362)", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, fakeExec(calls), false);
+    const sha = "aaaa1111bbbb2222cccc3333dddd4444eeee5555";
+    expect(await gh.rerunFailedChecks(sha)).toBe(77);
+    expect(calls[0]).toEqual([
+      "gh",
+      "api",
+      `repos/${cfg.repo}/actions/runs?head_sha=${sha}&per_page=1`,
+      "--jq",
+      ".workflow_runs[0].id // empty",
+    ]);
+    expect(calls[1]).toEqual([
+      "gh",
+      "api",
+      "--method",
+      "POST",
+      `repos/${cfg.repo}/actions/runs/77/rerun-failed-jobs`,
+    ]);
+  });
+  it("rerunFailedChecks answers null when the commit has no run, and reruns nothing", async () => {
+    const calls: string[][] = [];
+    const exec: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return { code: 0, stdout: "", stderr: "" };
+    };
+    expect(await new GitHub(cfg, exec, false).rerunFailedChecks("deadbeef")).toBeNull();
+    expect(calls).toHaveLength(1);
   });
   it("setStatus edits the project item with the option id", async () => {
     const calls: string[][] = [];

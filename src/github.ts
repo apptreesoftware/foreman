@@ -260,13 +260,14 @@ export class GitHub {
         "--limit",
         "100",
         "--json",
-        "number,title,body,headRefName,labels,isDraft,mergeable,statusCheckRollup,updatedAt",
+        "number,title,body,headRefName,headRefOid,labels,isDraft,mergeable,statusCheckRollup,updatedAt",
       ]),
     ) as Array<{
       number: number;
       title: string;
       body: string;
       headRefName: string;
+      headRefOid?: string;
       isDraft: boolean;
       mergeable?: string;
       updatedAt: string;
@@ -278,6 +279,7 @@ export class GitHub {
       title: p.title,
       body: p.body ?? "",
       headRefName: p.headRefName,
+      headSha: p.headRefOid ?? "",
       labels: names(p.labels),
       isDraft: p.isDraft,
       checks: parseChecks(p.statusCheckRollup ?? []),
@@ -285,6 +287,30 @@ export class GitHub {
       issue: parseClosesIssue(p.body ?? ""),
       updatedAt: p.updatedAt,
     }));
+  }
+
+  /**
+   * Reruns the failed jobs of the newest workflow run for `sha`, and answers with its run id (or
+   * null when GitHub has no run for that commit). REST rather than GraphQL on purpose: the
+   * tick's GraphQL budget is for the board reads, and this only fires on a red PR (#362).
+   */
+  async rerunFailedChecks(sha: string): Promise<number | null> {
+    const found = (
+      await this.gh([
+        "api",
+        `repos/${this.cfg.repo}/actions/runs?head_sha=${sha}&per_page=1`,
+        "--jq",
+        ".workflow_runs[0].id // empty",
+      ])
+    ).trim();
+    if (!found) return null;
+    await this.write([
+      "api",
+      "--method",
+      "POST",
+      `repos/${this.cfg.repo}/actions/runs/${found}/rerun-failed-jobs`,
+    ]);
+    return Number(found);
   }
 
   async subIssues(epic: number): Promise<number[]> {
@@ -512,6 +538,7 @@ export type GitHubApi = Pick<
   | "editBody"
   | "closeIssue"
   | "mergePR"
+  | "rerunFailedChecks"
   | "createIssue"
   | "addSubIssue"
   | "viewerLogin"

@@ -1,4 +1,5 @@
 import { adoptActions } from "./adopt.ts";
+import { ciActions } from "./ci.ts";
 import { reclaimActions, resumeAction } from "./claim.ts";
 import { blockActions, mergeActions, skipValidatorActions } from "./merge.ts";
 import { phaseActions } from "./phase.ts";
@@ -17,6 +18,9 @@ export function plan(s: Snapshot): Action[] {
     // Before the pick: an adopted issue lands on the board Ready, and the next tick can claim it.
     ...adoptActions(s),
     ...mergeActions(s),
+    // Before the pick: a rerun that turns the checks green makes the next tick's merge possible
+    // and saves the builder round the picker would otherwise queue (#362).
+    ...ciActions(s),
     ...skipValidatorActions(s),
     ...reclaimActions(s),
     ...blockActions(s),

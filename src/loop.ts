@@ -720,6 +720,22 @@ export async function execute(
       });
       return "continue";
     }
+    case "ci_rerun": {
+      // Free recovery for a red PR: rerun the failed jobs, record it on the ledger so the budget
+      // is spent whatever happens next, and let the following ticks watch the checks (#362).
+      const runId = await gh.rerunFailedChecks(action.sha);
+      await gh.comment("issue", action.issue, fmt.ciRerun(cfg.host, action.sha));
+      log("info", runId === null ? "no workflow run to rerun" : "ci rerun requested", {
+        issue: action.issue,
+        pr: action.pr,
+        sha: action.sha,
+        runId,
+      });
+      // "noop", not "continue": the rerun changed nothing this tick can act on — the checks are
+      // pending for the next several minutes — and an immediate re-tick would spend ~310 GraphQL
+      // reads re-reading a board that has not moved. The normal poll interval is soon enough.
+      return "noop";
+    }
     case "skip_validator":
       await gh.addLabels("pr", action.pr, ["validator:skipped"]);
       await gh.comment(

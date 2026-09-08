@@ -24,6 +24,7 @@ export const fmt = {
   released: (host: string, reason: string) => `released by ${host}: ${reason}`,
   reclaimed: (from: string, by: string, at: string) => `reclaimed from ${from} by ${by} at ${at}`,
   merged: (host: string) => `merged by foreman@${host}`,
+  ciRerun: (host: string, sha: string) => `ci rerun by foreman@${host} for ${sha}`,
   planApplied: (host: string) => `plan applied by foreman@${host}`,
   interrupted: (id: string, host: string, minutes: number) =>
     `session ${id} interrupted on ${host}: stopped by operator after ${minutes}m`,
@@ -36,6 +37,8 @@ const CLAIM =
   /^claimed by (\S+) at (\S+) role=(builder|reviewer|validator|phase-closer|planner) round=(\d+)/;
 const SESSION = /^session ([0-9a-f-]{36}) on (\S+) role=(\S+) attempt=(\d+)/;
 const TERMINAL = /^(session \S+ finished|released by|reclaimed from|merged by foreman@)/;
+/** Deliberately not TERMINAL: a rerun happens beside a claim and must not close one. */
+const CI_RERUN = /^ci rerun by foreman@\S+ for ([0-9a-f]{7,40})\b/;
 
 export function parseClaim(body: string): Claim | null {
   const m = CLAIM.exec(body.trim());
@@ -77,6 +80,15 @@ export function fixRound(comments: Comment[]): number {
       .filter((c) => c?.role === "builder")
       .map((c) => (c as Claim).round),
   );
+}
+
+/**
+ * How many times the foreman has already rerun CI for this head commit. The ledger is the only
+ * record — the daemon restarts, and a rerun that is forgotten is a rerun that repeats (#362).
+ */
+export function ciRerunCount(comments: Comment[], sha: string): number {
+  if (!sha) return 0;
+  return comments.filter((c) => CI_RERUN.exec(c.body.trim())?.[1] === sha).length;
 }
 
 export function lastActivityAt(comments: Comment[]): string | null {

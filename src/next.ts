@@ -40,6 +40,8 @@ function explain(a: Action, s: Snapshot): string {
       return `${actionName(a)}: reclaim #${a.issue} from ${a.fromHost} (idle for 2h)`;
     case "merge":
       return `${actionName(a)}: squash-merge PR #${a.pr} (CI green, approved, validated)`;
+    case "ci_rerun":
+      return `${actionName(a)}: rerun the failed jobs of PR #${a.pr} at ${a.sha.slice(0, 7)} (no session, one free retry per push)`;
     case "skip_validator":
       return `${actionName(a)}: label PR #${a.pr} validator:skipped (infra/db/shared only)`;
     case "block":

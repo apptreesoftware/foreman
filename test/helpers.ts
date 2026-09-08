@@ -32,6 +32,7 @@ export function pr(over: Partial<PullRequest> = {}): PullRequest {
     title: `PR ${number}`,
     body: `Closes #${over.issue ?? 1}`,
     headRefName: `feat/${over.issue ?? 1}-x`,
+    headSha: `${String(number).padStart(4, "0")}beefbeefbeefbeefbeefbeefbeefbeefbeef`.slice(0, 40),
     labels: [],
     isDraft: false,
     checks: "success",

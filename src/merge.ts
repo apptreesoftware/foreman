@@ -1,5 +1,5 @@
 import { fixRound, openClaim } from "./ledger.ts";
-import { MAX_FIX_ROUNDS, validatorRequired } from "./pick.ts";
+import { ciRerunsSpent, MAX_FIX_ROUNDS, validatorRequired } from "./pick.ts";
 import type { Action, Issue, PullRequest, Snapshot } from "./types.ts";
 
 export { VALIDATOR_EXEMPT_AREAS, validatorRequired } from "./pick.ts";
@@ -51,12 +51,19 @@ export function blockActions(s: Snapshot): Action[] {
         issue.status === "In Review" &&
         !issue.labels.includes("blocked") &&
         !openClaim(issue.comments) &&
-        (pr.labels.includes("reviewer:changes") || pr.labels.includes("validator:failed")) &&
+        (pr.labels.includes("reviewer:changes") ||
+          pr.labels.includes("validator:failed") ||
+          // Red CI that survived its rerun and its fix rounds ends here too, or the PR would sit
+          // at idle for ever the way #344 did (#362).
+          (pr.checks === "failure" && ciRerunsSpent(pr, issue))) &&
         fixRound(issue.comments) >= MAX_FIX_ROUNDS,
     )
-    .map(({ issue }) => ({
+    .map(({ pr, issue }) => ({
       type: "block",
       issue: issue.number,
-      reason: `reviewer/validator requested changes after ${MAX_FIX_ROUNDS} fix rounds`,
+      reason:
+        pr.checks === "failure" && ciRerunsSpent(pr, issue)
+          ? `CI still red after a rerun and ${MAX_FIX_ROUNDS} fix rounds`
+          : `reviewer/validator requested changes after ${MAX_FIX_ROUNDS} fix rounds`,
     }));
 }

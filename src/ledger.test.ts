@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { comment, hoursAgo } from "../test/helpers.ts";
-import { fixRound, fmt, lastActivityAt, openClaim, parseClaim } from "./ledger.ts";
+import { ciRerunCount, fixRound, fmt, lastActivityAt, openClaim, parseClaim } from "./ledger.ts";
 
 describe("ledger", () => {
   it("round-trips a claim", () => {
@@ -67,5 +67,30 @@ describe("operator interrupt comments", () => {
     const released = comment(fmt.aborted("mac-a"), "2026-09-03T10:12:00Z");
     expect(fmt.aborted("mac-a")).toBe("released by mac-a: aborted by operator");
     expect(openClaim([claimed, session, released])).toBeNull();
+  });
+});
+
+describe("ci rerun ledger (#362)", () => {
+  const sha = "1111111111111111111111111111111111111111";
+  const other = "2222222222222222222222222222222222222222";
+
+  it("counts only the reruns recorded for this head commit", () => {
+    const cs = [
+      comment(fmt.ciRerun("mac-a", other)),
+      comment(fmt.ciRerun("mac-a", sha)),
+      comment(fmt.ciRerun("mac-b", sha)),
+    ];
+    expect(ciRerunCount(cs, sha)).toBe(2);
+    expect(ciRerunCount(cs, other)).toBe(1);
+    expect(ciRerunCount(cs, "3333333333333333333333333333333333333333")).toBe(0);
+    expect(ciRerunCount(cs, "")).toBe(0);
+  });
+
+  it("does not close an open claim: a rerun happens beside a session, not instead of one", () => {
+    const cs = [
+      comment(fmt.claimed("mac-a", "2026-09-03T10:00:00Z", "builder", 1)),
+      comment(fmt.ciRerun("mac-a", sha)),
+    ];
+    expect(openClaim(cs)?.claim.role).toBe("builder");
   });
 });
