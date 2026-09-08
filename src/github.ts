@@ -1,16 +1,7 @@
 import type { Exec } from "./exec.ts";
 import { log } from "./log.ts";
 import { MODEL_LABEL_PREFIX, ModelSchema } from "./state-file.ts";
-import type {
-  BoardItem,
-  CheckState,
-  Comment,
-  Issue,
-  Mergeable,
-  PullRequest,
-  Size,
-  Status,
-} from "./types.ts";
+import type { CheckState, Comment, Issue, Mergeable, PullRequest, Size, Status } from "./types.ts";
 
 export interface GhConfig {
   repo: string;
@@ -107,17 +98,81 @@ function names(labels: Array<{ name: string }> | undefined): string[] {
   return (labels ?? []).map((l) => l.name);
 }
 
-const ISSUE_FIELDS = "number,title,body,state,labels,assignees,comments,updatedAt";
+/**
+ * Everything the foreman knows about an issue, including where it sits on the board. The page
+ * sizes are the ones `gh issue list --json` uses itself, so the ledger window is unchanged
+ * (#387) — `planApplied` and `ciRerunCount` read comments an arbitrary distance back.
+ */
+const ISSUE_NODE = `
+    number
+    title
+    body
+    state
+    updatedAt
+    labels(first: 100) { nodes { name } }
+    assignees(first: 100) { nodes { login } }
+    comments(last: 100) { nodes { author { login } body createdAt } }
+    projectItems(first: 5, includeArchived: false) {
+      nodes {
+        id
+        project { number }
+        fieldValueByName(name: "Status") {
+          ... on ProjectV2ItemFieldSingleSelectValue { name }
+        }
+      }
+    }`;
+
+/**
+ * The board Status and item id come from the issue's own `projectItems` rather than from a
+ * separate `gh project item-list`, which cost 306 of the tick's 310 GraphQL points: it paged
+ * every field value of every item on the board — closed issues included — to read three fields
+ * off the handful the foreman had just fetched (#387). This query costs 5.
+ *
+ * `states` is baked into the string rather than passed as a variable because `gh api graphql`
+ * has no way to send a list argument.
+ */
+const issuesQuery = (state: "open" | "all"): string => `
+query($owner: String!, $name: String!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    issues(
+      first: 100
+      after: $cursor
+      ${state === "open" ? "states: OPEN" : ""}
+      orderBy: { field: CREATED_AT, direction: DESC }
+    ) {
+      pageInfo { hasNextPage endCursor }
+      nodes {${ISSUE_NODE}
+      }
+    }
+  }
+}`;
+
+const ISSUE_QUERY = `
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {${ISSUE_NODE}
+    }
+  }
+}`;
 
 interface RawIssue {
   number: number;
   title: string;
-  body: string;
+  body: string | null;
   state: "OPEN" | "CLOSED";
   updatedAt: string;
-  labels: Array<{ name: string }>;
-  assignees: Array<{ login: string }>;
-  comments: Array<{ author: { login: string }; body: string; createdAt: string }>;
+  labels: { nodes: Array<{ name: string }> };
+  assignees: { nodes: Array<{ login: string }> };
+  comments: {
+    nodes: Array<{ author: { login: string } | null; body: string; createdAt: string }>;
+  };
+  projectItems: {
+    nodes: Array<{
+      id: string;
+      project: { number: number } | null;
+      fieldValueByName: { name?: string } | null;
+    }>;
+  };
 }
 
 export class GitHub {
@@ -126,12 +181,6 @@ export class GitHub {
     projectId: string;
     options: Record<string, string>;
   } | null = null;
-  /**
-   * `project item-list` is the most expensive read the foreman makes (GraphQL, paged 100 at a
-   * time) and every issue read needs it for Status and item id. One copy per tick, dropped by
-   * any write that changes the board (#192).
-   */
-  private boardCache: BoardItem[] | null = null;
 
   constructor(
     private readonly cfg: GhConfig,
@@ -158,79 +207,65 @@ export class GitHub {
     return (JSON.parse(await this.gh(["api", "user"])) as { login: string }).login;
   }
 
-  /** Drops the cached board; call after any write that changes an item's status or membership. */
-  invalidateBoard(): void {
-    this.boardCache = null;
+  /** `owner`/`name` for the repository query; `cfg.owner` owns the project, not necessarily the repo. */
+  private repoArgs(): string[] {
+    const [owner, name] = this.cfg.repo.split("/");
+    return ["-f", `owner=${owner}`, "-f", `name=${name}`];
   }
 
-  async listBoard(): Promise<BoardItem[]> {
-    if (this.boardCache) return this.boardCache;
-    const out = JSON.parse(
-      await this.gh([
-        "project",
-        "item-list",
-        String(this.cfg.project),
-        "--owner",
-        this.cfg.owner,
-        "--format",
-        "json",
-        "--limit",
-        "500",
-      ]),
-    ) as {
-      items: Array<{ id: string; status?: string; content?: { number?: number; type?: string } }>;
-    };
-    this.boardCache = out.items
-      .filter((i) => i.content?.type === "Issue" && typeof i.content.number === "number")
-      .map((i) => ({
-        itemId: i.id,
-        issue: i.content?.number as number,
-        status: STATUSES.includes(i.status as Status) ? (i.status as Status) : null,
-      }));
-    return this.boardCache;
+  private graphql(query: string, args: string[]): Promise<string> {
+    return this.gh(["api", "graphql", "-f", `query=${query}`, ...this.repoArgs(), ...args]);
   }
 
-  private toIssue(i: RawIssue, b: BoardItem | undefined): Issue {
+  private toIssue(i: RawIssue): Issue {
+    // An issue can sit on several projects; only this foreman's board decides Status and item id.
+    // No entry at all is the off-board case, which reads exactly as a board miss did before.
+    const item = i.projectItems.nodes.find((p) => p.project?.number === this.cfg.project);
+    const status = item?.fieldValueByName?.name;
     return {
       number: i.number,
       title: i.title,
       body: i.body ?? "",
       state: i.state,
-      labels: names(i.labels),
-      assignees: (i.assignees ?? []).map((a) => a.login),
-      comments: (i.comments ?? []).map(
+      labels: i.labels.nodes.map((l) => l.name),
+      assignees: i.assignees.nodes.map((a) => a.login),
+      comments: i.comments.nodes.map(
         (c): Comment => ({ author: c.author?.login ?? "", body: c.body, createdAt: c.createdAt }),
       ),
       updatedAt: i.updatedAt,
-      status: b?.status ?? null,
-      itemId: b?.itemId ?? null,
+      status: STATUSES.includes(status as Status) ? (status as Status) : null,
+      itemId: item?.id ?? null,
     };
   }
 
   /**
-   * The tick's one full read: issues plus the board they sit on. It drops `boardCache` first, so a
-   * board change made by hand — `gh project item-add`, a Status edit in the UI — is seen by the
-   * next tick instead of surviving until the foreman's own next write or a restart (#249). The
-   * cache still serves every `getIssue`/`listBoard` for the rest of the tick.
+   * The tick's one full read: issues, their comments and their board Status, in a single query.
+   * There is no board cache to go stale — every issue carries its own live Status, so a Status
+   * edit made by hand is seen by the next tick (#249) without a second read (#387).
    */
   async listIssues(state: "open" | "all" = "open"): Promise<Issue[]> {
-    this.invalidateBoard();
-    const raw = JSON.parse(
-      await this.gh([
-        "issue",
-        "list",
-        "--repo",
-        this.cfg.repo,
-        "--state",
-        state,
-        "--limit",
-        "500",
-        "--json",
-        ISSUE_FIELDS,
-      ]),
-    ) as RawIssue[];
-    const board = new Map((await this.listBoard()).map((b) => [b.issue, b]));
-    return raw.map((i) => this.toIssue(i, board.get(i.number)));
+    const query = issuesQuery(state);
+    const out: Issue[] = [];
+    let cursor: string | null = null;
+    for (;;) {
+      const page: string[] = cursor ? ["-f", `cursor=${cursor}`] : [];
+      const conn = (
+        JSON.parse(await this.graphql(query, page)) as {
+          data: {
+            repository: {
+              issues: {
+                pageInfo: { hasNextPage: boolean; endCursor: string | null };
+                nodes: RawIssue[];
+              };
+            };
+          };
+        }
+      ).data.repository.issues;
+      for (const n of conn.nodes) out.push(this.toIssue(n));
+      // `endCursor` is null on an empty page; without that guard the loop would re-read page one.
+      if (!conn.pageInfo.hasNextPage || !conn.pageInfo.endCursor) return out;
+      cursor = conn.pageInfo.endCursor;
+    }
   }
 
   /**
@@ -239,13 +274,13 @@ export class GitHub {
    * spent the hourly GraphQL budget (#192).
    */
   async getIssue(n: number): Promise<Issue> {
-    const raw = JSON.parse(
-      await this.gh(["issue", "view", String(n), "--repo", this.cfg.repo, "--json", ISSUE_FIELDS]),
-    ) as RawIssue;
-    return this.toIssue(
-      raw,
-      (await this.listBoard()).find((b) => b.issue === n),
-    );
+    const raw = (
+      JSON.parse(await this.graphql(ISSUE_QUERY, ["-F", `number=${n}`])) as {
+        data: { repository: { issue: RawIssue | null } };
+      }
+    ).data.repository.issue;
+    if (!raw) throw new Error(`issue #${n} not found in ${this.cfg.repo}`);
+    return this.toIssue(raw);
   }
 
   async listOpenPRs(): Promise<PullRequest[]> {
@@ -386,7 +421,6 @@ export class GitHub {
       "--single-select-option-id",
       opt,
     ]);
-    this.invalidateBoard();
   }
 
   async addToProject(issue: number): Promise<string> {
@@ -407,7 +441,6 @@ export class GitHub {
         "json",
       ]),
     ) as { id: string };
-    this.invalidateBoard();
     return out.id;
   }
 

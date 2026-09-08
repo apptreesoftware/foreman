@@ -865,6 +865,28 @@ export interface TickOutcome {
   didWork: boolean;
   /** The last action that counted as work, for the log line; null when none did. */
   action: Action["type"] | null;
+  /**
+   * What GitHub looked like this tick, for the idle backoff to compare against the last one.
+   * Absent when the tick never got as far as a snapshot — a parked daemon keeps polling at
+   * `pollSeconds` so that un-parking it is noticed promptly (#387).
+   */
+  fingerprint?: string;
+}
+
+/**
+ * Everything a tick would react to, in one string. Issue `updatedAt` alone is not enough: moving
+ * a card on the board does not touch it, so Status is in here too. PR head sha, checks, mergeable
+ * and labels cover a CI run going green and a reviewer's label landing.
+ */
+export function snapshotFingerprint(s: Snapshot): string {
+  const issues = s.issues.map((i) => `${i.number}|${i.updatedAt}|${i.status ?? ""}`).sort();
+  const prs = s.prs
+    .map(
+      (p) =>
+        `${p.number}|${p.updatedAt}|${p.headSha}|${p.checks}|${p.mergeable}|${p.labels.join(",")}`,
+    )
+    .sort();
+  return [...issues, "--", ...prs].join("\n");
 }
 
 export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
@@ -949,7 +971,7 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
       betweenTicks: budget.betweenTicks,
     });
   }
-  return { didWork, action: worked };
+  return { didWork, action: worked, fingerprint: snapshotFingerprint(snapshot) };
 }
 
 /**
@@ -964,6 +986,23 @@ export function backoffSeconds(pollSeconds: number, consecutiveFailures: number)
   return Math.min(pollSeconds * 2 ** consecutiveFailures, MAX_BACKOFF_SECONDS);
 }
 
+/**
+ * Longest gap between ticks while nothing is happening. Every tick costs GraphQL points whether
+ * or not there is work, and a quiet spell is most of a day (#387); half an hour is late enough to
+ * matter only for work that arrives while the owner is away, and `go`/`refresh` wake the loop at
+ * once either way.
+ */
+export const MAX_IDLE_SECONDS = 1800;
+
+/**
+ * Poll interval after `consecutiveQuiet` ticks that both found nothing to do and saw a GitHub
+ * unchanged since the tick before. Doubles like the failure backoff, from the same base.
+ */
+export function idleSeconds(pollSeconds: number, consecutiveQuiet: number): number {
+  if (consecutiveQuiet <= 0) return pollSeconds;
+  return Math.min(pollSeconds * 2 ** consecutiveQuiet, MAX_IDLE_SECONDS);
+}
+
 export interface LoopDeps {
   sleep?: (ms: number) => Promise<void>;
   iterate?: (ctx: Ctx) => Promise<TickOutcome>;
@@ -976,6 +1015,8 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
   const iterate = deps.iterate ?? runOnce;
   const lock = deps.lock ?? (<T>(fn: () => Promise<T>) => fn());
   let consecutiveFailures = 0;
+  let consecutiveQuiet = 0;
+  let lastFingerprint: string | null = null;
   for (;;) {
     if (ctx.signal.aborted) return;
     let outcome: TickOutcome = { didWork: false, action: null };
@@ -990,14 +1031,29 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
         nextAttemptSeconds: backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures),
       });
     }
+    // A tick is quiet when it found nothing to do *and* GitHub has not moved since the tick
+    // before — no new comment, label, push, check or board Status. Quiet ticks are the ones
+    // that spent the hourly GraphQL budget on nothing, so they are the ones that back off (#387).
+    // A failure is never quiet: its own backoff owns the delay.
+    const quiet =
+      consecutiveFailures === 0 &&
+      !outcome.didWork &&
+      outcome.fingerprint !== undefined &&
+      outcome.fingerprint === lastFingerprint;
+    consecutiveQuiet = quiet ? consecutiveQuiet + 1 : 0;
+    if (outcome.fingerprint !== undefined) lastFingerprint = outcome.fingerprint;
+
     // A tick that did work has changed the board — a merge unblocks dependents, a session has
     // already spent its minutes — so waiting out another `pollSeconds` is dead time (#207, #223).
-    // A tick that found nothing eligible still sleeps the interval, and a failure still backs off.
+    // A tick that found something new still sleeps the plain interval, and a failure backs off.
     const delaySeconds =
       outcome.didWork && consecutiveFailures === 0
         ? 0
-        : backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures);
+        : consecutiveFailures > 0
+          ? backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures)
+          : idleSeconds(ctx.cfg.pollSeconds, consecutiveQuiet);
     if (delaySeconds === 0) log("info", "ticking again immediately", { action: outcome.action });
+    if (consecutiveQuiet > 0) log("info", "idle backoff", { consecutiveQuiet, delaySeconds });
     const at = ctx.now();
     ctx.state?.patch({
       lastTickAt: at,

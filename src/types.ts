@@ -44,12 +44,6 @@ export interface PullRequest {
   updatedAt: string;
 }
 
-export interface BoardItem {
-  itemId: string;
-  issue: number;
-  status: Status | null;
-}
-
 export interface Epic {
   number: number;
   phase: number;

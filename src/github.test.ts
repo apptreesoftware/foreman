@@ -13,25 +13,46 @@ import {
   sizeOf,
   touchesOverlap,
 } from "./github.ts";
+import type { Issue } from "./types.ts";
 
 const fx = (n: string) => readFileSync(join(import.meta.dirname, "../test/fixtures", n), "utf8");
+
+interface GqlNode {
+  number: number;
+}
+const gqlNodes = (): GqlNode[] =>
+  (
+    JSON.parse(fx("issues-graphql.json")) as {
+      data: { repository: { issues: { nodes: GqlNode[] } } };
+    }
+  ).data.repository.issues.nodes;
+
+/** The value of the `-f`/`-F` argument named `k`, as `gh api graphql` would receive it. */
+function gqlVar(args: string[], k: string): string | null {
+  const i = args.findIndex((a) => a.startsWith(`${k}=`));
+  return i === -1 ? null : (args[i] as string).slice(k.length + 1);
+}
 
 function fakeExec(calls: string[][]): Exec {
   return async (cmd, args) => {
     calls.push([cmd, ...args]);
     const a = args.join(" ");
-    if (a.startsWith("issue list")) return { code: 0, stdout: fx("issues.json"), stderr: "" };
-    if (a.startsWith("issue view")) {
-      const n = Number(args[2]);
-      const one = (JSON.parse(fx("issues.json")) as Array<{ number: number }>).find(
-        (i) => i.number === n,
-      );
-      return one
-        ? { code: 0, stdout: JSON.stringify(one), stderr: "" }
-        : { code: 1, stdout: "", stderr: "not found" };
+    if (args[1] === "graphql") {
+      const query = gqlVar(args, "query") ?? "";
+      if (query.includes("issues("))
+        return { code: 0, stdout: fx("issues-graphql.json"), stderr: "" };
+      if (query.includes("issue(number:")) {
+        const n = Number(gqlVar(args, "number"));
+        const one = gqlNodes().find((i) => i.number === n) ?? null;
+        return {
+          code: 0,
+          stdout: JSON.stringify({ data: { repository: { issue: one } } }),
+          stderr: "",
+        };
+      }
+      return { code: 0, stdout: "{}", stderr: "" };
     }
     if (a.startsWith("pr list")) return { code: 0, stdout: fx("prs.json"), stderr: "" };
-    if (a.startsWith("project item-list")) return { code: 0, stdout: fx("board.json"), stderr: "" };
     if (a.startsWith("project field-list"))
       return { code: 0, stdout: fx("fields.json"), stderr: "" };
     if (a.startsWith("project view"))
@@ -45,6 +66,60 @@ function fakeExec(calls: string[][]): Exec {
   };
 }
 const cfg = { repo: "matthewtsmith/tone_tonic", owner: "matthewtsmith", project: 2 };
+
+/** A minimal issue node in the shape the GraphQL query asks for. */
+function node(number: number, projectItems: unknown[] = []) {
+  return {
+    number,
+    title: `t${number}`,
+    body: "",
+    state: "OPEN",
+    updatedAt: "2026-09-08T00:00:00Z",
+    labels: { nodes: [] },
+    assignees: { nodes: [] },
+    comments: { nodes: [] },
+    projectItems: { nodes: projectItems },
+  };
+}
+
+function page(nodes: unknown[], endCursor: string | null): string {
+  return JSON.stringify({
+    data: {
+      repository: { issues: { pageInfo: { hasNextPage: endCursor !== null, endCursor }, nodes } },
+    },
+  });
+}
+
+const oneIssue = (projectItems: unknown[]): Exec => {
+  return async () => ({ code: 0, stdout: page([node(1, projectItems)], null), stderr: "" });
+};
+
+const offBoardExec = (): Exec => oneIssue([]);
+
+const otherProjectExec = (): Exec =>
+  oneIssue([
+    { id: "PVTI_other", project: { number: 7 }, fieldValueByName: { name: "In Progress" } },
+  ]);
+
+function pagedExec(calls: string[][]): Exec {
+  const pages = [page([node(1)], "c1"), page([node(2)], "c2"), page([node(3)], null)];
+  let n = 0;
+  return async (cmd, args) => {
+    calls.push([cmd, ...args]);
+    return { code: 0, stdout: pages[n++] as string, stderr: "" };
+  };
+}
+
+/** The GraphQL query text a read sends, for asserting on the shape of the request itself. */
+async function pickQuery(
+  c: typeof cfg,
+  run: (g: GitHub) => Promise<unknown> = (g) => g.listIssues(),
+): Promise<string> {
+  const calls: string[][] = [];
+  await run(new GitHub(c, fakeExec(calls), false));
+  const call = calls.find((x) => x[2] === "graphql") as string[];
+  return gqlVar(call, "query") ?? "";
+}
 
 describe("pure parsers", () => {
   it("parseChecks", () => {
@@ -110,14 +185,69 @@ describe("pure parsers", () => {
 });
 
 describe("GitHub reads", () => {
-  it("lists issues merged with board status", async () => {
+  it("lists issues with the board status and item id from their own project items", async () => {
     const calls: string[][] = [];
     const gh = new GitHub(cfg, fakeExec(calls), false);
     const issues = await gh.listIssues();
     expect(issues.length).toBeGreaterThan(0);
     const withStatus = issues.find((i) => i.status !== null);
     expect(withStatus?.itemId).toMatch(/^PVTI_/);
-    expect(calls.some((c) => c[1] === "issue" && c[2] === "list")).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.slice(0, 3)).toEqual(["gh", "api", "graphql"]);
+  });
+  it("never reads the whole project board (#387)", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, fakeExec(calls), false);
+    await gh.listIssues();
+    await gh.getIssue(93);
+    await gh.listIssues("all");
+    expect(calls.some((c) => c[2] === "item-list")).toBe(false);
+  });
+  it("keeps the ledger window gh itself used, so no comment is lost", async () => {
+    const q = await pickQuery(cfg);
+    expect(q).toContain("comments(last: 100)");
+    expect(q).toContain("labels(first: 100)");
+    expect(q).toContain("assignees(first: 100)");
+    expect(q).toContain("orderBy: { field: CREATED_AT, direction: DESC }");
+  });
+  it("asks for open issues only, unless asked for all", async () => {
+    expect(await pickQuery(cfg, (g) => g.listIssues())).toContain("states: OPEN");
+    expect(await pickQuery(cfg, (g) => g.listIssues("all"))).not.toContain("states:");
+  });
+  it("an issue with no item on this board reads as off the board", async () => {
+    const gh = new GitHub(cfg, offBoardExec(), false);
+    const [i] = await gh.listIssues();
+    expect(i?.status).toBeNull();
+    expect(i?.itemId).toBeNull();
+  });
+  it("ignores a project item belonging to a different project", async () => {
+    const gh = new GitHub(cfg, otherProjectExec(), false);
+    const [i] = await gh.listIssues();
+    expect(i?.status).toBeNull();
+    expect(i?.itemId).toBeNull();
+  });
+  it("pages until GitHub says there is no next page", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, pagedExec(calls), false);
+    expect((await gh.listIssues()).map((i) => i.number)).toEqual([1, 2, 3]);
+    expect(calls).toHaveLength(3);
+    expect(gqlVar(calls[0] as string[], "cursor")).toBeNull();
+    expect(gqlVar(calls[1] as string[], "cursor")).toBe("c1");
+    expect(gqlVar(calls[2] as string[], "cursor")).toBe("c2");
+  });
+  it("stops paging when hasNextPage is true but the cursor is empty", async () => {
+    const exec: Exec = async () => ({
+      code: 0,
+      stdout: JSON.stringify({
+        data: {
+          repository: {
+            issues: { pageInfo: { hasNextPage: true, endCursor: null }, nodes: [node(1)] },
+          },
+        },
+      }),
+      stderr: "",
+    });
+    expect(await new GitHub(cfg, exec, false).listIssues()).toHaveLength(1);
   });
   it("lists PRs with parsed checks and issue", async () => {
     const gh = new GitHub(cfg, fakeExec([]), false);
@@ -139,39 +269,44 @@ describe("GitHub reads", () => {
       expect.arrayContaining(["Backlog", "Ready", "In Progress", "In Review", "Done"]),
     );
   });
-  it("getIssue reads one issue, not the whole repo", async () => {
+  it("getIssue reads one issue, not the whole repo, and carries its board status", async () => {
     const calls: string[][] = [];
     const gh = new GitHub(cfg, fakeExec(calls), false);
-    const board = await gh.listBoard();
-    const onBoard = board.find((b) => b.issue === 93) as (typeof board)[number];
+    const fromList = (await gh.listIssues()).find((x) => x.number === 93) as Issue;
+    calls.length = 0;
     const i = await gh.getIssue(93);
     expect(i.number).toBe(93);
-    expect(i.itemId).toBe(onBoard.itemId);
-    expect(calls.some((c) => c[1] === "issue" && c[2] === "list")).toBe(false);
-    expect(calls.some((c) => c[1] === "issue" && c[2] === "view")).toBe(true);
+    expect(i.itemId).toBe(fromList.itemId);
+    expect(i.status).toBe(fromList.status);
+    expect(calls).toHaveLength(1);
+    expect(gqlVar(calls[0] as string[], "query")).toContain("issue(number:");
   });
-  it("fetches the board once per listIssues and reuses it in between", async () => {
-    const calls: string[][] = [];
-    const gh = new GitHub(cfg, fakeExec(calls), false);
-    await gh.listIssues();
-    await gh.listBoard();
-    await gh.getIssue(93);
-    expect(calls.filter((c) => c[2] === "item-list")).toHaveLength(1);
+  it("getIssue says which issue is missing rather than returning a blank one", async () => {
+    const exec: Exec = async () => ({
+      code: 0,
+      stdout: JSON.stringify({ data: { repository: { issue: null } } }),
+      stderr: "",
+    });
+    await expect(new GitHub(cfg, exec, false).getIssue(4242)).rejects.toThrow("#4242");
   });
-  it("re-reads the board on the next listIssues, so a hand board edit is seen (#249)", async () => {
-    const calls: string[][] = [];
-    const gh = new GitHub(cfg, fakeExec(calls), false);
-    await gh.listIssues();
-    await gh.listIssues();
-    expect(calls.filter((c) => c[2] === "item-list")).toHaveLength(2);
-  });
-  it("re-reads the board after a status write", async () => {
-    const calls: string[][] = [];
-    const gh = new GitHub(cfg, fakeExec(calls), false);
-    await gh.listBoard();
-    await gh.setStatus("PVTI_x", "Ready");
-    await gh.listBoard();
-    expect(calls.filter((c) => c[2] === "item-list")).toHaveLength(2);
+  it("every read is live, so a hand board edit is seen by the next one (#249)", async () => {
+    const statuses = ["Backlog", "Ready"];
+    let n = 0;
+    const exec: Exec = async () => ({
+      code: 0,
+      stdout: page(
+        [
+          node(1, [
+            { id: "PVTI_1", project: { number: 2 }, fieldValueByName: { name: statuses[n++] } },
+          ]),
+        ],
+        null,
+      ),
+      stderr: "",
+    });
+    const gh = new GitHub(cfg, exec, false);
+    expect((await gh.listIssues())[0]?.status).toBe("Backlog");
+    expect((await gh.listIssues())[0]?.status).toBe("Ready");
   });
   it("reads sub-issues", async () => {
     const gh = new GitHub(cfg, fakeExec([]), false);

@@ -156,10 +156,9 @@ const web = await startWebServer({
     return `cap is now ${maxSessionsPerDay ?? `the configured ${cfg.maxSessionsPerDay}`}`;
   },
   refresh: async () => {
-    // The sidebar cards are rebuilt by a tick from `listIssues`, which now re-reads the board
-    // itself; dropping the cache here as well covers the getIssue path, and waking the loop
-    // makes the tick happen now rather than at the end of the poll interval (#249).
-    gh.invalidateBoard();
+    // Every read carries its own board Status, so there is no cache left to drop (#387); the
+    // button's remaining job is to make the tick happen now rather than at the end of the poll
+    // interval — including a poll the idle backoff has stretched.
     controller.wake();
     log("info", "project refresh requested");
     return "project re-read; tick requested";

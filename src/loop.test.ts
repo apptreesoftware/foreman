@@ -14,10 +14,14 @@ import {
   type Ctx,
   ensureLogin,
   execute,
+  idleSeconds,
   MAX_BACKOFF_SECONDS,
+  MAX_IDLE_SECONDS,
   modelFor,
   runForever,
   runOnce,
+  snapshotFingerprint,
+  type TickOutcome,
 } from "./loop.ts";
 import type { LabelledIssue, NotifyEvent, NotifyPort } from "./notify.ts";
 import type { Issue } from "./types.ts";
@@ -744,6 +748,111 @@ describe("runForever backoff", () => {
   });
 });
 
+describe("idle backoff (#387)", () => {
+  // Drives runForever with a scripted sequence of outcomes, recording the sleep before each.
+  async function delaysFor(outcomes: Array<TickOutcome | "fail">): Promise<number[]> {
+    const seconds: number[] = [];
+    let n = 0;
+    const stop = new Error("stop");
+    await expect(
+      runForever(ctx({}), {
+        iterate: async () => {
+          const o = outcomes[n++];
+          if (o === "fail") throw new Error("gh: boom");
+          return o as TickOutcome;
+        },
+        sleep: async (ms) => {
+          seconds.push(ms / 1000);
+          if (n >= outcomes.length) throw stop;
+        },
+      }),
+    ).rejects.toThrow("stop");
+    return seconds;
+  }
+  const quiet = (fingerprint: string): TickOutcome => ({
+    didWork: false,
+    action: null,
+    fingerprint,
+  });
+
+  it("doubles the wait while nothing on GitHub has moved", async () => {
+    expect(await delaysFor([quiet("a"), quiet("a"), quiet("a"), quiet("a")])).toEqual(
+      [300, 600, 1200, 2400].map((s) => Math.min(s, MAX_IDLE_SECONDS)),
+    );
+  });
+
+  it("caps the wait so work that arrives is still picked up the same half hour", async () => {
+    const d = await delaysFor(Array.from({ length: 8 }, () => quiet("a")));
+    expect(d.at(-1)).toBe(MAX_IDLE_SECONDS);
+    expect(MAX_IDLE_SECONDS).toBeLessThanOrEqual(1800);
+  });
+
+  it("returns to the poll interval as soon as GitHub changes", async () => {
+    expect(await delaysFor([quiet("a"), quiet("a"), quiet("b"), quiet("b")])).toEqual([
+      300, 600, 300, 600,
+    ]);
+  });
+
+  it("ticks again at once after work, and restarts the streak rather than resuming it", async () => {
+    const worked: TickOutcome = { didWork: true, action: "merge", fingerprint: "b" };
+    // The fourth delay is 600 (streak restarted at one), not the 1200 it had reached before.
+    expect(await delaysFor([quiet("a"), quiet("a"), worked, quiet("b")])).toEqual([
+      300, 600, 0, 600,
+    ]);
+  });
+
+  it("leaves the failure backoff in charge, and restarts the streak after it", async () => {
+    expect(await delaysFor([quiet("a"), quiet("a"), "fail", quiet("a")])).toEqual([
+      300, 600, 600, 600,
+    ]);
+  });
+
+  it("keeps polling at the plain interval while parked, so un-parking is noticed", async () => {
+    // preflight failure returns before a snapshot exists, so there is no fingerprint to compare.
+    const parked: TickOutcome = { didWork: false, action: null };
+    expect(await delaysFor([parked, parked, parked])).toEqual([300, 300, 300]);
+  });
+
+  it("idleSeconds doubles from the poll interval and stops at the cap", () => {
+    expect(idleSeconds(300, 0)).toBe(300);
+    expect(idleSeconds(300, 1)).toBe(600);
+    expect(idleSeconds(300, 3)).toBe(1800);
+    expect(idleSeconds(300, 99)).toBe(MAX_IDLE_SECONDS);
+  });
+});
+
+describe("snapshotFingerprint (#387)", () => {
+  it("is stable when nothing changed", () => {
+    const s = snapshot({ issues: [issue({ number: 1 })], prs: [pr({ number: 9, issue: 1 })] });
+    expect(snapshotFingerprint(s)).toBe(snapshotFingerprint(snapshot({ ...s })));
+  });
+  it("moves when an issue is touched", () => {
+    const a = snapshot({ issues: [issue({ number: 1 })] });
+    const b = snapshot({ issues: [issue({ number: 1, updatedAt: "2026-09-09T00:00:00Z" })] });
+    expect(snapshotFingerprint(a)).not.toBe(snapshotFingerprint(b));
+  });
+  it("moves when only the board Status changed, which does not touch updatedAt", () => {
+    const a = snapshot({ issues: [issue({ number: 1, status: "Backlog" })] });
+    const b = snapshot({ issues: [issue({ number: 1, status: "Ready" })] });
+    expect(snapshotFingerprint(a)).not.toBe(snapshotFingerprint(b));
+  });
+  it("moves when a PR's checks go green", () => {
+    const a = snapshot({ prs: [pr({ number: 9, issue: 1, checks: "pending" })] });
+    const b = snapshot({ prs: [pr({ number: 9, issue: 1, checks: "success" })] });
+    expect(snapshotFingerprint(a)).not.toBe(snapshotFingerprint(b));
+  });
+  it("moves when a reviewer's label lands", () => {
+    const a = snapshot({ prs: [pr({ number: 9, issue: 1, labels: [] })] });
+    const b = snapshot({ prs: [pr({ number: 9, issue: 1, labels: ["reviewer:approved"] })] });
+    expect(snapshotFingerprint(a)).not.toBe(snapshotFingerprint(b));
+  });
+  it("ignores the clock, so a tick is not made noisy by its own timestamp", () => {
+    const a = snapshot({ issues: [issue({ number: 1 })], now: "2026-09-08T00:00:00Z" });
+    const b = snapshot({ issues: [issue({ number: 1 })], now: "2026-09-08T09:00:00Z" });
+    expect(snapshotFingerprint(a)).toBe(snapshotFingerprint(b));
+  });
+});
+
 describe("model", () => {
   // Captures the argv the dispatcher hands `claude`, then answers like a healthy session.
   function capturingSpawn(seen: string[][]): Spawner {
@@ -1226,7 +1335,7 @@ describe("tick outcome (#223)", () => {
   it("a tick that only merged reports work, naming the action", async () => {
     const { gh } = mergeableBoard();
     const out = await runOnce(ctx({ gh, exec: okExec, stateDir: stateDir() }));
-    expect(out).toEqual({ didWork: true, action: "merge" });
+    expect(out).toMatchObject({ didWork: true, action: "merge" });
   });
 
   it("a tick that merged and then dispatched a session names the session, not the merge", async () => {
@@ -1237,20 +1346,20 @@ describe("tick outcome (#223)", () => {
     const gh: GitHubApi = { ...base, listOpenPRs: async () => [p1] };
     const out = await runOnce(ctx({ gh, exec: okExec, stateDir: stateDir() }));
     expect(calls.filter((c) => c.startsWith("mergePR"))).toEqual(["mergePR 10"]);
-    expect(out).toEqual({ didWork: true, action: "claim" });
+    expect(out).toMatchObject({ didWork: true, action: "claim" });
   });
 
   it("a tick that found nothing eligible reports no work", async () => {
     const { gh } = fakeGh([]);
     const out = await runOnce(ctx({ gh, exec: okExec, stateDir: stateDir() }));
-    expect(out).toEqual({ didWork: false, action: null });
+    expect(out).toMatchObject({ didWork: false, action: null });
   });
 
   it("a dry-run merge tick reports no work, so dry-run never hot-loops", async () => {
     const { gh, calls } = mergeableBoard();
     const out = await runOnce(ctx({ gh, exec: okExec, stateDir: stateDir(), dryRun: true }));
     expect(calls.filter((c) => c.startsWith("mergePR"))).toEqual([]);
-    expect(out).toEqual({ didWork: false, action: null });
+    expect(out).toMatchObject({ didWork: false, action: null });
   });
 
   it("an apply_plan tick whose plan is not on origin/main yet reports no work", async () => {
@@ -1264,7 +1373,7 @@ describe("tick outcome (#223)", () => {
     const out = await runOnce(
       ctx({ gh, exec: okExec, stateDir: stateDir(), planFiles: async () => [] }),
     );
-    expect(out).toEqual({ didWork: false, action: null });
+    expect(out).toMatchObject({ didWork: false, action: null });
   });
 
   it("an apply_plan tick that applied the plan reports work", async () => {
@@ -1288,7 +1397,7 @@ describe("tick outcome (#223)", () => {
         readPlanFile: async () => file,
       }),
     );
-    expect(out).toEqual({ didWork: true, action: "apply_plan" });
+    expect(out).toMatchObject({ didWork: true, action: "apply_plan" });
   });
 
   it("runForever ticks again immediately after a tick that did work, and says which action", async () => {

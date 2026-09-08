@@ -1,0 +1,1607 @@
+{
+  "data": {
+    "repository": {
+      "issues": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        },
+        "nodes": [
+          {
+            "number": 148,
+            "title": "Phase 0 review: scaffolding sign-off",
+            "body": "## Phase 0 review \u2014 Scaffolding\n\n**Status:** all executable tasks merged. Awaiting owner sign-off. Label `signed-off` on epic #1 when done.\n\n### What shipped (PRs)\n- #135 root workspace: pnpm 11, Turborepo, Biome, base tsconfig\n- #136 `@tone/shared` Zod contracts (Profile, API error envelope), 8 tests\n- #137 `@tone/db` Supabase project `tone_tonic` (ports 55321\u201355324), `profiles` table with RLS forced + auth trigger, seed users, pgTAP\n- #138 `@tone/api` NestJS 12: Zod env, `/health` (db ping), `AuthGuard` + `/me`, unit + e2e, Dockerfile\n- #139 `@tone/web` Vite 8 + React 19, TanStack Router/Query, Tailwind 4, shadcn Button, health page\n- #140 CI: `lint-typecheck-test` + `db` (migrations from scratch, pgTAP, generated-types drift)\n- #141 docs alignment; fresh clone \u2192 running app in 89 s\n- #147 final-review fixes (per-app `.env.example`, CI build, `db lint --fail-on warning`, turbo globals, grant rule)\n\n### How to test (\u224810 min)\n```bash\ngit clone git@github.com:matthewtsmith/tone_tonic.git && cd tone_tonic\npnpm install\npnpm db:start          # first run pulls images; project id tone_tonic, ports 5532x\npnpm db:reset\ncp apps/api/.env.example apps/api/.env.local\ncp apps/web/.env.example apps/web/.env.local\n(cd packages/db && supabase status)   # paste anon key into apps/web/.env.local, service_role into apps/api/.env.local\npnpm dev\n```\n1. Open http://localhost:5173 \u2192 expect **API ok** and **DB ok** pills, version line, Refresh button.\n2. `curl -s localhost:3000/me` \u2192 401 JSON `{\"error\":{\"code\":\"unauthorized\",...}}`.\n3. Get a token and call `/me`:\n```bash\nANON=<anon key>\nTOKEN=$(curl -s \"http://127.0.0.1:55321/auth/v1/token?grant_type=password\" -H \"apikey: $ANON\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"teacher@local.test\\\",\\\"password\\\":\\\"password123\\\"}\" | python3 -c \"import json,sys;print(json.load(sys.stdin)[\\\"access_token\\\"])\")\ncurl -s localhost:3000/me -H \"Authorization: Bearer $TOKEN\"   # \u2192 {\"userId\":\"11111111-...\",\"email\":\"teacher@local.test\"}\n```\n4. `pnpm lint && pnpm typecheck && pnpm test` \u2192 all green (test needs the stack running).\n5. Studio: http://127.0.0.1:55323 \u2192 Table editor \u2192 `profiles` shows Terry Teacher and Sam Student.\n\nSeeded logins: `teacher@local.test` / `student@local.test`, password `password123`.\n\n### Known gaps / decisions for you\n- #9 branch protection needs GitHub Pro or a public repo. Recommendation: leave until the foreman exists.\n- #146 polish batch (Docker `USER node`, strictPort, engines floor, etc.) is Ready.\n- Follow-ups filed into Phase 1: #143 global exception filter, #144 Zod\u2194DB type assertion, #145 pgTAP behaviour tests.\n- Stack versions landed newer than the spec text: TypeScript 7 (api pins 6), NestJS 12, Vite 8, Vitest 5, Zod 4.\n\n### Next\nPhase 0.5 (foreman, epic #124) needs its plan approved (writing-plans + `plan-approved` label) before agents build it.",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T20:42:10Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "needs-owner"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 146,
+            "title": "[P0] Follow-up polish from final review",
+            "body": "## Goal\nNon-blocking items from the Phase 0 final review, batched.\n\n## Acceptance criteria\n- [ ] CI: `permissions: contents: read`, `timeout-minutes` on both jobs; root script `test:ci` = `turbo run test --filter=!@tone/db` and CI calls it\n- [ ] Optional `build-image` CI job on push to main running `docker build -f apps/api/Dockerfile .` (esbuild --external list is hand-maintained)\n- [ ] Dockerfile: `USER node` in runtime stage; copy manifests before `COPY . .` for layer caching\n- [ ] `engines` \u2192 `>=22.18 <23`, `.nvmrc` \u2192 22.18 (type-stripping floor)\n- [ ] `apps/web`: `vite --port 5173 --strictPort`; root layout uses `bg-background text-foreground`; `Content-Type` only on requests with a body\n- [ ] `HealthSchema` moved to `@tone/shared`, `api()` validates success payloads\n- [ ] AuthGuard matches Bearer scheme case-insensitively; `main.ts` reads `ConfigService`\n- [ ] `apps/api/vitest.config.ts` \u2192 `.mts`; remove dead `turbo.json` `lint` task or route `pnpm lint` through it; align `.ts` re-export style across packages\n- [ ] Confirm full `supabase start` on the 553xx block from a clean worktree on a second machine\n\n## Touches\nroot, .github, apps/api, apps/web, packages/shared\n\n## Depends on\n#https://github.com/matthewtsmith/tone_tonic/issues/142\n\n## Spec\nPhase 0 final review, Minor section.\n\nParent epic: #1",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T20:41:23Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "agent-ready"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:web"
+                },
+                {
+                  "name": "area:api"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 145,
+            "title": "[P1] pgTAP: auth trigger creates profile; RLS behaviour test pattern",
+            "body": "## Goal\nCurrent pgTAP test only checks catalog flags. Add behaviour tests as the pattern every Phase 1 table copies.\n\n## Acceptance criteria\n- [ ] Self-contained transaction inserts into `auth.users` and asserts a `profiles` row appears with derived `display_name`\n- [ ] `set local role authenticated; set local request.jwt.claims` \u2192 select returns exactly the caller's row; another user's row is invisible\n- [ ] Runs under `supabase test db` locally and in CI\n\n## Touches\npackages/db\n\n## Depends on\nNone\n\n## Spec\ndocs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md \u00a7 Testing. From Phase 0 final review (Important 7).\n\nParent epic: #10",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T20:31:23Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:1"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:db"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 144,
+            "title": "[P1] Compile-time assertion binding Zod schemas to generated DB row types",
+            "body": "## Goal\n`ProfileSchema` already drifted from the `profiles` table (phone, birthday, avatar_url exist in Zod, not in DB). Nothing detects drift.\n\n## Acceptance criteria\n- [ ] `packages/shared` has a type-level test (vitest `expectTypeOf` or a `type _Check`) asserting each Zod row schema matches `Database['public']['Tables'][name]['Row']`\n- [ ] Drift fails `pnpm typecheck` or `pnpm test`\n- [ ] Pattern documented in CLAUDE.md in one line\n\n## Touches\npackages/shared, packages/db\n\n## Depends on\nNone\n\n## Spec\nFrom Phase 0 final review (Important 6). Phase 1 adds ~14 tables; establish the pattern first.\n\nParent epic: #10",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T20:31:22Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:1"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:shared"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 143,
+            "title": "[P1] Global exception filter: every API error uses the @tone/shared envelope",
+            "body": "## Goal\nOnly AuthGuard emits `apiError(...)` today; 404/400/500 return Nest's default `{statusCode,error,message}`, which `ApiErrorSchema` rejects, so the web `api()` helper degrades to `http_error`.\n\n## Acceptance criteria\n- [ ] `AllExceptionsFilter` maps any `HttpException` (and unknown errors \u2192 500) to `apiError(code, message, details?)`\n- [ ] Registered globally in `main.ts` and in the e2e test app\n- [ ] e2e case: GET /nope \u2192 404 body parses with `ApiErrorSchema`\n\n## Touches\napps/api\n\n## Depends on\nNone\n\n## Spec\ndocs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md \u00a7 Error handling. From Phase 0 final review (Important 4).\n\nParent epic: #10",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T20:31:20Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:1"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 134,
+            "title": "[Foreman] New labels; sandbox issue; end-to-end sandbox run",
+            "body": "## Goal\nNew labels; sandbox issue; end-to-end sandbox run\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\n#129, #133\n\n## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md` \u00a7 Task breakdown, task 10\n\nParent epic: #124",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:43:43Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 133,
+            "title": "[Foreman] launchd plist, README with install, preflight, billing check, kill switches",
+            "body": "## Goal\nlaunchd plist, README with install, preflight, billing check, kill switches\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\n#B (created in plan Task 9)\n\n## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md` \u00a7 Task breakdown, task 9\n\nParent epic: #124",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:43:42Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 132,
+            "title": "[Foreman] Playwright MCP setup for validator; seeded-user login helper",
+            "body": "## Goal\nPlaywright MCP setup for validator; seeded-user login helper\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\n#149, #125\n\n## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md` \u00a7 Task breakdown, task 8\n\nParent epic: #124",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:43:39Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 131,
+            "title": "[Foreman] `merge.ts` sweep and `phase.ts` close/planner triggers with tests",
+            "body": "## Goal\n`merge.ts` sweep and `phase.ts` close/planner triggers with tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\n#127\n\n## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md` \u00a7 Task breakdown, task 7\n\nParent epic: #124",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:43:36Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 130,
+            "title": "[Foreman] `.claude/settings.json` allowlist for headless sessions",
+            "body": "## Goal\n`.claude/settings.json` allowlist for headless sessions\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\n#125\n\n## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md` \u00a7 Task breakdown, task 6\n\nParent epic: #124",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:43:31Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 129,
+            "title": "[Foreman] Role prompts: builder, reviewer, validator, phase-closer, planner",
+            "body": "## Goal\nRole prompts: builder, reviewer, validator, phase-closer, planner\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\n#132, #130\n\n## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md` \u00a7 Task breakdown, task 5\n\nParent epic: #124",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:43:40Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 128,
+            "title": "[Foreman] `dispatch.ts`: worktree management, `claude -p` invocation, JSON outcome parsing, timeouts, retries",
+            "body": "## Goal\n`dispatch.ts`: worktree management, `claude -p` invocation, JSON outcome parsing, timeouts, retries\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\n#125, #130\n\n## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md` \u00a7 Task breakdown, task 4\n\nParent epic: #124",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:43:37Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 127,
+            "title": "[Foreman] `state.ts` + `pick.ts` + `claim.ts` with unit tests and fixtures",
+            "body": "## Goal\n`state.ts` + `pick.ts` + `claim.ts` with unit tests and fixtures\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\n#126\n\n## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md` \u00a7 Task breakdown, task 3\n\nParent epic: #124",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:43:34Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 126,
+            "title": "[Foreman] `github.ts` gh wrapper: issues, labels, comments, project item status, PR checks",
+            "body": "## Goal\n`github.ts` gh wrapper: issues, labels, comments, project item status, PR checks\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\n#125\n\n## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md` \u00a7 Task breakdown, task 2\n\nParent epic: #124",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:43:32Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 124,
+            "title": "Phase 0.5: Autonomous foreman",
+            "body": "## Spec\n`docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md`\n\n## Depends on\nPhase 0\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T21:42:18Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:0"
+                },
+                {
+                  "name": "epic"
+                },
+                {
+                  "name": "plan-approved"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "matthewtsmith"
+                  },
+                  "body": "Phase 0.5 plan drafted: [`docs/superpowers/plans/2026-09-03-phase-0.5-foreman.md`](https://github.com/matthewtsmith/tone_tonic/blob/main/docs/superpowers/plans/2026-09-03-phase-0.5-foreman.md) (commit ae0ce74).\n\n**Open questions (\u00a712) resolved with verified CLI behavior (claude 2.1.259):**\n1. Permissions: `--permission-mode dontAsk --permission-prompts none --setting-sources user,project`; allowlist in `.claude/settings.json`. `acceptEdits` rejected (auto-approves `touch`-style commands). Project allow rules only apply in a trusted dir \u2192 foreman marks each worktree trusted in `~/.claude.json`.\n2. Slack connector: confirmed available in `-p` sessions on this Mac (`mcp__claude_ai_Slack__slack_send_message` etc.).\n3. Playwright MCP: `@playwright/mcp@0.0.80` pinned in `.mcp.json`, loaded headlessly via `enableAllProjectMcpServers`; verified tools appear.\n\n**Task map:** 12 tasks. #125\u2013#134 map 1:1 to plan tasks 1\u20138, 10, 11. Two new issues to be created at execution: dev ports web 8082 / api 3005 (+ CLAUDE.md \"Ports\" section) and `loop.ts` wiring. \"Depends on\" lines of #125\u2013#134 get rewritten in Task 0.\n\n**Spec deviations recorded in the plan** (spec updated in the same PRs): claim ownership by ledger comments not assignees; validator screenshots to `~/.tone_tonic/artifacts/<pr>/` (no GitHub attachment API); reviewer/validator labels on the PR; validator failures follow the 2-round rule; planner issues file `<plan>.issues.json`.\n\n**Also found:** branch protection returns 403 on this private repo (free plan); guards are the deny rules + roles never merging. Noted in Task 11.\n\nWaiting for \"approved\" + `plan-approved` label before executing.",
+                  "createdAt": "2026-09-03T21:29:41Z"
+                }
+              ]
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 123,
+            "title": "[P10] Ops: Stripe webhook endpoint registration in prod, secrets in Secret Manager, runbook",
+            "body": "## Goal\nOps: Stripe webhook endpoint registration in prod, secrets in Secret Manager, runbook\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 10\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:34:27Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:infra"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 122,
+            "title": "[P10] Web: student purchase flow, `/me/billing`, Checkout return pages, Customer Portal link",
+            "body": "## Goal\nWeb: student purchase flow, `/me/billing`, Checkout return pages, Customer Portal link\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 9\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:34:20Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 121,
+            "title": "[P10] Web: teacher billing pages (connect, products, class billing picker, student billing panel)",
+            "body": "## Goal\nWeb: teacher billing pages (connect, products, class billing picker, student billing panel)\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 8\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:34:15Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 120,
+            "title": "[P10] API: session completion and payment request logic against the credit ledger",
+            "body": "## Goal\nAPI: session completion and payment request logic against the credit ledger\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 7\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:34:09Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 119,
+            "title": "[P10] API: webhook handler with signature verification, idempotency, and state transitions, plus tests usi",
+            "body": "## Goal\nAPI: webhook handler with signature verification, idempotency, and state transitions, plus tests using Stripe CLI fixtures\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 6\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:34:03Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 118,
+            "title": "[P10] API: Checkout session creation for the three models with platform fee",
+            "body": "## Goal\nAPI: Checkout session creation for the three models with platform fee\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 5\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:58Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 117,
+            "title": "[P10] API: product and price creation mirrored to Stripe",
+            "body": "## Goal\nAPI: product and price creation mirrored to Stripe\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 4\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:52Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 116,
+            "title": "[P10] API: Stripe client module, Connect onboarding and status endpoints",
+            "body": "## Goal\nAPI: Stripe client module, Connect onboarding and status endpoints\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 3\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:46Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 115,
+            "title": "[P10] Zod schemas for products, prices, purchases, balances, and webhook payload subsets in `packages/shar",
+            "body": "## Goal\nZod schemas for products, prices, purchases, balances, and webhook payload subsets in `packages/shared`\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 2\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:40Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:shared"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 114,
+            "title": "[P10] Migration: all billing tables, credit ledger, RLS, pgTAP for balance computation and idempotency",
+            "body": "## Goal\nMigration: all billing tables, credit ledger, RLS, pgTAP for balance computation and idempotency\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md` \u00a7 Task breakdown, task 1\n\nParent epic: #113\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:33Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:db"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 113,
+            "title": "Phase 10: Billing (Stripe)",
+            "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-10-billing-design.md`\n\n## Depends on\nPhases 2, 9\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:29Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:10"
+                },
+                {
+                  "name": "epic"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 112,
+            "title": "[P9] Web: `/me/contracts` signed history",
+            "body": "## Goal\nWeb: `/me/contracts` signed history\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md` \u00a7 Task breakdown, task 9\n\nParent epic: #103\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:22Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 111,
+            "title": "[P9] Web: class settings picker and invite flow gate",
+            "body": "## Goal\nWeb: class settings picker and invite flow gate\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md` \u00a7 Task breakdown, task 8\n\nParent epic: #103\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:16Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 110,
+            "title": "[P9] Web: student signing page and guardian public page",
+            "body": "## Goal\nWeb: student signing page and guardian public page\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md` \u00a7 Task breakdown, task 7\n\nParent epic: #103\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:09Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 109,
+            "title": "[P9] Web: teacher contract list, editor, version history, status table",
+            "body": "## Goal\nWeb: teacher contract list, editor, version history, status table\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md` \u00a7 Task breakdown, task 6\n\nParent epic: #103\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:33:03Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 108,
+            "title": "[P9] API: AI draft endpoint with streaming and structured output",
+            "body": "## Goal\nAPI: AI draft endpoint with streaming and structured output\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md` \u00a7 Task breakdown, task 5\n\nParent epic: #103\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:57Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 107,
+            "title": "[P9] API: publish, sign, guardian-sign, status, remind endpoints with audit events and tests",
+            "body": "## Goal\nAPI: publish, sign, guardian-sign, status, remind endpoints with audit events and tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md` \u00a7 Task breakdown, task 4\n\nParent epic: #103\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:51Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 106,
+            "title": "[P9] Zod schemas for contract, version, signature, and AI draft output in `packages/shared`",
+            "body": "## Goal\nZod schemas for contract, version, signature, and AI draft output in `packages/shared`\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md` \u00a7 Task breakdown, task 3\n\nParent epic: #103\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:45Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:shared"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 105,
+            "title": "[P9] `private.contract_satisfied` helper and its use in invite acceptance and `class_members` validation",
+            "body": "## Goal\n`private.contract_satisfied` helper and its use in invite acceptance and `class_members` validation\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md` \u00a7 Task breakdown, task 2\n\nParent epic: #103\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:39Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:db"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 104,
+            "title": "[P9] Migration: contracts, versions, class_contracts, signatures, guardian links, immutability trigger, R",
+            "body": "## Goal\nMigration: contracts, versions, class_contracts, signatures, guardian links, immutability trigger, RLS, pgTAP\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md` \u00a7 Task breakdown, task 1\n\nParent epic: #103\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:32Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:db"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 103,
+            "title": "Phase 9: Contracts",
+            "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-09-contracts-design.md`\n\n## Depends on\nPhase 1\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:28Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:9"
+                },
+                {
+                  "name": "epic"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 102,
+            "title": "[P8] ICS feed endpoint, token rotation, Settings card",
+            "body": "## Goal\nICS feed endpoint, token rotation, Settings card\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi, web\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` \u00a7 Task breakdown, task 9\n\nParent epic: #93\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:21Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:web"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 101,
+            "title": "[P8] Google Calendar OAuth, `calendar_sync` job, session-change trigger, Settings card",
+            "body": "## Goal\nGoogle Calendar OAuth, `calendar_sync` job, session-change trigger, Settings card\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi, db, web\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` \u00a7 Task breakdown, task 8\n\nParent epic: #93\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:14Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:web"
+                },
+                {
+                  "name": "area:api"
+                },
+                {
+                  "name": "area:db"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": []
+            }
+          },
+          {
+            "number": 100,
+            "title": "[P8] `transcribe` job with Deepgram client, cue conversion, and Transcribe button",
+            "body": "## Goal\n`transcribe` job with Deepgram client, cue conversion, and Transcribe button\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi, web\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` \u00a7 Task breakdown, task 7\n\nParent epic: #93\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:09Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:web"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqx0",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 99,
+            "title": "[P8] Unassigned recordings class and \"Move to class\" UI",
+            "body": "## Goal\nUnassigned recordings class and \"Move to class\" UI\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb, api\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` \u00a7 Task breakdown, task 6\n\nParent epic: #93\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:32:02Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:web"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5TquU",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 98,
+            "title": "[P8] `zoom_fetch` job: session matching, lesson creation, streaming download to Storage, transcript attac",
+            "body": "## Goal\n`zoom_fetch` job: session matching, lesson creation, streaming download to Storage, transcript attach, organize enqueue\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` \u00a7 Task breakdown, task 5\n\nParent epic: #93\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:55Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqrU",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 97,
+            "title": "[P8] Zoom webhook endpoint with signature verification, challenge, idempotent insert",
+            "body": "## Goal\nZoom webhook endpoint with signature verification, challenge, idempotent insert\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` \u00a7 Task breakdown, task 4\n\nParent epic: #93\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:49Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqm4",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 96,
+            "title": "[P8] Zoom OAuth connect, callback, disconnect, and Settings card",
+            "body": "## Goal\nZoom OAuth connect, callback, disconnect, and Settings card\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi, web\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` \u00a7 Task breakdown, task 3\n\nParent epic: #93\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:44Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:web"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqjw",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 95,
+            "title": "[P8] Token encryption module (AES-256-GCM, key from env, rotation job) with unit tests",
+            "body": "## Goal\nToken encryption module (AES-256-GCM, key from env, rotation job) with unit tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` \u00a7 Task breakdown, task 2\n\nParent epic: #93\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:37Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:api"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqfs",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 94,
+            "title": "[P8] Migrations for `integrations`, `webhook_events`, `zoom_recordings`, `calendar_sync_items`, `ics_toke",
+            "body": "## Goal\nMigrations for `integrations`, `webhook_events`, `zoom_recordings`, `calendar_sync_items`, `ics_token`, public view, RLS, pgTAP\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` \u00a7 Task breakdown, task 1\n\nParent epic: #93\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:31Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:db"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqco",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 93,
+            "title": "Phase 8: Integrations (Zoom, transcription, calendars)",
+            "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md`\n\n## Depends on\nPhases 3, 6\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:26Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:8"
+                },
+                {
+                  "name": "epic"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqZQ",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 92,
+            "title": "[P7] Web: notification preferences with SMS verification",
+            "body": "## Goal\nWeb: notification preferences with SMS verification\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` \u00a7 Task breakdown, task 15\n\nParent epic: #77\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:20Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:7"
+                },
+                {
+                  "name": "size:S"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqVQ",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 91,
+            "title": "[P7] Web: student survey response page",
+            "body": "## Goal\nWeb: student survey response page\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` \u00a7 Task breakdown, task 14\n\nParent epic: #77\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:13Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:7"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqRg",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 90,
+            "title": "[P7] Web: proposal review grid with drag adjustments and apply confirmation",
+            "body": "## Goal\nWeb: proposal review grid with drag adjustments and apply confirmation\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` \u00a7 Task breakdown, task 13\n\nParent epic: #77\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:07Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:7"
+                },
+                {
+                  "name": "size:L"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqN4",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 89,
+            "title": "[P7] Web: survey wizard and progress screens",
+            "body": "## Goal\nWeb: survey wizard and progress screens\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` \u00a7 Task breakdown, task 12\n\nParent epic: #77\n",
+            "state": "OPEN",
+            "updatedAt": "2026-09-03T16:31:02Z",
+            "labels": {
+              "nodes": [
+                {
+                  "name": "phase:7"
+                },
+                {
+                  "name": "size:M"
+                },
+                {
+                  "name": "area:web"
+                }
+              ]
+            },
+            "assignees": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "projectItems": {
+              "nodes": [
+                {
+                  "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqK4",
+                  "project": {
+                    "number": 2
+                  },
+                  "fieldValueByName": {
+                    "name": "Backlog"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

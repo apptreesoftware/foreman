@@ -8,6 +8,7 @@ import {
   checkEnv,
   countSessionsToday,
   ensureRoleStack,
+  graphqlBudget,
   localDate,
   preflight,
 } from "./preflight.ts";
@@ -103,6 +104,40 @@ describe("preflight", () => {
         ? { code: 1, stdout: "", stderr: "unreadable" }
         : okExec(cmd, args);
     expect((await preflight(cfg, deps({ exec }))).ok).toBe(true);
+  });
+  it("parks on a quota that is already exhausted, which gh reports as an error (#387)", async () => {
+    // GitHub answers `rateLimit` itself with an error once the hour's points are gone, and gh
+    // exits non-zero. Read as "cannot tell", it let the tick through to die inside listIssues.
+    const exec: Exec = async (cmd, args) =>
+      cmd === "gh" && args[1] === "graphql"
+        ? {
+            code: 1,
+            stdout:
+              '{"errors":[{"type":"RATE_LIMIT","code":"graphql_rate_limit","message":"API rate limit already exceeded for user ID 9000800."}]}',
+            stderr: "gh: API rate limit already exceeded for user ID 9000800.",
+          }
+        : okExec(cmd, args);
+    const r = await preflight(cfg, deps({ exec }));
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.reason).toBe("GitHub GraphQL budget low: 0 points left");
+  });
+  it("reads an exhausted quota as zero points, not as unreadable", async () => {
+    const rateLimited: Exec = async () => ({
+      code: 1,
+      stdout: '{"errors":[{"type":"RATE_LIMIT","code":"graphql_rate_limit"}]}',
+      stderr: "",
+    });
+    expect(await graphqlBudget(rateLimited)).toEqual({ remaining: 0, limit: 5000, resetAt: "" });
+  });
+  it("still reads a plain gh failure as unreadable, so being offline never parks the daemon", async () => {
+    const offline: Exec = async () => ({
+      code: 1,
+      stdout: "",
+      stderr: "dial tcp: lookup api.github.com: no such host",
+    });
+    expect(await graphqlBudget(offline)).toBeNull();
+    const notJson: Exec = async () => ({ code: 1, stdout: "<html>502</html>", stderr: "" });
+    expect(await graphqlBudget(notJson)).toBeNull();
   });
   it("fails when docker is down", async () => {
     const exec: Exec = async (cmd, args) =>

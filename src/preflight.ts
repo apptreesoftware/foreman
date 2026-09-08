@@ -50,9 +50,24 @@ export function countSessionsToday(stateDir: string, now: Date): number {
     }).length;
 }
 
+/** True when GitHub refused the query because the hourly GraphQL budget is already spent. */
+function isRateLimited(stdout: string): boolean {
+  try {
+    const errors = JSON.parse(stdout).errors as Array<{ type?: string; code?: string }> | undefined;
+    return (errors ?? []).some((e) => e.type === "RATE_LIMIT" || e.code === "graphql_rate_limit");
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The remaining GitHub GraphQL points. The `rateLimit` query itself costs nothing, so this is
  * safe to run every tick; an unreadable answer returns null and never blocks the daemon (#192).
+ *
+ * An *exhausted* quota is not an unreadable answer. GitHub answers `rateLimit` itself with
+ * `{"errors":[{"type":"RATE_LIMIT"}]}` and `gh` exits non-zero, which used to read as null and
+ * so skipped the budget check entirely — preflight passed and the tick then died inside
+ * `listIssues`, the very state the check exists to prevent (#387). Report it as zero instead.
  */
 export async function graphqlBudget(exec: Exec): Promise<BudgetSample | null> {
   const r = await exec("gh", [
@@ -61,7 +76,10 @@ export async function graphqlBudget(exec: Exec): Promise<BudgetSample | null> {
     "-f",
     "query={rateLimit{limit remaining resetAt}}",
   ]);
-  if (r.code !== 0) return null;
+  // The reset time is not in the error, so it stays empty; `formatBudget` and the preflight
+  // reason both tolerate that, and the next successful read fills it in.
+  if (r.code !== 0)
+    return isRateLimited(r.stdout) ? { remaining: 0, limit: 5000, resetAt: "" } : null;
   try {
     const l = JSON.parse(r.stdout).data?.rateLimit;
     return typeof l?.remaining === "number"
@@ -181,7 +199,9 @@ export async function preflight(cfg: ForemanConfig, deps: PreflightDeps): Promis
   if (budget && budget.remaining < cfg.minGraphqlPoints)
     return {
       ok: false,
-      reason: `GitHub GraphQL budget low: ${budget.remaining} points left, resets ${budget.resetAt}`,
+      reason: `GitHub GraphQL budget low: ${budget.remaining} points left${
+        budget.resetAt ? `, resets ${budget.resetAt}` : ""
+      }`,
     };
 
   const used = countSessionsToday(deps.stateDir, deps.now);
