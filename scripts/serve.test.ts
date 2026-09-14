@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { serveConfig } from "./serve.ts";
+import { DEV_INTEGRATIONS_KEY, serveConfig } from "./serve.ts";
 
 describe("serveConfig", () => {
   it("uses the dev ports by default", () => {
@@ -10,6 +12,8 @@ describe("serveConfig", () => {
       PORT: "3005",
       WEB_ORIGIN: "http://localhost:8082",
       AI_FIXTURE: "1",
+      ZOOM_FIXTURE: "1",
+      INTEGRATIONS_KEY: DEV_INTEGRATIONS_KEY,
     });
     expect(c.webEnv).toEqual({ TONE_WEB_PORT: "8082" });
   });
@@ -22,6 +26,8 @@ describe("serveConfig", () => {
       PORT: "3105",
       WEB_ORIGIN: "http://localhost:8182",
       AI_FIXTURE: "1",
+      ZOOM_FIXTURE: "1",
+      INTEGRATIONS_KEY: DEV_INTEGRATIONS_KEY,
     });
     expect(c.webEnv).toEqual({ TONE_WEB_PORT: "8182" });
   });
@@ -30,5 +36,20 @@ describe("serveConfig", () => {
     // The key is stripped from a served api, so a worker off the fixture could never boot (#43).
     expect(serveConfig({}).apiEnv.AI_FIXTURE).toBe("1");
     expect(serveConfig({ AI_FIXTURE: "0" }).apiEnv.AI_FIXTURE).toBe("0");
+  });
+
+  it("runs the served api on the Zoom fixture with the dev key unless told otherwise", () => {
+    // A role session has no Zoom app, and `.env.local` (from dev-env) carries neither value (#95).
+    expect(serveConfig({}).apiEnv.ZOOM_FIXTURE).toBe("1");
+    expect(serveConfig({ ZOOM_FIXTURE: "0" }).apiEnv.ZOOM_FIXTURE).toBe("0");
+    expect(serveConfig({ INTEGRATIONS_KEY: "mine" }).apiEnv.INTEGRATIONS_KEY).toBe("mine");
+    expect(DEV_INTEGRATIONS_KEY).toBe(
+      /^INTEGRATIONS_KEY=(.+)$/m.exec(
+        readFileSync(
+          join(import.meta.dirname, "..", "..", "..", "apps", "api", ".env.example"),
+          "utf8",
+        ),
+      )?.[1],
+    );
   });
 });

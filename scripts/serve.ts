@@ -16,6 +16,12 @@ const logDir = join(stateDir, "logs");
  * override is how CI's e2e job runs its own servers — either way they cannot collide with the
  * ports the owner needs for `pnpm dev` on the same Mac.
  */
+/**
+ * The local development token-encryption key, the same value `apps/api/.env.example` carries.
+ * Not a secret: it seals the fixture Zoom account's tokens in a served api and nothing else.
+ */
+export const DEV_INTEGRATIONS_KEY = "OmWZjvgZmEF6ik9VeU3NcpHtZzsi68iz6/8LsE+9uGg=";
+
 export function serveConfig(env: NodeJS.ProcessEnv): {
   webUrl: string;
   apiHealthUrl: string;
@@ -33,6 +39,10 @@ export function serveConfig(env: NodeJS.ProcessEnv): {
       // job from the recorded fixture (#43); without this, `validateEnv` refuses to boot a
       // worker that would need the key. Set AI_FIXTURE yourself to override.
       AI_FIXTURE: env.AI_FIXTURE ?? "1",
+      // A served api has no Zoom app either, and `.env.local` (from dev-env) carries neither
+      // of these, so Zoom runs from its fixture under the dev key (#95). Set either to override.
+      ZOOM_FIXTURE: env.ZOOM_FIXTURE ?? "1",
+      INTEGRATIONS_KEY: env.INTEGRATIONS_KEY ?? DEV_INTEGRATIONS_KEY,
     },
     webEnv: { TONE_WEB_PORT: String(ports.web) },
   };
