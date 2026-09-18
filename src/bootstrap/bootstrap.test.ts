@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ensureProject, STATUS_OPTIONS } from "./board.ts";
-import { ensureLabels, LABELS, modelLabels } from "./labels.ts";
+import { ensureLabels, ensurePlanLabels, LABELS, modelLabels } from "./labels.ts";
 import { scaffoldRepoDir } from "./scaffold.ts";
 
 function api(over: Partial<Record<string, unknown>> = {}) {
@@ -51,6 +51,27 @@ describe("labels", () => {
     const all = [...LABELS.map((l) => l.name), ...modelLabels(["opus"]).map((l) => l.name)];
     const { gh, calls } = api({ listLabels: async () => all });
     await ensureLabels(gh, ["opus"]);
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("ensurePlanLabels", () => {
+  it("creates the phase and area labels a plan invents, and nothing it already has", async () => {
+    const { gh, calls } = api();
+    const r = await ensurePlanLabels(gh, ["phase:1", "area:docs", "size:S", "epic", "phase:1"]);
+    expect(calls).toEqual(["label phase:1", "label area:docs", "label size:S"]);
+    expect(r.created).toEqual(["phase:1", "area:docs", "size:S"]);
+  });
+  it("reads no labels at all for a plan that names none", async () => {
+    let reads = 0;
+    const { gh, calls } = api({
+      listLabels: async () => {
+        reads++;
+        return [];
+      },
+    });
+    await ensurePlanLabels(gh, []);
+    expect(reads).toBe(0);
     expect(calls).toEqual([]);
   });
 });

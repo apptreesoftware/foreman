@@ -24,6 +24,24 @@ export function parseSpecPath(body: string): string | null {
   return m ? (m[1] as string) : null;
 }
 
+/**
+ * The `NN` in `<date>-phase-NN-plan.issues.json`, which is what the planner is told to name its
+ * plan after: the epic's own `phase:N` label, zero-padded.
+ *
+ * The spec path is only a fallback, for a repository that names its specs `…-phase-NN-…` and has
+ * done so since before the label was authoritative. Deriving it from the spec path alone is how
+ * `apply_plan` used to fail for every repository that names its specs anything else: the filter
+ * matched no plan file, the epic never got its tasks, and the tick logged "approved plan file not
+ * on origin/main" for ever.
+ */
+export function planPhaseNumber(labels: string[], specPath: string): string | null {
+  for (const l of labels) {
+    const m = /^phase:(\d+)$/.exec(l);
+    if (m) return (m[1] as string).padStart(2, "0");
+  }
+  return /phase-(\d\d)/.exec(specPath)?.[1] ?? null;
+}
+
 /** docs/superpowers/specs/<date>-phase-NN-<slug>-design.md → <planDir>/<today>-phase-NN-plan.issues.json */
 export function planIssuesPath(specPath: string, today: string, planDir: string): string {
   const m = /phase-(\d\d)/.exec(specPath);

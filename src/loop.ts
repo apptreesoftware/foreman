@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { cp } from "node:fs/promises";
 import { join } from "node:path";
 import { describeBoard } from "./board.ts";
+import { ensurePlanLabels } from "./bootstrap/labels.ts";
 import { budgetUpdate } from "./budget.ts";
 import { conflictOn } from "./claim.ts";
 import type { ForemanConfig } from "./config.ts";
@@ -30,7 +31,7 @@ import {
   PlanIssuesSchema,
   parseDirectionCritical,
   parseSpecPath,
-  planIssuesPath,
+  planPhaseNumber,
 } from "./phase.ts";
 import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts";
 import { graphqlBudget, preflight } from "./preflight.ts";
@@ -604,9 +605,7 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   const { gh, cfg } = ctx;
   const epic = await issueFor(ctx, epicNumber, snapshot);
   const specPath = parseSpecPath(epic.body) ?? "";
-  const nn =
-    /phase-(\d\d)/.exec(specPath)?.[1] ??
-    /phase-(\d\d)/.exec(planIssuesPath(specPath, "x", ctx.repo.plans.dir))?.[1];
+  const nn = planPhaseNumber(epic.labels, specPath);
   // Nothing else in the daemon refreshes repoDir, so a plan PR merged minutes ago is only
   // visible after this fetch; a failed fetch falls back to the last known origin/main (#189).
   if (!(await fetchOrigin(ctx.exec, cfg.repoDir)))
@@ -628,6 +627,10 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
     return false;
   }
   const planFile = PlanIssuesSchema.parse(JSON.parse(text));
+  await ensurePlanLabels(
+    gh,
+    planFile.tasks.flatMap((t) => t.labels),
+  );
   // One board read for the whole plan. This used to be one `listIssues` per task, which is a
   // `gh project item-list` each time; a twenty-task plan tripped GitHub's rate limiter, the
   // tick failed, and the retry started the same storm again.

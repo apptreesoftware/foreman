@@ -75,3 +75,34 @@ export async function ensureLabels(
   }
   return { created };
 }
+
+/**
+ * `phase:N` and `area:*` labels are the planner's to invent, so they cannot be part of `init`'s
+ * fixed list; the plan is where they first appear. `gh issue create --label` fails outright on a
+ * label the repository does not have, which used to fail the whole `apply_plan` tick — and every
+ * retry of it — the first time a plan named an area nobody had used yet.
+ */
+export async function ensurePlanLabels(
+  gh: Pick<BootstrapApi, "listLabels" | "createLabel">,
+  names: string[],
+): Promise<{ created: string[] }> {
+  const wanted = [...new Set(names)];
+  if (wanted.length === 0) return { created: [] };
+  const have = new Set(await gh.listLabels());
+  const created: string[] = [];
+  for (const name of wanted) {
+    if (have.has(name)) continue;
+    const phase = /^phase:(\d+)$/.exec(name);
+    await gh.createLabel({
+      name,
+      color: phase ? "1D76DB" : name.startsWith("area:") ? "0052CC" : "EDEDED",
+      description: phase
+        ? `Phase ${phase[1]}`
+        : name.startsWith("area:")
+          ? `Area: ${name.slice(5)}`
+          : "",
+    });
+    created.push(name);
+  }
+  return { created };
+}

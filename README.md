@@ -254,7 +254,7 @@ Fixed names; `foreman init` creates them all.
 | `epic` | A phase's parent issue. |
 | `agent-ready` | On an epic: plan it. On a task: the foreman may claim it. Only the planner's own tasks are ever claimed. |
 | `phase:N` | Which phase an epic or task belongs to. Created by `epic new` and by the planner. |
-| `area:*`, `size:S|M|L` | Set by the planner; `size` orders the pick, `area` can skip validation. |
+| `area:*`, `size:S` / `size:M` / `size:L` | Set by the planner; `size` orders the pick, `area` can skip validation. |
 | `blocked` | Cannot proceed; the reason is a comment. Owner work. |
 | `needs-owner` | Waiting on the owner. |
 | `decision` | A question a role session could not answer. |

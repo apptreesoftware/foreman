@@ -9,6 +9,7 @@ import {
   phaseActions,
   phaseComplete,
   planIssuesPath,
+  planPhaseNumber,
 } from "./phase.ts";
 
 describe("parsers", () => {
@@ -32,6 +33,16 @@ describe("parsers", () => {
         "docs/superpowers/plans",
       ),
     ).toBe("docs/superpowers/plans/2026-09-10-phase-01-plan.issues.json");
+  });
+  it("planPhaseNumber prefers the epic's phase label, zero-padded", () => {
+    expect(planPhaseNumber(["epic", "phase:1"], "docs/sandbox.md")).toBe("01");
+    expect(planPhaseNumber(["phase:12"], "docs/sandbox.md")).toBe("12");
+  });
+  it("planPhaseNumber falls back to the spec path, then gives up", () => {
+    expect(planPhaseNumber(["epic"], "docs/specs/2026-09-03-phase-07-billing-design.md")).toBe(
+      "07",
+    );
+    expect(planPhaseNumber(["epic"], "docs/sandbox.md")).toBeNull();
   });
   it("PlanIssuesSchema", () => {
     expect(
