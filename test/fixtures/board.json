@@ -4,147 +4,147 @@
       "content": {
         "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-00-scaffolding-design.md`\n\n## Depends on\nNothing\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
         "number": 1,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "Phase 0: Scaffolding",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/1"
+        "url": "https://github.com/acme/widgets/issues/1"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tih4",
       "labels": ["phase:0", "epic", "needs-owner", "plan-approved"],
       "phase": "0",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "status": "In Review",
       "title": "Phase 0: Scaffolding"
     },
     {
-      "assignees": ["matthewtsmith"],
+      "assignees": ["acme"],
       "content": {
         "body": "## Goal\nRoot workspace: pnpm, Turborepo, Biome, tsconfig base, .nvmrc, .env.example, README\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-00-scaffolding-design.md` § Task breakdown, task 1\n\nParent epic: #1\n",
         "number": 2,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P0] Root workspace: pnpm, Turborepo, Biome, tsconfig base, .nvmrc, .env.example, README",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/2"
+        "url": "https://github.com/acme/widgets/issues/2"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TilU",
       "labels": ["phase:0", "agent-ready", "size:S", "area:infra"],
-      "linked pull requests": ["https://github.com/matthewtsmith/tone_tonic/pull/135"],
+      "linked pull requests": ["https://github.com/acme/widgets/pull/135"],
       "phase": "0",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Done",
       "title": "[P0] Root workspace: pnpm, Turborepo, Biome, tsconfig base, .nvmrc, .env.example, README"
     },
     {
-      "assignees": ["matthewtsmith"],
+      "assignees": ["acme"],
       "content": {
         "body": "## Goal\n`packages/shared` with Zod, Vitest, one schema + test\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-00-scaffolding-design.md` § Task breakdown, task 2\n\nParent epic: #1\n",
         "number": 3,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P0] `packages/shared` with Zod, Vitest, one schema + test",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/3"
+        "url": "https://github.com/acme/widgets/issues/3"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TipM",
       "labels": ["phase:0", "agent-ready", "size:S", "area:shared"],
-      "linked pull requests": ["https://github.com/matthewtsmith/tone_tonic/pull/136"],
+      "linked pull requests": ["https://github.com/acme/widgets/pull/136"],
       "phase": "0",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Done",
       "title": "[P0] `packages/shared` with Zod, Vitest, one schema + test"
     },
     {
-      "assignees": ["matthewtsmith"],
+      "assignees": ["acme"],
       "content": {
         "body": "## Goal\n`packages/db`: supabase init, init migration with `profiles` + trigger, seed, pgTAP test, type generation script\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-00-scaffolding-design.md` § Task breakdown, task 3\n\nParent epic: #1\n",
         "number": 4,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P0] `packages/db`: supabase init, init migration with `profiles` + trigger, seed, pgTAP test, type gener",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/4"
+        "url": "https://github.com/acme/widgets/issues/4"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tisk",
       "labels": ["phase:0", "agent-ready", "size:M", "area:db"],
-      "linked pull requests": ["https://github.com/matthewtsmith/tone_tonic/pull/137"],
+      "linked pull requests": ["https://github.com/acme/widgets/pull/137"],
       "phase": "0",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Done",
       "title": "[P0] `packages/db`: supabase init, init migration with `profiles` + trigger, seed, pgTAP test, type gener"
     },
     {
-      "assignees": ["matthewtsmith"],
+      "assignees": ["acme"],
       "content": {
         "body": "## Goal\n`apps/api`: NestJS 11, env validation, SupabaseModule, HealthModule, AuthGuard + `/me`, tests, Dockerfile\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-00-scaffolding-design.md` § Task breakdown, task 4\n\nParent epic: #1\n",
         "number": 5,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P0] `apps/api`: NestJS 11, env validation, SupabaseModule, HealthModule, AuthGuard + `/me`, tests, Docke",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/5"
+        "url": "https://github.com/acme/widgets/issues/5"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tixc",
       "labels": ["phase:0", "agent-ready", "size:M", "area:api"],
-      "linked pull requests": ["https://github.com/matthewtsmith/tone_tonic/pull/138"],
+      "linked pull requests": ["https://github.com/acme/widgets/pull/138"],
       "phase": "0",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Done",
       "title": "[P0] `apps/api`: NestJS 11, env validation, SupabaseModule, HealthModule, AuthGuard + `/me`, tests, Docke"
     },
     {
-      "assignees": ["matthewtsmith"],
+      "assignees": ["acme"],
       "content": {
         "body": "## Goal\n`apps/web`: Vite React 19, TanStack Router/Query, Tailwind + shadcn, supabase client, api client, home page calling `/health`, one test\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-00-scaffolding-design.md` § Task breakdown, task 5\n\nParent epic: #1\n",
         "number": 6,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P0] `apps/web`: Vite React 19, TanStack Router/Query, Tailwind + shadcn, supabase client, api client, ho",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/6"
+        "url": "https://github.com/acme/widgets/issues/6"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Ti1k",
       "labels": ["phase:0", "agent-ready", "size:M", "area:web"],
-      "linked pull requests": ["https://github.com/matthewtsmith/tone_tonic/pull/139"],
+      "linked pull requests": ["https://github.com/acme/widgets/pull/139"],
       "phase": "0",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Done",
       "title": "[P0] `apps/web`: Vite React 19, TanStack Router/Query, Tailwind + shadcn, supabase client, api client, ho"
     },
     {
-      "assignees": ["matthewtsmith"],
+      "assignees": ["acme"],
       "content": {
         "body": "## Goal\nCI workflow: lint/typecheck/test job and db job with types drift check\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-00-scaffolding-design.md` § Task breakdown, task 6\n\nParent epic: #1\n",
         "number": 7,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P0] CI workflow: lint/typecheck/test job and db job with types drift check",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/7"
+        "url": "https://github.com/acme/widgets/issues/7"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Ti54",
       "labels": ["phase:0", "agent-ready", "size:M", "area:infra"],
-      "linked pull requests": ["https://github.com/matthewtsmith/tone_tonic/pull/140"],
+      "linked pull requests": ["https://github.com/acme/widgets/pull/140"],
       "phase": "0",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Done",
       "title": "[P0] CI workflow: lint/typecheck/test job and db job with types drift check"
     },
     {
-      "assignees": ["matthewtsmith"],
+      "assignees": ["acme"],
       "content": {
         "body": "## Goal\n`CLAUDE.md`, `AGENTS.md`, issue and PR templates\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-00-scaffolding-design.md` § Task breakdown, task 7\n\nParent epic: #1\n",
         "number": 8,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P0] `CLAUDE.md`, `AGENTS.md`, issue and PR templates",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/8"
+        "url": "https://github.com/acme/widgets/issues/8"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Ti_k",
       "labels": ["phase:0", "agent-ready", "size:S", "area:infra"],
-      "linked pull requests": ["https://github.com/matthewtsmith/tone_tonic/pull/141"],
+      "linked pull requests": ["https://github.com/acme/widgets/pull/141"],
       "phase": "0",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Done",
       "title": "[P0] `CLAUDE.md`, `AGENTS.md`, issue and PR templates"
@@ -153,15 +153,15 @@
       "content": {
         "body": "## Goal\nBranch protection and required checks on `main`\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-00-scaffolding-design.md` § Task breakdown, task 8\n\nParent epic: #1\n",
         "number": 9,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P0] Branch protection and required checks on `main`",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/9"
+        "url": "https://github.com/acme/widgets/issues/9"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TjDg",
       "labels": ["phase:0", "size:S", "area:infra"],
       "phase": "0",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Done",
       "title": "[P0] Branch protection and required checks on `main`"
@@ -170,15 +170,15 @@
       "content": {
         "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md`\n\n## Depends on\nPhase 0\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
         "number": 10,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "Phase 1: Identity and roster",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/10"
+        "url": "https://github.com/acme/widgets/issues/10"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tjt0",
       "labels": ["phase:1", "epic"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "status": "Backlog",
       "title": "Phase 1: Identity and roster"
     },
@@ -186,15 +186,15 @@
       "content": {
         "body": "## Goal\nMigration: profiles extension, contacts, instruments + seed, profile_instruments\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 1\n\nParent epic: #10\n",
         "number": 11,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Migration: profiles extension, contacts, instruments + seed, profile_instruments",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/11"
+        "url": "https://github.com/acme/widgets/issues/11"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TkTc",
       "labels": ["phase:1", "size:S", "area:db"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P1] Migration: profiles extension, contacts, instruments + seed, profile_instruments"
@@ -203,15 +203,15 @@
       "content": {
         "body": "## Goal\nMigration: teacher_students, classes, class_members + private-capacity trigger\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\n#11\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 2\n\nParent epic: #10\n",
         "number": 12,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Migration: teacher_students, classes, class_members + private-capacity trigger",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/12"
+        "url": "https://github.com/acme/widgets/issues/12"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TkXE",
       "labels": ["phase:1", "size:M", "area:db"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P1] Migration: teacher_students, classes, class_members + private-capacity trigger"
@@ -220,15 +220,15 @@
       "content": {
         "body": "## Goal\nMigration: invites, lessons, lesson_attendees\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\n#12\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 3\n\nParent epic: #10\n",
         "number": 13,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Migration: invites, lessons, lesson_attendees",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/13"
+        "url": "https://github.com/acme/widgets/issues/13"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TkdQ",
       "labels": ["phase:1", "size:S", "area:db"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P1] Migration: invites, lessons, lesson_attendees"
@@ -237,15 +237,15 @@
       "content": {
         "body": "## Goal\nMigration: audit_events + audit trigger on all domain tables\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\n#13\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 4\n\nParent epic: #10\n",
         "number": 14,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Migration: audit_events + audit trigger on all domain tables",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/14"
+        "url": "https://github.com/acme/widgets/issues/14"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tkj8",
       "labels": ["phase:1", "size:S", "area:db"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P1] Migration: audit_events + audit trigger on all domain tables"
@@ -254,15 +254,15 @@
       "content": {
         "body": "## Goal\nPrivate helper functions + full RLS policy set + pgTAP tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\n#14\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 5\n\nParent epic: #10\n",
         "number": 15,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Private helper functions + full RLS policy set + pgTAP tests",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/15"
+        "url": "https://github.com/acme/widgets/issues/15"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tkp0",
       "labels": ["phase:1", "size:L", "area:db"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P1] Private helper functions + full RLS policy set + pgTAP tests"
@@ -271,15 +271,15 @@
       "content": {
         "body": "## Goal\nShared Zod schemas for all Phase 1 entities and API envelopes\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\n#13\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 6\n\nParent epic: #10\n",
         "number": 16,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Shared Zod schemas for all Phase 1 entities and API envelopes",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/16"
+        "url": "https://github.com/acme/widgets/issues/16"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tks0",
       "labels": ["phase:1", "size:S", "area:shared"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P1] Shared Zod schemas for all Phase 1 entities and API envelopes"
@@ -288,15 +288,15 @@
       "content": {
         "body": "## Goal\nAPI: invites module (create, accept, resend, revoke) with Supabase Auth email\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\n#15, #16\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 7\n\nParent epic: #10\n",
         "number": 17,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] API: invites module (create, accept, resend, revoke) with Supabase Auth email",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/17"
+        "url": "https://github.com/acme/widgets/issues/17"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tkxs",
       "labels": ["phase:1", "size:L", "area:api"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P1] API: invites module (create, accept, resend, revoke) with Supabase Auth email"
@@ -305,15 +305,15 @@
       "content": {
         "body": "## Goal\nAPI: students remove endpoint\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\n#15, #16\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 8\n\nParent epic: #10\n",
         "number": 18,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] API: students remove endpoint",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/18"
+        "url": "https://github.com/acme/widgets/issues/18"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tk3U",
       "labels": ["phase:1", "size:S", "area:api"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P1] API: students remove endpoint"
@@ -322,15 +322,15 @@
       "content": {
         "body": "## Goal\nWeb: auth screens (login, signup, magic link, callback, password reset)\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\n#16\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 9\n\nParent epic: #10\n",
         "number": 19,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Web: auth screens (login, signup, magic link, callback, password reset)",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/19"
+        "url": "https://github.com/acme/widgets/issues/19"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tk8s",
       "labels": ["phase:1", "size:M", "area:web"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P1] Web: auth screens (login, signup, magic link, callback, password reset)"
@@ -339,15 +339,15 @@
       "content": {
         "body": "## Goal\nWeb: onboarding + profile settings (contacts, instruments, timezone)\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\n#19\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 10\n\nParent epic: #10\n",
         "number": 20,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Web: onboarding + profile settings (contacts, instruments, timezone)",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/20"
+        "url": "https://github.com/acme/widgets/issues/20"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TlBo",
       "labels": ["phase:1", "size:M", "area:web"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P1] Web: onboarding + profile settings (contacts, instruments, timezone)"
@@ -356,15 +356,15 @@
       "content": {
         "body": "## Goal\nWeb: teacher students list + invite flow + pending invites\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\n#17, #19\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 11\n\nParent epic: #10\n",
         "number": 21,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Web: teacher students list + invite flow + pending invites",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/21"
+        "url": "https://github.com/acme/widgets/issues/21"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TlGo",
       "labels": ["phase:1", "size:M", "area:web"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P1] Web: teacher students list + invite flow + pending invites"
@@ -373,15 +373,15 @@
       "content": {
         "body": "## Goal\nWeb: teacher classes list/create/detail with members and lesson records\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\n#19\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 12\n\nParent epic: #10\n",
         "number": 22,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Web: teacher classes list/create/detail with members and lesson records",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/22"
+        "url": "https://github.com/acme/widgets/issues/22"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TlLA",
       "labels": ["phase:1", "size:M", "area:web"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P1] Web: teacher classes list/create/detail with members and lesson records"
@@ -390,15 +390,15 @@
       "content": {
         "body": "## Goal\nWeb: student My Teachers / My Classes / My Lessons\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\n#19\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 13\n\nParent epic: #10\n",
         "number": 23,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Web: student My Teachers / My Classes / My Lessons",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/23"
+        "url": "https://github.com/acme/widgets/issues/23"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TlOI",
       "labels": ["phase:1", "size:S", "area:web"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P1] Web: student My Teachers / My Classes / My Lessons"
@@ -407,15 +407,15 @@
       "content": {
         "body": "## Goal\nWeb: invite accept page\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\n#17, #19\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 14\n\nParent epic: #10\n",
         "number": 24,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Web: invite accept page",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/24"
+        "url": "https://github.com/acme/widgets/issues/24"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TlRA",
       "labels": ["phase:1", "size:M", "area:web"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P1] Web: invite accept page"
@@ -424,15 +424,15 @@
       "content": {
         "body": "## Goal\nWeb: dashboard routing (teacher/student panels)\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\ntask 11–14\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md` § Task breakdown, task 15\n\nParent epic: #10\n",
         "number": 25,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P1] Web: dashboard routing (teacher/student panels)",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/25"
+        "url": "https://github.com/acme/widgets/issues/25"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TlVw",
       "labels": ["phase:1", "size:S", "area:web"],
       "phase": "1",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P1] Web: dashboard routing (teacher/student panels)"
@@ -441,15 +441,15 @@
       "content": {
         "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md`\n\n## Depends on\nPhase 1\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
         "number": 26,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "Phase 2: Simple scheduling",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/26"
+        "url": "https://github.com/acme/widgets/issues/26"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tldg",
       "labels": ["phase:2", "epic"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "status": "Backlog",
       "title": "Phase 2: Simple scheduling"
     },
@@ -457,15 +457,15 @@
       "content": {
         "body": "## Goal\nMigration: `availability_rules`, `session_series`, `sessions`, overlap exclusion constraint, indexes, RLS policies, audit triggers\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 1\n\nParent epic: #26\n",
         "number": 27,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] Migration: `availability_rules`, `session_series`, `sessions`, overlap exclusion constraint, indexes",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/27"
+        "url": "https://github.com/acme/widgets/issues/27"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TlgM",
       "labels": ["phase:2", "size:M", "area:db"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P2] Migration: `availability_rules`, `session_series`, `sessions`, overlap exclusion constraint, indexes"
@@ -474,15 +474,15 @@
       "content": {
         "body": "## Goal\npgTAP tests for scheduling RLS and overlap constraint\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 2\n\nParent epic: #26\n",
         "number": 28,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] pgTAP tests for scheduling RLS and overlap constraint",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/28"
+        "url": "https://github.com/acme/widgets/issues/28"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TlkQ",
       "labels": ["phase:2", "size:S", "area:db"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P2] pgTAP tests for scheduling RLS and overlap constraint"
@@ -491,15 +491,15 @@
       "content": {
         "body": "## Goal\nShared: Zod schemas for series/session DTOs and `ScheduleProposal`; RRULE helpers wrapping `rrule.js`\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 3\n\nParent epic: #26\n",
         "number": 29,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] Shared: Zod schemas for series/session DTOs and `ScheduleProposal`; RRULE helpers wrapping `rrule.js",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/29"
+        "url": "https://github.com/acme/widgets/issues/29"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tlo8",
       "labels": ["phase:2", "size:S", "area:shared"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P2] Shared: Zod schemas for series/session DTOs and `ScheduleProposal`; RRULE helpers wrapping `rrule.js"
@@ -508,15 +508,15 @@
       "content": {
         "body": "## Goal\nAPI: `SchedulingModule` — series create with materialization, single session create, preview, conflict detection\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 4\n\nParent epic: #26\n",
         "number": 30,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] API: `SchedulingModule` — series create with materialization, single session create, preview, confli",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/30"
+        "url": "https://github.com/acme/widgets/issues/30"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tlt8",
       "labels": ["phase:2", "size:M", "area:api"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P2] API: `SchedulingModule` — series create with materialization, single session create, preview, confli"
@@ -525,15 +525,15 @@
       "content": {
         "body": "## Goal\nAPI: occurrence move/cancel, series cancel-from, `extend_series` daily job\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 5\n\nParent epic: #26\n",
         "number": 31,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] API: occurrence move/cancel, series cancel-from, `extend_series` daily job",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/31"
+        "url": "https://github.com/acme/widgets/issues/31"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tl1A",
       "labels": ["phase:2", "size:M", "area:api"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P2] API: occurrence move/cancel, series cancel-from, `extend_series` daily job"
@@ -542,15 +542,15 @@
       "content": {
         "body": "## Goal\nAPI: NL parse endpoint with Claude structured output and class/student resolution\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 6\n\nParent epic: #26\n",
         "number": 32,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] API: NL parse endpoint with Claude structured output and class/student resolution",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/32"
+        "url": "https://github.com/acme/widgets/issues/32"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tl7A",
       "labels": ["phase:2", "size:M", "area:api"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P2] API: NL parse endpoint with Claude structured output and class/student resolution"
@@ -559,15 +559,15 @@
       "content": {
         "body": "## Goal\nWeb: availability editor screen\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 7\n\nParent epic: #26\n",
         "number": 33,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] Web: availability editor screen",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/33"
+        "url": "https://github.com/acme/widgets/issues/33"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tl_k",
       "labels": ["phase:2", "size:S", "area:web"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P2] Web: availability editor screen"
@@ -576,15 +576,15 @@
       "content": {
         "body": "## Goal\nWeb: week calendar, session detail, move/cancel actions\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 8\n\nParent epic: #26\n",
         "number": 34,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] Web: week calendar, session detail, move/cancel actions",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/34"
+        "url": "https://github.com/acme/widgets/issues/34"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TmEY",
       "labels": ["phase:2", "size:L", "area:web"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P2] Web: week calendar, session detail, move/cancel actions"
@@ -593,15 +593,15 @@
       "content": {
         "body": "## Goal\nWeb: new session/series form with preview and conflicts\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 9\n\nParent epic: #26\n",
         "number": 35,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] Web: new session/series form with preview and conflicts",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/35"
+        "url": "https://github.com/acme/widgets/issues/35"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TmIo",
       "labels": ["phase:2", "size:M", "area:web"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P2] Web: new session/series form with preview and conflicts"
@@ -610,15 +610,15 @@
       "content": {
         "body": "## Goal\nWeb: NL scheduling box with mention autocomplete and proposal confirmation\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 10\n\nParent epic: #26\n",
         "number": 36,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] Web: NL scheduling box with mention autocomplete and proposal confirmation",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/36"
+        "url": "https://github.com/acme/widgets/issues/36"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TmMU",
       "labels": ["phase:2", "size:M", "area:web"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P2] Web: NL scheduling box with mention autocomplete and proposal confirmation"
@@ -627,15 +627,15 @@
       "content": {
         "body": "## Goal\nWeb: student upcoming sessions view\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-02-simple-scheduling-design.md` § Task breakdown, task 11\n\nParent epic: #26\n",
         "number": 37,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P2] Web: student upcoming sessions view",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/37"
+        "url": "https://github.com/acme/widgets/issues/37"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TmRc",
       "labels": ["phase:2", "size:S", "area:web"],
       "phase": "2",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P2] Web: student upcoming sessions view"
@@ -644,15 +644,15 @@
       "content": {
         "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md`\n\n## Depends on\nPhase 1\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
         "number": 38,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "Phase 3: Lesson creation and AI organization",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/38"
+        "url": "https://github.com/acme/widgets/issues/38"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TmVk",
       "labels": ["phase:3", "epic"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "status": "Backlog",
       "title": "Phase 3: Lesson creation and AI organization"
     },
@@ -660,15 +660,15 @@
       "content": {
         "body": "## Goal\nMigrations for media, transcripts, sections, resources, tracks, jobs, settings, plus RLS helpers and pgTAP tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 1\n\nParent epic: #38\n",
         "number": 39,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] Migrations for media, transcripts, sections, resources, tracks, jobs, settings, plus RLS helpers and",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/39"
+        "url": "https://github.com/acme/widgets/issues/39"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TmZg",
       "labels": ["phase:3", "size:L", "area:db"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P3] Migrations for media, transcripts, sections, resources, tracks, jobs, settings, plus RLS helpers and"
@@ -677,15 +677,15 @@
       "content": {
         "body": "## Goal\nStorage buckets, policies, and signed upload URL endpoints for media and resources\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi, db\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 2\n\nParent epic: #38\n",
         "number": 40,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] Storage buckets, policies, and signed upload URL endpoints for media and resources",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/40"
+        "url": "https://github.com/acme/widgets/issues/40"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TnHE",
       "labels": ["phase:3", "size:M", "area:api", "area:db"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P3] Storage buckets, policies, and signed upload URL endpoints for media and resources"
@@ -694,15 +694,15 @@
       "content": {
         "body": "## Goal\nVTT parser in `packages/shared` with fixtures and unit tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 3\n\nParent epic: #38\n",
         "number": 41,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] VTT parser in `packages/shared` with fixtures and unit tests",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/41"
+        "url": "https://github.com/acme/widgets/issues/41"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TnLc",
       "labels": ["phase:3", "size:S", "area:shared"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P3] VTT parser in `packages/shared` with fixtures and unit tests"
@@ -711,15 +711,15 @@
       "content": {
         "body": "## Goal\nJobs worker service with `skip locked` polling, retry, and audit events\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 4\n\nParent epic: #38\n",
         "number": 42,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] Jobs worker service with `skip locked` polling, retry, and audit events",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/42"
+        "url": "https://github.com/acme/widgets/issues/42"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TnOE",
       "labels": ["phase:3", "size:M", "area:api"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P3] Jobs worker service with `skip locked` polling, retry, and audit events"
@@ -728,15 +728,15 @@
       "content": {
         "body": "## Goal\nOrganize job: prompt composition, structured output schema, post-processing, tests with recorded fixtures\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi, shared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 5\n\nParent epic: #38\n",
         "number": 43,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] Organize job: prompt composition, structured output schema, post-processing, tests with recorded fix",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/43"
+        "url": "https://github.com/acme/widgets/issues/43"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TnS4",
       "labels": ["phase:3", "size:L", "area:api", "area:shared"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P3] Organize job: prompt composition, structured output schema, post-processing, tests with recorded fix"
@@ -745,15 +745,15 @@
       "content": {
         "body": "## Goal\nLesson editor: create lesson, media upload with progress and resume, materials tab\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 6\n\nParent epic: #38\n",
         "number": 44,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] Lesson editor: create lesson, media upload with progress and resume, materials tab",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/44"
+        "url": "https://github.com/acme/widgets/issues/44"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TnXM",
       "labels": ["phase:3", "size:L", "area:web"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P3] Lesson editor: create lesson, media upload with progress and resume, materials tab"
@@ -762,15 +762,15 @@
       "content": {
         "body": "## Goal\nSections editor with reorder, Markdown body, transcript panel, create-from-selection\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 7\n\nParent epic: #38\n",
         "number": 45,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] Sections editor with reorder, Markdown body, transcript panel, create-from-selection",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/45"
+        "url": "https://github.com/acme/widgets/issues/45"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TncI",
       "labels": ["phase:3", "size:M", "area:web"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P3] Sections editor with reorder, Markdown body, transcript panel, create-from-selection"
@@ -779,15 +779,15 @@
       "content": {
         "body": "## Goal\nLesson view with video player, `?t=` deep links, resources modal, tracks\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 8\n\nParent epic: #38\n",
         "number": 46,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] Lesson view with video player, `?t=` deep links, resources modal, tracks",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/46"
+        "url": "https://github.com/acme/widgets/issues/46"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tnho",
       "labels": ["phase:3", "size:M", "area:web"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P3] Lesson view with video player, `?t=` deep links, resources modal, tracks"
@@ -796,15 +796,15 @@
       "content": {
         "body": "## Goal\nResource library and music library screens\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 9\n\nParent epic: #38\n",
         "number": 47,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] Resource library and music library screens",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/47"
+        "url": "https://github.com/acme/widgets/issues/47"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TnkU",
       "labels": ["phase:3", "size:M", "area:web"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P3] Resource library and music library screens"
@@ -813,15 +813,15 @@
       "content": {
         "body": "## Goal\nOrganizer settings (teacher default and class override) and publish/unpublish flow\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb, api\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-03-lesson-creation-design.md` § Task breakdown, task 10\n\nParent epic: #38\n",
         "number": 48,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P3] Organizer settings (teacher default and class override) and publish/unpublish flow",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/48"
+        "url": "https://github.com/acme/widgets/issues/48"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tnng",
       "labels": ["phase:3", "size:S", "area:web", "area:api"],
       "phase": "3",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P3] Organizer settings (teacher default and class override) and publish/unpublish flow"
@@ -830,15 +830,15 @@
       "content": {
         "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md`\n\n## Depends on\nPhase 3\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
         "number": 49,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "Phase 4: Augmentation and interactive diagrams",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/49"
+        "url": "https://github.com/acme/widgets/issues/49"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TnsY",
       "labels": ["phase:4", "epic"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "status": "Backlog",
       "title": "Phase 4: Augmentation and interactive diagrams"
     },
@@ -846,15 +846,15 @@
       "content": {
         "body": "## Goal\nMigration for `diagrams`, `related_section_id`, and settings columns, with RLS and pgTAP tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md` § Task breakdown, task 1\n\nParent epic: #49\n",
         "number": 50,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P4] Migration for `diagrams`, `related_section_id`, and settings columns, with RLS and pgTAP tests",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/50"
+        "url": "https://github.com/acme/widgets/issues/50"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TnwM",
       "labels": ["phase:4", "size:S", "area:db"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P4] Migration for `diagrams`, `related_section_id`, and settings columns, with RLS and pgTAP tests"
@@ -863,15 +863,15 @@
       "content": {
         "body": "## Goal\n`packages/diagrams`: theory helpers (scales, chords, spelling) with unit tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md` § Task breakdown, task 2\n\nParent epic: #49\n",
         "number": 51,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P4] `packages/diagrams`: theory helpers (scales, chords, spelling) with unit tests",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/51"
+        "url": "https://github.com/acme/widgets/issues/51"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tnz0",
       "labels": ["phase:4", "size:M", "area:shared"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P4] `packages/diagrams`: theory helpers (scales, chords, spelling) with unit tests"
@@ -880,15 +880,15 @@
       "content": {
         "body": "## Goal\n`packages/diagrams`: fretboard and keyboard SVG renderers with hover and labels toggle\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md` § Task breakdown, task 3\n\nParent epic: #49\n",
         "number": 52,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P4] `packages/diagrams`: fretboard and keyboard SVG renderers with hover and labels toggle",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/52"
+        "url": "https://github.com/acme/widgets/issues/52"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tn3M",
       "labels": ["phase:4", "size:M", "area:web"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P4] `packages/diagrams`: fretboard and keyboard SVG renderers with hover and labels toggle"
@@ -897,15 +897,15 @@
       "content": {
         "body": "## Goal\n`packages/diagrams`: staff renderer (treble, bass) and `Diagram` dispatcher\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md` § Task breakdown, task 4\n\nParent epic: #49\n",
         "number": 53,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P4] `packages/diagrams`: staff renderer (treble, bass) and `Diagram` dispatcher",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/53"
+        "url": "https://github.com/acme/widgets/issues/53"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tn8M",
       "labels": ["phase:4", "size:M", "area:web"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P4] `packages/diagrams`: staff renderer (treble, bass) and `Diagram` dispatcher"
@@ -914,15 +914,15 @@
       "content": {
         "body": "## Goal\nParams Zod schemas and JSON Schema export for prompts\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md` § Task breakdown, task 5\n\nParent epic: #49\n",
         "number": 54,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P4] Params Zod schemas and JSON Schema export for prompts",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/54"
+        "url": "https://github.com/acme/widgets/issues/54"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5ToAA",
       "labels": ["phase:4", "size:S", "area:shared"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P4] Params Zod schemas and JSON Schema export for prompts"
@@ -931,15 +931,15 @@
       "content": {
         "body": "## Goal\nAugment job: prompt, structured output, post-processing, fixture tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md` § Task breakdown, task 6\n\nParent epic: #49\n",
         "number": 55,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P4] Augment job: prompt, structured output, post-processing, fixture tests",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/55"
+        "url": "https://github.com/acme/widgets/issues/55"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5ToFw",
       "labels": ["phase:4", "size:M", "area:api"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P4] Augment job: prompt, structured output, post-processing, fixture tests"
@@ -948,15 +948,15 @@
       "content": {
         "body": "## Goal\nDiagram picker and editor in the lesson editor with live preview\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md` § Task breakdown, task 7\n\nParent epic: #49\n",
         "number": 56,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P4] Diagram picker and editor in the lesson editor with live preview",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/56"
+        "url": "https://github.com/acme/widgets/issues/56"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5ToM0",
       "labels": ["phase:4", "size:M", "area:web"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P4] Diagram picker and editor in the lesson editor with live preview"
@@ -965,15 +965,15 @@
       "content": {
         "body": "## Goal\nCallout rendering in lesson view with related-section placement and controls\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md` § Task breakdown, task 8\n\nParent epic: #49\n",
         "number": 57,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P4] Callout rendering in lesson view with related-section placement and controls",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/57"
+        "url": "https://github.com/acme/widgets/issues/57"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5ToRM",
       "labels": ["phase:4", "size:S", "area:web"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P4] Callout rendering in lesson view with related-section placement and controls"
@@ -982,15 +982,15 @@
       "content": {
         "body": "## Goal\nAugmentation settings panel\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-04-augmentation-design.md` § Task breakdown, task 9\n\nParent epic: #49\n",
         "number": 58,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P4] Augmentation settings panel",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/58"
+        "url": "https://github.com/acme/widgets/issues/58"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5ToWM",
       "labels": ["phase:4", "size:S", "area:web"],
       "phase": "4",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P4] Augmentation settings panel"
@@ -999,15 +999,15 @@
       "content": {
         "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-05-student-home-design.md`\n\n## Depends on\nPhases 2, 3\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
         "number": 59,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "Phase 5: Student home",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/59"
+        "url": "https://github.com/acme/widgets/issues/59"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tocs",
       "labels": ["phase:5", "epic"],
       "phase": "5",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "status": "Backlog",
       "title": "Phase 5: Student home"
     },
@@ -1015,15 +1015,15 @@
       "content": {
         "body": "## Goal\nAdd `student_recent_lessons` and `student_upcoming_sessions` views with supporting indexes and pgTAP tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-05-student-home-design.md` § Task breakdown, task 1\n\nParent epic: #59\n",
         "number": 60,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P5] Add `student_recent_lessons` and `student_upcoming_sessions` views with supporting indexes and pgTAP",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/60"
+        "url": "https://github.com/acme/widgets/issues/60"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TofQ",
       "labels": ["phase:5", "size:S", "area:db"],
       "phase": "5",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P5] Add `student_recent_lessons` and `student_upcoming_sessions` views with supporting indexes and pgTAP"
@@ -1032,15 +1032,15 @@
       "content": {
         "body": "## Goal\nSchedule expansion helper in `packages/shared` (rrule expansion, time zone conversion) with unit tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-05-student-home-design.md` § Task breakdown, task 2\n\nParent epic: #59\n",
         "number": 61,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P5] Schedule expansion helper in `packages/shared` (rrule expansion, time zone conversion) with unit tes",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/61"
+        "url": "https://github.com/acme/widgets/issues/61"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Toj4",
       "labels": ["phase:5", "size:M", "area:shared"],
       "phase": "5",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P5] Schedule expansion helper in `packages/shared` (rrule expansion, time zone conversion) with unit tes"
@@ -1049,15 +1049,15 @@
       "content": {
         "body": "## Goal\n`/home` route, layout shell, and landing redirect logic\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-05-student-home-design.md` § Task breakdown, task 3\n\nParent epic: #59\n",
         "number": 62,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P5] `/home` route, layout shell, and landing redirect logic",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/62"
+        "url": "https://github.com/acme/widgets/issues/62"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TooM",
       "labels": ["phase:5", "size:S", "area:web"],
       "phase": "5",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P5] `/home` route, layout shell, and landing redirect logic"
@@ -1066,15 +1066,15 @@
       "content": {
         "body": "## Goal\n\"Next up\" and \"Recent lessons\" sections with empty states\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-05-student-home-design.md` § Task breakdown, task 4\n\nParent epic: #59\n",
         "number": 63,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P5] \"Next up\" and \"Recent lessons\" sections with empty states",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/63"
+        "url": "https://github.com/acme/widgets/issues/63"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TotY",
       "labels": ["phase:5", "size:M", "area:web"],
       "phase": "5",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P5] \"Next up\" and \"Recent lessons\" sections with empty states"
@@ -1083,15 +1083,15 @@
       "content": {
         "body": "## Goal\n\"This week\" strip using the shared expansion helper\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-05-student-home-design.md` § Task breakdown, task 5\n\nParent epic: #59\n",
         "number": 64,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P5] \"This week\" strip using the shared expansion helper",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/64"
+        "url": "https://github.com/acme/widgets/issues/64"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Towo",
       "labels": ["phase:5", "size:M", "area:web"],
       "phase": "5",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P5] \"This week\" strip using the shared expansion helper"
@@ -1100,15 +1100,15 @@
       "content": {
         "body": "## Goal\nView switcher for users who are both teacher and student, persisted in localStorage\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-05-student-home-design.md` § Task breakdown, task 6\n\nParent epic: #59\n",
         "number": 65,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P5] View switcher for users who are both teacher and student, persisted in localStorage",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/65"
+        "url": "https://github.com/acme/widgets/issues/65"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5To0c",
       "labels": ["phase:5", "size:S", "area:web"],
       "phase": "5",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P5] View switcher for users who are both teacher and student, persisted in localStorage"
@@ -1117,15 +1117,15 @@
       "content": {
         "body": "## Goal\nPlaywright setup in the monorepo and the first smoke test, wired into `ci.yml`\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-05-student-home-design.md` § Task breakdown, task 7\n\nParent epic: #59\n",
         "number": 66,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P5] Playwright setup in the monorepo and the first smoke test, wired into `ci.yml`",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/66"
+        "url": "https://github.com/acme/widgets/issues/66"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5To3U",
       "labels": ["phase:5", "size:M", "area:infra"],
       "phase": "5",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P5] Playwright setup in the monorepo and the first smoke test, wired into `ci.yml`"
@@ -1134,15 +1134,15 @@
       "content": {
         "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md`\n\n## Depends on\nPhase 1\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
         "number": 67,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "Phase 6: Cloud deployment",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/67"
+        "url": "https://github.com/acme/widgets/issues/67"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5To6g",
       "labels": ["phase:6", "epic"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "status": "Backlog",
       "title": "Phase 6: Cloud deployment"
     },
@@ -1150,15 +1150,15 @@
       "content": {
         "body": "## Goal\nCreate GCP project, enable services, set billing alert, document in `docs/ops/gcp.md`\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md` § Task breakdown, task 1\n\nParent epic: #67\n",
         "number": 68,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P6] Create GCP project, enable services, set billing alert, document in `docs/ops/gcp.md`",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/68"
+        "url": "https://github.com/acme/widgets/issues/68"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5To8k",
       "labels": ["phase:6", "size:S", "area:infra"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P6] Create GCP project, enable services, set billing alert, document in `docs/ops/gcp.md`"
@@ -1167,15 +1167,15 @@
       "content": {
         "body": "## Goal\nWorkload Identity Federation pool, provider, and deploy service account with least-privilege roles\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md` § Task breakdown, task 2\n\nParent epic: #67\n",
         "number": 69,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P6] Workload Identity Federation pool, provider, and deploy service account with least-privilege roles",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/69"
+        "url": "https://github.com/acme/widgets/issues/69"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpAQ",
       "labels": ["phase:6", "size:M", "area:infra"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P6] Workload Identity Federation pool, provider, and deploy service account with least-privilege roles"
@@ -1184,15 +1184,15 @@
       "content": {
         "body": "## Goal\n`apps/api/Dockerfile`, `/health` endpoint, JSON logging, local `docker build` verified\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md` § Task breakdown, task 3\n\nParent epic: #67\n",
         "number": 70,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P6] `apps/api/Dockerfile`, `/health` endpoint, JSON logging, local `docker build` verified",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/70"
+        "url": "https://github.com/acme/widgets/issues/70"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpDc",
       "labels": ["phase:6", "size:M", "area:api"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P6] `apps/api/Dockerfile`, `/health` endpoint, JSON logging, local `docker build` verified"
@@ -1201,15 +1201,15 @@
       "content": {
         "body": "## Goal\nCreate hosted Supabase project, link from `packages/db`, apply migrations, configure Auth URLs and buckets, document in `docs/ops/supabase-prod.md`\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md` § Task breakdown, task 4\n\nParent epic: #67\n",
         "number": 71,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P6] Create hosted Supabase project, link from `packages/db`, apply migrations, configure Auth URLs and b",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/71"
+        "url": "https://github.com/acme/widgets/issues/71"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpH0",
       "labels": ["phase:6", "size:M", "area:infra"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P6] Create hosted Supabase project, link from `packages/db`, apply migrations, configure Auth URLs and b"
@@ -1218,15 +1218,15 @@
       "content": {
         "body": "## Goal\nResend domain verification and Supabase custom SMTP\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md` § Task breakdown, task 5\n\nParent epic: #67\n",
         "number": 72,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P6] Resend domain verification and Supabase custom SMTP",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/72"
+        "url": "https://github.com/acme/widgets/issues/72"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpKw",
       "labels": ["phase:6", "size:S", "area:infra"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P6] Resend domain verification and Supabase custom SMTP"
@@ -1235,15 +1235,15 @@
       "content": {
         "body": "## Goal\nSecret Manager entries and Cloud Run service definition with secret mounts\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md` § Task breakdown, task 6\n\nParent epic: #67\n",
         "number": 73,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P6] Secret Manager entries and Cloud Run service definition with secret mounts",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/73"
+        "url": "https://github.com/acme/widgets/issues/73"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpNI",
       "labels": ["phase:6", "size:S", "area:infra"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P6] Secret Manager entries and Cloud Run service definition with secret mounts"
@@ -1252,15 +1252,15 @@
       "content": {
         "body": "## Goal\n`deploy.yml`: migrate, build and push image, deploy Cloud Run, deploy Firebase Hosting\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md` § Task breakdown, task 7\n\nParent epic: #67\n",
         "number": 74,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P6] `deploy.yml`: migrate, build and push image, deploy Cloud Run, deploy Firebase Hosting",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/74"
+        "url": "https://github.com/acme/widgets/issues/74"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpQU",
       "labels": ["phase:6", "size:L", "area:infra"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P6] `deploy.yml`: migrate, build and push image, deploy Cloud Run, deploy Firebase Hosting"
@@ -1269,15 +1269,15 @@
       "content": {
         "body": "## Goal\nCloud Scheduler tick endpoint with OIDC verification and the `/internal/jobs/tick` handler\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md` § Task breakdown, task 8\n\nParent epic: #67\n",
         "number": 75,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P6] Cloud Scheduler tick endpoint with OIDC verification and the `/internal/jobs/tick` handler",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/75"
+        "url": "https://github.com/acme/widgets/issues/75"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpS0",
       "labels": ["phase:6", "size:M", "area:api"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P6] Cloud Scheduler tick endpoint with OIDC verification and the `/internal/jobs/tick` handler"
@@ -1286,15 +1286,15 @@
       "content": {
         "body": "## Goal\nUptime check, alert policy, and rollback runbook in `docs/ops/runbook.md`\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ninfra\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-06-cloud-deployment-design.md` § Task breakdown, task 9\n\nParent epic: #67\n",
         "number": 76,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P6] Uptime check, alert policy, and rollback runbook in `docs/ops/runbook.md`",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/76"
+        "url": "https://github.com/acme/widgets/issues/76"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpWk",
       "labels": ["phase:6", "size:S", "area:infra"],
       "phase": "6",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P6] Uptime check, alert policy, and rollback runbook in `docs/ops/runbook.md`"
@@ -1303,15 +1303,15 @@
       "content": {
         "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md`\n\n## Depends on\nPhases 2, 6\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
         "number": 77,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "Phase 7: Advanced scheduling",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/77"
+        "url": "https://github.com/acme/widgets/issues/77"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tpac",
       "labels": ["phase:7", "epic"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "status": "Backlog",
       "title": "Phase 7: Advanced scheduling"
     },
@@ -1319,15 +1319,15 @@
       "content": {
         "body": "## Goal\nMigration: `availability_exceptions`, survey tables, proposals, notification tables, teacher settings columns, RLS, audit triggers\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 1\n\nParent epic: #77\n",
         "number": 78,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] Migration: `availability_exceptions`, survey tables, proposals, notification tables, teacher setting",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/78"
+        "url": "https://github.com/acme/widgets/issues/78"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpeA",
       "labels": ["phase:7", "size:L", "area:db"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P7] Migration: `availability_exceptions`, survey tables, proposals, notification tables, teacher setting"
@@ -1336,15 +1336,15 @@
       "content": {
         "body": "## Goal\npgTAP tests for the new tables' RLS and constraints\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 2\n\nParent epic: #77\n",
         "number": 79,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] pgTAP tests for the new tables' RLS and constraints",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/79"
+        "url": "https://github.com/acme/widgets/issues/79"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpiA",
       "labels": ["phase:7", "size:M", "area:db"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P7] pgTAP tests for the new tables' RLS and constraints"
@@ -1353,15 +1353,15 @@
       "content": {
         "body": "## Goal\nShared: Zod schemas for surveys, preferences, assignments, `ProposalOutput`, notification prefs\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nshared\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 3\n\nParent epic: #77\n",
         "number": 80,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] Shared: Zod schemas for surveys, preferences, assignments, `ProposalOutput`, notification prefs",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/80"
+        "url": "https://github.com/acme/widgets/issues/80"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tpmw",
       "labels": ["phase:7", "size:S", "area:shared"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P7] Shared: Zod schemas for surveys, preferences, assignments, `ProposalOutput`, notification prefs"
@@ -1370,15 +1370,15 @@
       "content": {
         "body": "## Goal\nAPI: free-window computation service with tests for all scopes and exceptions\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 4\n\nParent epic: #77\n",
         "number": 81,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] API: free-window computation service with tests for all scopes and exceptions",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/81"
+        "url": "https://github.com/acme/widgets/issues/81"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tpqo",
       "labels": ["phase:7", "size:M", "area:api"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P7] API: free-window computation service with tests for all scopes and exceptions"
@@ -1387,15 +1387,15 @@
       "content": {
         "body": "## Goal\nAPI: survey lifecycle endpoints (create, send, remind, close) and tokenized response endpoints\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 5\n\nParent epic: #77\n",
         "number": 82,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] API: survey lifecycle endpoints (create, send, remind, close) and tokenized response endpoints",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/82"
+        "url": "https://github.com/acme/widgets/issues/82"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tpvg",
       "labels": ["phase:7", "size:M", "area:api"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P7] API: survey lifecycle endpoints (create, send, remind, close) and tokenized response endpoints"
@@ -1404,15 +1404,15 @@
       "content": {
         "body": "## Goal\nAPI: deterministic solver with school-year and continuity scoring\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 6\n\nParent epic: #77\n",
         "number": 83,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] API: deterministic solver with school-year and continuity scoring",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/83"
+        "url": "https://github.com/acme/widgets/issues/83"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TpzY",
       "labels": ["phase:7", "size:L", "area:api"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P7] API: deterministic solver with school-year and continuity scoring"
@@ -1421,15 +1421,15 @@
       "content": {
         "body": "## Goal\nAPI: AI proposal strategy with re-validation\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 7\n\nParent epic: #77\n",
         "number": 84,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] API: AI proposal strategy with re-validation",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/84"
+        "url": "https://github.com/acme/widgets/issues/84"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tp3w",
       "labels": ["phase:7", "size:M", "area:api"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P7] API: AI proposal strategy with re-validation"
@@ -1438,15 +1438,15 @@
       "content": {
         "body": "## Goal\nAPI: proposal apply (transactional series creation and replacement)\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 8\n\nParent epic: #77\n",
         "number": 85,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] API: proposal apply (transactional series creation and replacement)",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/85"
+        "url": "https://github.com/acme/widgets/issues/85"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tp7c",
       "labels": ["phase:7", "size:M", "area:api"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P7] API: proposal apply (transactional series creation and replacement)"
@@ -1455,15 +1455,15 @@
       "content": {
         "body": "## Goal\nAPI: notification enqueue and send jobs, Resend email, Twilio SMS, consent flow\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 9\n\nParent epic: #77\n",
         "number": 86,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] API: notification enqueue and send jobs, Resend email, Twilio SMS, consent flow",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/86"
+        "url": "https://github.com/acme/widgets/issues/86"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tp_E",
       "labels": ["phase:7", "size:L", "area:api"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P7] API: notification enqueue and send jobs, Resend email, Twilio SMS, consent flow"
@@ -1472,15 +1472,15 @@
       "content": {
         "body": "## Goal\nAPI: extend NL parse with exceptions and survey windows\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 10\n\nParent epic: #77\n",
         "number": 87,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] API: extend NL parse with exceptions and survey windows",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/87"
+        "url": "https://github.com/acme/widgets/issues/87"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqDQ",
       "labels": ["phase:7", "size:S", "area:api"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P7] API: extend NL parse with exceptions and survey windows"
@@ -1489,15 +1489,15 @@
       "content": {
         "body": "## Goal\nWeb: availability exceptions UI and scheduling settings screen\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 11\n\nParent epic: #77\n",
         "number": 88,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] Web: availability exceptions UI and scheduling settings screen",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/88"
+        "url": "https://github.com/acme/widgets/issues/88"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqG4",
       "labels": ["phase:7", "size:S", "area:web"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P7] Web: availability exceptions UI and scheduling settings screen"
@@ -1506,15 +1506,15 @@
       "content": {
         "body": "## Goal\nWeb: survey wizard and progress screens\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 12\n\nParent epic: #77\n",
         "number": 89,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] Web: survey wizard and progress screens",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/89"
+        "url": "https://github.com/acme/widgets/issues/89"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqK4",
       "labels": ["phase:7", "size:M", "area:web"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P7] Web: survey wizard and progress screens"
@@ -1523,15 +1523,15 @@
       "content": {
         "body": "## Goal\nWeb: proposal review grid with drag adjustments and apply confirmation\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 13\n\nParent epic: #77\n",
         "number": 90,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] Web: proposal review grid with drag adjustments and apply confirmation",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/90"
+        "url": "https://github.com/acme/widgets/issues/90"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqN4",
       "labels": ["phase:7", "size:L", "area:web"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P7] Web: proposal review grid with drag adjustments and apply confirmation"
@@ -1540,15 +1540,15 @@
       "content": {
         "body": "## Goal\nWeb: student survey response page\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 14\n\nParent epic: #77\n",
         "number": 91,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] Web: student survey response page",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/91"
+        "url": "https://github.com/acme/widgets/issues/91"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqRg",
       "labels": ["phase:7", "size:M", "area:web"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P7] Web: student survey response page"
@@ -1557,15 +1557,15 @@
       "content": {
         "body": "## Goal\nWeb: notification preferences with SMS verification\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-07-advanced-scheduling-design.md` § Task breakdown, task 15\n\nParent epic: #77\n",
         "number": 92,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P7] Web: notification preferences with SMS verification",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/92"
+        "url": "https://github.com/acme/widgets/issues/92"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqVQ",
       "labels": ["phase:7", "size:S", "area:web"],
       "phase": "7",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P7] Web: notification preferences with SMS verification"
@@ -1574,15 +1574,15 @@
       "content": {
         "body": "## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md`\n\n## Depends on\nPhases 3, 6\n\n## Tasks\nSub-issues are attached to this epic. Task list is refined via the writing-plans skill before this phase starts (see AGENTS.md, phase start procedure).\n\n## Open questions\nSee the \"Open questions\" section of the spec. Resolve here before marking tasks agent-ready.\n",
         "number": 93,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "Phase 8: Integrations (Zoom, transcription, calendars)",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/93"
+        "url": "https://github.com/acme/widgets/issues/93"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqZQ",
       "labels": ["phase:8", "epic"],
       "phase": "8",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "status": "Backlog",
       "title": "Phase 8: Integrations (Zoom, transcription, calendars)"
     },
@@ -1590,15 +1590,15 @@
       "content": {
         "body": "## Goal\nMigrations for `integrations`, `webhook_events`, `zoom_recordings`, `calendar_sync_items`, `ics_token`, public view, RLS, pgTAP\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\ndb\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` § Task breakdown, task 1\n\nParent epic: #93\n",
         "number": 94,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P8] Migrations for `integrations`, `webhook_events`, `zoom_recordings`, `calendar_sync_items`, `ics_toke",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/94"
+        "url": "https://github.com/acme/widgets/issues/94"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqco",
       "labels": ["phase:8", "size:M", "area:db"],
       "phase": "8",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P8] Migrations for `integrations`, `webhook_events`, `zoom_recordings`, `calendar_sync_items`, `ics_toke"
@@ -1607,15 +1607,15 @@
       "content": {
         "body": "## Goal\nToken encryption module (AES-256-GCM, key from env, rotation job) with unit tests\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` § Task breakdown, task 2\n\nParent epic: #93\n",
         "number": 95,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P8] Token encryption module (AES-256-GCM, key from env, rotation job) with unit tests",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/95"
+        "url": "https://github.com/acme/widgets/issues/95"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqfs",
       "labels": ["phase:8", "size:S", "area:api"],
       "phase": "8",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P8] Token encryption module (AES-256-GCM, key from env, rotation job) with unit tests"
@@ -1624,15 +1624,15 @@
       "content": {
         "body": "## Goal\nZoom OAuth connect, callback, disconnect, and Settings card\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi, web\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` § Task breakdown, task 3\n\nParent epic: #93\n",
         "number": 96,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P8] Zoom OAuth connect, callback, disconnect, and Settings card",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/96"
+        "url": "https://github.com/acme/widgets/issues/96"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqjw",
       "labels": ["phase:8", "size:M", "area:web", "area:api"],
       "phase": "8",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P8] Zoom OAuth connect, callback, disconnect, and Settings card"
@@ -1641,15 +1641,15 @@
       "content": {
         "body": "## Goal\nZoom webhook endpoint with signature verification, challenge, idempotent insert\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` § Task breakdown, task 4\n\nParent epic: #93\n",
         "number": 97,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P8] Zoom webhook endpoint with signature verification, challenge, idempotent insert",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/97"
+        "url": "https://github.com/acme/widgets/issues/97"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqm4",
       "labels": ["phase:8", "size:M", "area:api"],
       "phase": "8",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P8] Zoom webhook endpoint with signature verification, challenge, idempotent insert"
@@ -1658,15 +1658,15 @@
       "content": {
         "body": "## Goal\n`zoom_fetch` job: session matching, lesson creation, streaming download to Storage, transcript attach, organize enqueue\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` § Task breakdown, task 5\n\nParent epic: #93\n",
         "number": 98,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P8] `zoom_fetch` job: session matching, lesson creation, streaming download to Storage, transcript attac",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/98"
+        "url": "https://github.com/acme/widgets/issues/98"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TqrU",
       "labels": ["phase:8", "size:L", "area:api"],
       "phase": "8",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "L",
       "status": "Backlog",
       "title": "[P8] `zoom_fetch` job: session matching, lesson creation, streaming download to Storage, transcript attac"
@@ -1675,15 +1675,15 @@
       "content": {
         "body": "## Goal\nUnassigned recordings class and \"Move to class\" UI\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\nweb, api\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` § Task breakdown, task 6\n\nParent epic: #93\n",
         "number": 99,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P8] Unassigned recordings class and \"Move to class\" UI",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/99"
+        "url": "https://github.com/acme/widgets/issues/99"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5TquU",
       "labels": ["phase:8", "size:S", "area:web", "area:api"],
       "phase": "8",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "S",
       "status": "Backlog",
       "title": "[P8] Unassigned recordings class and \"Move to class\" UI"
@@ -1692,15 +1692,15 @@
       "content": {
         "body": "## Goal\n`transcribe` job with Deepgram client, cue conversion, and Transcribe button\n\n## Acceptance criteria\n- [ ] Implements the item above as described in the spec\n- [ ] Tests added (unit / pgTAP / e2e as appropriate) and passing\n- [ ] `pnpm lint typecheck test` green; `pnpm db:test` and `pnpm db:types` if the DB changed\n- [ ] Relevant acceptance criteria in the spec's \"Acceptance criteria\" section are satisfied for this slice\n\n## Touches\napi, web\n\n## Depends on\nNone\n\n## Spec\n`docs/superpowers/specs/2026-09-03-phase-08-integrations-design.md` § Task breakdown, task 7\n\nParent epic: #93\n",
         "number": 100,
-        "repository": "matthewtsmith/tone_tonic",
+        "repository": "acme/widgets",
         "title": "[P8] `transcribe` job with Deepgram client, cue conversion, and Transcribe button",
         "type": "Issue",
-        "url": "https://github.com/matthewtsmith/tone_tonic/issues/100"
+        "url": "https://github.com/acme/widgets/issues/100"
       },
       "id": "PVTI_lAHOAIlXYM4BiXbzzg5Tqx0",
       "labels": ["phase:8", "size:M", "area:web", "area:api"],
       "phase": "8",
-      "repository": "https://github.com/matthewtsmith/tone_tonic",
+      "repository": "https://github.com/acme/widgets",
       "size": "M",
       "status": "Backlog",
       "title": "[P8] `transcribe` job with Deepgram client, cue conversion, and Transcribe button"

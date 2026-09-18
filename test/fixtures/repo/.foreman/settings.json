@@ -1,0 +1,4 @@
+{
+  "allow": ["Bash(pnpm *)", "Bash(supabase *)"],
+  "deny": ["Bash(supabase stop*)", "Bash(git push origin main*)"]
+}

@@ -18,7 +18,8 @@ export type DaemonState = "RUNNING" | "STOPPED" | "CRASHED" | "UNKNOWN";
  * a session ending and the next tick the foreman sleeps `pollSeconds`, which used to read as
  * "idle" even with work queued; `idle` is now reserved for a tick that found nothing eligible
  * (#206). `parked` is the daemon returning early from every tick because preflight fails — the
- * daily cap, `STOP`, Docker, the GraphQL budget — which is neither idle nor between ticks (#213).
+ * daily cap, `STOP`, a failing preflight hook, the GraphQL budget — which is neither idle nor
+ * between ticks (#213).
  */
 export type NowPhase = "session" | "parked" | "ticking" | "between_ticks" | "idle";
 

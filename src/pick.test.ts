@@ -19,8 +19,8 @@ describe("buildCandidates", () => {
         issue({ number: 11, status: "Backlog" }),
         issue({ number: 12, labels: ["phase:1", "size:S"] }),
         issue({ number: 13, labels: ["phase:1", "agent-ready", "blocked"] }),
-        issue({ number: 14, body: "## Depends on\n#5\n\n## Spec\nx" }),
-        issue({ number: 15, body: "## Depends on\n#999\n\n## Spec\nx" }),
+        issue({ number: 14, body: "## Depends on\n#5\n\n## Spec\nx\n\nParent epic: #1" }),
+        issue({ number: 15, body: "## Depends on\n#999\n\n## Spec\nx\n\nParent epic: #1" }),
         issue({ number: 16, comments: [comment(fmt.claimed("mac-b", hoursAgo(1), "builder", 1))] }),
       ],
     });
@@ -29,6 +29,15 @@ describe("buildCandidates", () => {
         .map((c) => c.issue)
         .sort((a, b) => a - b),
     ).toEqual([5, 10, 15]);
+  });
+  it("ignores an issue whose body has no `Parent epic:` line", () => {
+    const s = snapshot({
+      issues: [
+        issue({ number: 20 }),
+        issue({ number: 21, body: "## Depends on\nNone\n\n## Spec\ndocs/x.md" }),
+      ],
+    });
+    expect(buildCandidates(s).map((c) => c.issue)).toEqual([20]);
   });
   it("skips paused phases and phases behind an unsigned direction-critical epic", () => {
     const s = snapshot({
@@ -218,7 +227,7 @@ describe("contended builds (#237)", () => {
     issue({
       number,
       labels: ["phase:1", "agent-ready"],
-      body: `## Touches\n\n${touches}\n\n## Depends on\nNone\n\n## Spec\ndocs/x.md`,
+      body: `## Touches\n\n${touches}\n\n## Depends on\nNone\n\n## Spec\ndocs/x.md\n\nParent epic: #1`,
       ...over,
     });
   it("marks a build whose Touches overlap an issue with an open PR", () => {

@@ -138,6 +138,9 @@ function recordNotify() {
   return { events, parked, decisions, port, kinds };
 }
 
+/** `runRole` writes the composed role prompt and settings here before every dispatch. */
+const CTX_STATE_DIR = mkdtempSync(join(tmpdir(), "tt-loop-ctx-"));
+
 function ctx(over: Partial<Ctx>): Ctx {
   const { gh } = fakeGh([]);
   return {
@@ -147,7 +150,7 @@ function ctx(over: Partial<Ctx>): Ctx {
     exec: async () => ({ code: 0, stdout: "", stderr: "" }),
     spawn: okSpawn({ outcome: "pr_opened", pr: 5, notes: "" }),
     dryRun: false,
-    stateDir: "/tmp/tt-test",
+    stateDir: CTX_STATE_DIR,
     readFile: () => null,
     planFiles: async () => [],
     readPlanFile: async () => null,
@@ -155,7 +158,7 @@ function ctx(over: Partial<Ctx>): Ctx {
     ensureWorktree: async () => "/work/1",
     removeWorktree: async () => {},
     transcriptExists: () => true,
-    artifactsDir: "/tmp/tt-test/artifacts",
+    artifactsDir: join(CTX_STATE_DIR, "artifacts"),
     copyDir: async () => {},
     now: () => "2026-09-03T12:00:00Z",
     signal: new AbortController().signal,
@@ -216,16 +219,6 @@ describe("execute", () => {
     // Without a snapshot it still works, at the cost of one single-issue read.
     await execute({ type: "merge", pr: 9, issue: 1 }, ctx({ gh: counting }));
     expect(reads).toBe(1);
-  });
-  it("adopt: adds the issue to the board, sets Ready, and says so on the issue (#249)", async () => {
-    const i = issue({ number: 7, itemId: null, status: null });
-    const { gh, calls } = fakeGh([i]);
-    const r = await execute({ type: "adopt", issue: 7 }, ctx({ gh }), snapshot({ issues: [i] }));
-    expect(r).toBe("continue");
-    expect(calls).toEqual([
-      "setStatus PVTI_new Ready",
-      `comment issue 7 ${fmt.adopted("foreman@mac-a")}`,
-    ]);
   });
   it("ci_rerun: reruns the failed jobs and records the sha, starting no session (#362)", async () => {
     const sha = "1111111111111111111111111111111111111111";
@@ -1580,7 +1573,7 @@ describe("notifications", () => {
     const spawn: Spawner = async () => ({
       code: 1,
       stdout: "",
-      stderr: "boom /Users/matthew/.tone_tonic/foreman.json",
+      stderr: "boom /Users/matthew/.foreman/widgets/foreman.json",
       timedOut: true,
       interrupted: false,
     });

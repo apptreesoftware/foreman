@@ -1,4 +1,3 @@
-import { adoptActions } from "./adopt.ts";
 import { ciActions } from "./ci.ts";
 import { reclaimActions, resumeAction } from "./claim.ts";
 import { blockActions, mergeActions, skipValidatorActions } from "./merge.ts";
@@ -16,8 +15,6 @@ export function plan(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): Actio
   const resume = resumeAction(s);
   if (resume) return [resume];
   const out: Action[] = [
-    // Before the pick: an adopted issue lands on the board Ready, and the next tick can claim it.
-    ...adoptActions(s),
     ...mergeActions(s),
     // Before the pick: a rerun that turns the checks green makes the next tick's merge possible
     // and saves the builder round the picker would otherwise queue (#362).

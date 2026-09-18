@@ -31,7 +31,7 @@ describe("summarizeToolUse", () => {
     expect(summarizeToolUse("Edit", { file_path: "/work/10/src/a.ts" }, wt)).toBe("src/a.ts");
     expect(summarizeToolUse("Read", { file_path: "/etc/hosts" }, wt)).toBe("/etc/hosts");
   });
-  it("handles Grep/Glob, Skill, Agent, playwright, slack, unknown", () => {
+  it("handles Grep/Glob, Skill, Agent, any MCP tool, unknown", () => {
     expect(summarizeToolUse("Grep", { pattern: "foo", path: "/work/10/src" }, wt)).toBe(
       "foo in src",
     );
@@ -40,12 +40,14 @@ describe("summarizeToolUse", () => {
       "superpowers:writing-plans",
     );
     expect(summarizeToolUse("Agent", { description: "Find callers" }, wt)).toBe("Find callers");
-    expect(
-      summarizeToolUse("mcp__playwright__browser_navigate", { url: "http://localhost:8082" }, wt),
-    ).toBe("browser_navigate http://localhost:8082");
-    expect(
-      summarizeToolUse("mcp__claude_ai_Slack__slack_send_message", { text: "secret" }, wt),
-    ).toBe("slack_send_message");
+    // `mcp__<server>__<tool>` reads as `<server>:<tool>`, whatever servers the repository
+    // configures, and the arguments never reach the feed.
+    expect(summarizeToolUse("mcp__browser__navigate", { url: "http://localhost:8082" }, wt)).toBe(
+      "browser:navigate",
+    );
+    expect(summarizeToolUse("mcp__chat__send_message", { text: "secret" }, wt)).toBe(
+      "chat:send_message",
+    );
     expect(summarizeToolUse("Whatever", { x: 1 }, wt)).toBe("Whatever");
   });
   it("collapses whitespace and cuts at 120 chars", () => {
@@ -90,7 +92,7 @@ describe("foldEvent", () => {
   });
   it("marks subagent tool use and reads rate limits", () => {
     const { a } = foldAll(lines);
-    expect(a.lastTool?.name).toBe("mcp__claude_ai_Slack__slack_send_message");
+    expect(a.lastTool?.name).toBe("mcp__chat__send_message");
     const grep = foldAll(lines.slice(0, 10)).a.lastTool;
     expect(grep).toMatchObject({
       name: "Grep",
@@ -103,7 +105,7 @@ describe("foldEvent", () => {
       resetsAt: "2026-09-04T18:10:00.000Z",
     });
   });
-  it("emits feed entries without thinking, raw inputs or slack bodies", () => {
+  it("emits feed entries without thinking, raw inputs or MCP tool arguments", () => {
     const { entries } = foldAll(lines);
     const kinds = entries.map((e) => e.kind);
     expect(kinds).toEqual([

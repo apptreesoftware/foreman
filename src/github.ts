@@ -36,6 +36,12 @@ export function parseClosesIssue(body: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/** The `Parent epic: #N` line the planner ends every task body with; null when absent. */
+export function parentEpicOf(body: string): number | null {
+  const m = /^Parent epic:\s*#(\d+)\s*$/m.exec(body);
+  return m ? Number(m[1]) : null;
+}
+
 /** GitHub computes this lazily, so a fresh push reads UNKNOWN for a while; treat that as mergeable. */
 export function parseMergeable(raw: string | undefined): Mergeable {
   return raw === "CONFLICTING" ? "CONFLICTING" : raw === "MERGEABLE" ? "MERGEABLE" : "UNKNOWN";

@@ -55,7 +55,7 @@ function deps(over: Partial<CtlDeps> & { alive?: number[] } = {}) {
     out: (l) => {
       log.out.push(l);
     },
-    startCommand: "pnpm --filter @tone/foreman start",
+    startCommand: "foreman -p widgets start",
     configModel: "opus",
     configCap: 20,
     postModel: async (m) => {
@@ -276,6 +276,6 @@ describe("ctlGo", () => {
     expect(a.log.out).toContain("kickstart");
     const b = deps();
     await ctlGo(b.d);
-    expect(b.log.out.join("\n")).toContain("pnpm --filter @tone/foreman start");
+    expect(b.log.out.join("\n")).toContain("foreman -p widgets start");
   });
 });

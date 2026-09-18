@@ -28,7 +28,10 @@ export const SEND_TIMEOUT_MS = 5000;
 /** A phone notification shows one line; titles and reasons are cut to this before it wraps. */
 export const MAX_LINE = 160;
 
-export const MACOS_TITLE = "Tone & Tonic foreman";
+/** The banner's title line: one foreman per repository, so the instance name is what tells them apart. */
+export function macosTitle(instance: string): string {
+  return `foreman ${instance}`;
+}
 
 export type NotifyEvent =
   | { kind: "merged"; pr: number; issue: number; title: string }
@@ -152,6 +155,8 @@ export interface NotifierDeps {
   stateDir: string;
   repo: string;
   host: string;
+  /** This foreman instance's name; the macOS banner's title. */
+  instance: string;
 }
 
 function escapeAppleScript(s: string): string {
@@ -175,9 +180,9 @@ async function postSlack(url: string, text: string, f: typeof fetch): Promise<vo
   }
 }
 
-async function postMacos(text: string, exec: Exec): Promise<void> {
+async function postMacos(text: string, instance: string, exec: Exec): Promise<void> {
   const script = `display notification "${escapeAppleScript(text)}" with title "${escapeAppleScript(
-    MACOS_TITLE,
+    macosTitle(instance),
   )}"`;
   try {
     const r = await exec("osascript", ["-e", script], { timeoutMs: SEND_TIMEOUT_MS });
@@ -216,7 +221,7 @@ export function createNotifier(cfg: NotifyConfig | undefined, deps: NotifierDeps
   const send = async (event: NotifyEvent): Promise<void> => {
     const text = formatEvent(event, { repo: deps.repo, host: deps.host });
     if (webhook) await postSlack(webhook, text, deps.fetch);
-    if (macos) await postMacos(text, deps.exec);
+    if (macos) await postMacos(text, deps.instance, deps.exec);
   };
 
   return {

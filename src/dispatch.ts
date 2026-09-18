@@ -54,6 +54,9 @@ export interface DispatchRequest {
   /** The served repo's `session-env` hook output: extra child env and prompt lines. */
   env: Record<string, string>;
   promptLines: string[];
+  /** The composed role prompt and settings for this dispatch, written under the instance state dir. */
+  promptPath: string;
+  settingsPath: string;
   /** A builder round that only merges origin/main into the PR branch (#237). */
   rebase: boolean;
 }
@@ -156,14 +159,14 @@ export function buildArgs(req: DispatchRequest, cfg: ForemanConfig): string[] {
     "none",
     "--setting-sources",
     "user,project",
-    // Project-wide deny/allow rules used to live in .claude/settings.json, but that also bound
-    // interactive sessions (see PR #152). They now live in .claude/headless-settings.json, and
-    // `claude -p --settings <file>` applies that file's allow+deny rules even in an untrusted
-    // directory. trustWorktree() below is still needed so the project's .mcp.json servers load.
+    // Both files are written per dispatch by `writeSessionFiles`, from the package's base prompt
+    // and base settings composed with the served repo's `.foreman/`. `claude -p --settings <file>`
+    // applies that file's allow+deny rules even in an untrusted directory; trustWorktree() below
+    // is still needed so the project's .mcp.json servers load.
     "--settings",
-    join(req.worktree, ".claude", "headless-settings.json"),
+    req.settingsPath,
     "--append-system-prompt-file",
-    join(req.worktree, ".claude", "roles", `${req.role}.md`),
+    req.promptPath,
     ...(req.resume ? ["--resume", req.sessionId] : ["--session-id", req.sessionId]),
     // Always pinned: `cfg.model` is defaulted, so a session never inherits the interactive CLI
     // default on this Mac. `runRole` passes the live override through here when one is set (#210).

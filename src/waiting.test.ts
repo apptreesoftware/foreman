@@ -23,8 +23,8 @@ describe("liveWaits", () => {
       }).map((w) => w.kind),
     ).toEqual(["stop"]);
     expect(
-      liveWaits({ ...base, preflight: { ok: false, reason: "docker is not responding" } })[0],
-    ).toMatchObject({ kind: "preflight", detail: "docker is not responding" });
+      liveWaits({ ...base, preflight: { ok: false, reason: "gh is not authenticated" } })[0],
+    ).toMatchObject({ kind: "preflight", detail: "gh is not authenticated" });
     expect(liveWaits({ ...base, todayCount: 20 })[0]).toMatchObject({
       kind: "cap",
       detail: "20 of 20 sessions today",
@@ -235,7 +235,10 @@ describe("describeWaiting", () => {
   });
   it("dependency on an open issue", () => {
     const dep = issue({ number: 3, status: "In Progress" });
-    const i = issue({ number: 4, body: "## Depends on\n#3\n\n## Spec\ndocs/x.md" });
+    const i = issue({
+      number: 4,
+      body: "## Depends on\n#3\n\n## Spec\ndocs/x.md\n\nParent epic: #1",
+    });
     expect(describeWaiting(snapshot({ issues: [dep, i] }), base)[0]).toMatchObject({
       kind: "dependency",
       subject: "#4",
@@ -261,7 +264,10 @@ describe("describeWaiting", () => {
   it("orders stop/preflight/cap first, then paused, human, ci, review_cycle, dependency, other_host", () => {
     const i1 = issue({ number: 1, status: "In Review" });
     const dep = issue({ number: 3, status: "In Progress" });
-    const i4 = issue({ number: 4, body: "## Depends on\n#3\n\n## Spec\ndocs/x.md" });
+    const i4 = issue({
+      number: 4,
+      body: "## Depends on\n#3\n\n## Spec\ndocs/x.md\n\nParent epic: #1",
+    });
     const s = snapshot({
       issues: [i1, dep, i4],
       prs: [pr({ number: 11, issue: 1, checks: "pending" })],
@@ -277,7 +283,10 @@ describe("describeWaiting", () => {
   it("ranks the background planner gate below every live blocker", () => {
     const i1 = issue({ number: 1, status: "In Review" });
     const dep = issue({ number: 3, status: "In Progress" });
-    const i4 = issue({ number: 4, body: "## Depends on\n#3\n\n## Spec\ndocs/x.md" });
+    const i4 = issue({
+      number: 4,
+      body: "## Depends on\n#3\n\n## Spec\ndocs/x.md\n\nParent epic: #1",
+    });
     const s = snapshot({
       issues: [i1, dep, i4],
       prs: [pr({ number: 11, issue: 1, checks: "pending" })],

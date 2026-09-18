@@ -4,7 +4,7 @@ let n = 1000;
 export const now = "2026-09-03T12:00:00Z";
 export const hoursAgo = (h: number) => new Date(Date.parse(now) - h * 3600_000).toISOString();
 
-export function comment(body: string, createdAt = hoursAgo(1), author = "matthewtsmith"): Comment {
+export function comment(body: string, createdAt = hoursAgo(1), author = "acme"): Comment {
   return { author, body, createdAt };
 }
 
@@ -13,7 +13,7 @@ export function issue(over: Partial<Issue> = {}): Issue {
   return {
     number,
     title: `Task ${number}`,
-    body: "## Depends on\nNone\n\n## Spec\ndocs/x.md",
+    body: "## Depends on\nNone\n\n## Spec\ndocs/x.md\n\nParent epic: #1",
     state: "OPEN",
     labels: ["phase:1", "agent-ready", "size:S", "area:web"],
     assignees: [],

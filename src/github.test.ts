@@ -65,7 +65,7 @@ function fakeExec(calls: string[][]): Exec {
     return { code: 0, stdout: "", stderr: "" };
   };
 }
-const cfg = { repo: "matthewtsmith/tone_tonic", owner: "matthewtsmith", project: 2 };
+const cfg = { repo: "acme/widgets", owner: "acme", project: 2 };
 
 /** A minimal issue node in the shape the GraphQL query asks for. */
 function node(number: number, projectItems: unknown[] = []) {

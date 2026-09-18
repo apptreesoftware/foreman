@@ -82,7 +82,6 @@ export type Action =
   | { type: "release"; issue: number; reason: string }
   | { type: "reclaim"; issue: number; fromHost: string }
   | { type: "block"; issue: number; reason: string }
-  | { type: "adopt"; issue: number }
   | { type: "phase_close"; epic: number }
   | { type: "plan"; epic: number }
   | { type: "apply_plan"; epic: number }

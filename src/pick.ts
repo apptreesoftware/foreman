@@ -1,4 +1,11 @@
-import { parseDependsOn, parseTouches, phaseOf, sizeOf, touchesOverlap } from "./github.ts";
+import {
+  parentEpicOf,
+  parseDependsOn,
+  parseTouches,
+  phaseOf,
+  sizeOf,
+  touchesOverlap,
+} from "./github.ts";
 import { ciRerunCount, fixRound, openClaim } from "./ledger.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { Epic, Issue, PullRequest, Size, Snapshot } from "./types.ts";
@@ -73,8 +80,12 @@ function inFlightTouches(s: Snapshot): string[][] {
 export function buildCandidates(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): Candidate[] {
   const held = new Set(heldPhases(s, repo));
   const busy = inFlightTouches(s);
+  // `parentEpicOf` is a filter of its own: the `Parent epic: #N` line is what ties a task to its
+  // epic, and everything downstream (phase progress, hold-the-phase, the phase close) reads it. An
+  // issue made by hand without one is left alone rather than started and orphaned.
   return s.issues
     .filter((i) => i.state === "OPEN" && i.status === "Ready" && i.labels.includes("agent-ready"))
+    .filter((i) => parentEpicOf(i.body) !== null)
     .filter((i) => !i.labels.includes("blocked") && !i.labels.includes("epic"))
     .filter((i) => openClaim(i.comments) === null)
     .filter((i) => depsClosed(i, s.issues))

@@ -41,7 +41,7 @@ export interface CtlDeps {
 
 // Worst case: the daemon's interrupt path kills the child (KILL_GRACE_MS) and then makes up to
 // three sequential gh calls in ledgerInterrupt's abort branch (comment, unassign, setStatus),
-// each bounded by GH_TIMEOUT_MS, plus slack for everything in between.
+// each bounded by GH_TIMEOUT_MS, plus headroom for everything in between.
 export const EXIT_WAIT_MS = KILL_GRACE_MS + 3 * GH_TIMEOUT_MS + 30_000;
 export const CHILD_WAIT_MS = 30_000;
 export const POLL_MS = 500;

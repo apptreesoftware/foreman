@@ -47,8 +47,6 @@ function explain(a: Action, s: Snapshot): string {
       return `${actionName(a)}: label PR #${a.pr} validator:skipped (infra/db/shared only)`;
     case "block":
       return `${actionName(a)}: label #${a.issue} blocked (${a.reason})`;
-    case "adopt":
-      return `${actionName(a)}: add #${a.issue} to the board and set it Ready (agent-ready, no project item)`;
     case "release":
       return `${actionName(a)}: release claim on #${a.issue} (${a.reason})`;
     case "idle":

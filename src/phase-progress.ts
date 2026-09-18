@@ -1,11 +1,8 @@
-import { modelOf } from "./github.ts";
+import { modelOf, parentEpicOf } from "./github.ts";
 import { parseClaim } from "./ledger.ts";
 import type { MergeRecord, SessionLogEntry } from "./sessions.ts";
 import type { PhaseProgress, PhaseTask } from "./state-file.ts";
 import type { Epic, Issue, Snapshot } from "./types.ts";
-
-/** What the planner writes in every task body it creates (`.claude/roles/planner.md`). */
-const PARENT = /^Parent epic:\s*#(\d+)\s*$/m;
 
 /**
  * The task issues of one epic: its sub-issues (linked when the plan was applied, so closed tasks
@@ -15,8 +12,7 @@ const PARENT = /^Parent epic:\s*#(\d+)\s*$/m;
 export function taskNumbersOf(e: Epic, issues: Issue[]): Set<number> {
   const tasks = new Set(e.taskNumbers);
   for (const i of issues) {
-    const m = PARENT.exec(i.body);
-    if (m && Number(m[1]) === e.number) tasks.add(i.number);
+    if (parentEpicOf(i.body) === e.number) tasks.add(i.number);
   }
   return tasks;
 }

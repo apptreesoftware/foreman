@@ -1,0 +1,2 @@
+- Use `pnpm --filter <pkg> …` for package scripts.
+- Never run `supabase stop`.

@@ -48,6 +48,8 @@ const req: DispatchRequest = {
   notes: "",
   env: {},
   promptLines: [],
+  promptPath: "/s/roles/builder.md",
+  settingsPath: "/s/settings.json",
   rebase: false,
 };
 const CHECKS = ["pnpm lint", "pnpm typecheck", "pnpm test"];
@@ -63,8 +65,8 @@ describe("names", () => {
   });
   it("branchFor", () => expect(branchFor(42, "Add thing")).toBe("feat/42-add-thing"));
   it("transcriptPath mirrors the CLI's project slug", () => {
-    expect(transcriptPath("/Users/m/tone_tonic-work/42", "abc")).toMatch(
-      /\/\.claude\/projects\/-Users-m-tone-tonic-work-42\/abc\.jsonl$/,
+    expect(transcriptPath("/Users/m/widgets-work/42", "abc")).toMatch(
+      /\/\.claude\/projects\/-Users-m-widgets-work-42\/abc\.jsonl$/,
     );
   });
 });
@@ -83,9 +85,9 @@ describe("buildArgs / buildPrompt", () => {
     expect(a.join(" ")).toContain("--permission-mode dontAsk");
     expect(a.join(" ")).toContain("--permission-prompts none");
     expect(a.join(" ")).toContain("--setting-sources user,project");
-    expect(a.join(" ")).toContain("--settings /work/42/.claude/headless-settings.json");
+    expect(a.join(" ")).toContain("--settings /s/settings.json");
     expect(a.join(" ")).toContain("--session-id 33333333-3333-3333-3333-333333333333");
-    expect(a.join(" ")).toContain("--append-system-prompt-file /work/42/.claude/roles/builder.md");
+    expect(a.join(" ")).toContain("--append-system-prompt-file /s/roles/builder.md");
     expect(a.join(" ")).not.toContain("dangerously");
     // Always pinned, never inherited from the interactive CLI default (#210).
     expect(a.join(" ")).toContain("--model opus");

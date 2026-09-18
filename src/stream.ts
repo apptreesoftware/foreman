@@ -85,14 +85,13 @@ export function summarizeToolUse(name: string, input: unknown, worktree: string)
     case "Agent":
       s = str(i.description);
       break;
-    default:
-      if (name.startsWith("mcp__playwright__")) {
-        const short = name.slice("mcp__playwright__".length);
-        const arg = str(i.url) || str(i.element) || str(i.text);
-        s = arg ? `${short} ${arg}` : short;
-      } else if (name.startsWith("mcp__claude_ai_Slack__")) {
-        s = name.slice("mcp__claude_ai_Slack__".length);
-      } else s = name;
+    default: {
+      // Any MCP tool, whatever servers a repository configures: `mcp__<server>__<tool>` reads
+      // as `<server>:<tool>`. The inputs are never summarised — an MCP tool's arguments are
+      // arbitrary and may carry the body of a message — so only the name goes to the feed.
+      const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
+      s = mcp ? `${mcp[1]}:${mcp[2]}` : name;
+    }
   }
   return cut(s || name, SUMMARY_MAX);
 }

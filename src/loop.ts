@@ -34,6 +34,7 @@ import {
 } from "./phase.ts";
 import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts";
 import { graphqlBudget, preflight } from "./preflight.ts";
+import { writeSessionFiles } from "./prompts.ts";
 import { ledgerInterrupt } from "./release.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import {
@@ -127,6 +128,7 @@ export function realCtx(
           stateDir,
           repo: cfg.repo,
           host: cfg.host,
+          instance,
         }),
     dryRun,
     stateDir,
@@ -297,6 +299,11 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
       `before-session hook failed (${before.code}): ${before.stderr.trim().slice(-500)}`,
     );
   }
+  // The base prompt and base settings this package ships, composed with the served repo's
+  // `.foreman/rules.md`, `.foreman/roles/<role>.md` and `.foreman/settings.json`, written where
+  // `claude -p` is pointed at them. Regenerated per dispatch, so an edit to either side lands on
+  // the next session without restarting the daemon.
+  const files = writeSessionFiles(ctx.stateDir, worktree, r.role, ctx.repo);
   // Controller ruling (Task 6 review): always dispatch with attempt: 1 — dispatchWithRetry owns
   // retry counting internally, and no attempt count carries across loop iterations.
   const req: DispatchRequest = {
@@ -314,6 +321,8 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     notes,
     env: sessionEnv.env,
     promptLines: sessionEnv.promptLines,
+    promptPath: files.promptPath,
+    settingsPath: files.settingsPath,
     rebase: r.rebase === true,
   };
   const started = Date.now();
@@ -787,16 +796,6 @@ export async function execute(
         `validator skipped by foreman@${cfg.host}: issue areas are infra/db/shared only`,
       );
       return "continue";
-    case "adopt": {
-      // The picker only reads Status Ready, so an agent-ready issue that nobody added to the
-      // board is invisible to it. Put it on the board, set it Ready, and say so on the issue so
-      // the change is not silent (#249).
-      const itemId = await gh.addToProject(action.issue);
-      await gh.setStatus(itemId, "Ready");
-      await gh.comment("issue", action.issue, fmt.adopted(`foreman@${cfg.host}`));
-      log("info", "adopted onto board", { issue: action.issue, status: "Ready" });
-      return "continue";
-    }
     case "block":
       await gh.addLabels("issue", action.issue, ["blocked"]);
       await gh.comment("issue", action.issue, `blocked by foreman@${cfg.host}: ${action.reason}`);

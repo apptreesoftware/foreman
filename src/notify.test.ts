@@ -6,8 +6,8 @@ import type { Exec } from "./exec.ts";
 import {
   createNotifier,
   formatEvent,
-  MACOS_TITLE,
   MAX_LINE,
+  macosTitle,
   type NotifyEvent,
   noopNotify,
   notifyStatePath,
@@ -47,6 +47,7 @@ const deps = (dir: string, r: ReturnType<typeof recorder>) => ({
   stateDir: dir,
   repo: "o/r",
   host: "mac-a",
+  instance: "widgets",
 });
 
 const HOOK = "https://hooks.slack.com/services/T000/B000/xxx";
@@ -147,7 +148,7 @@ describe("createNotifier delivery", () => {
     const [cmd, flag, script] = r.runs[0] as string[];
     expect(cmd).toBe("osascript");
     expect(flag).toBe("-e");
-    expect(script).toContain(`with title "${MACOS_TITLE}"`);
+    expect(script).toContain(`with title "${macosTitle("widgets")}"`);
     expect(script).toContain('a \\"quoted\\" \\\\ title');
     expect(r.posts).toEqual([]);
   });
@@ -155,7 +156,7 @@ describe("createNotifier delivery", () => {
   it("uses both channels when both are configured", async () => {
     const r = recorder();
     const n = createNotifier({ slackWebhookUrl: HOOK, macos: true }, deps(stateDir(), r));
-    await n.send({ kind: "resumed", was: "docker is not responding" });
+    await n.send({ kind: "resumed", was: "gh is not authenticated" });
     expect(r.posts).toHaveLength(1);
     expect(r.runs).toHaveLength(1);
   });
@@ -173,7 +174,7 @@ describe("createNotifier delivery", () => {
       { exec: failingExec, fetch: throwing },
     ]) {
       const n = createNotifier({ slackWebhookUrl: HOOK, macos: true }, { ...base, ...over });
-      await expect(n.send({ kind: "parked", reason: "docker" })).resolves.toBeUndefined();
+      await expect(n.send({ kind: "parked", reason: "preflight" })).resolves.toBeUndefined();
     }
   });
 });
@@ -187,17 +188,17 @@ describe("syncParked", () => {
     expect(r.posts).toEqual([]);
     expect(existsSync(notifyStatePath(dir))).toBe(false);
 
-    await n.syncParked("docker is not responding");
-    await n.syncParked("docker is not responding");
-    await n.syncParked("docker is not responding");
+    await n.syncParked("gh is not authenticated");
+    await n.syncParked("gh is not authenticated");
+    await n.syncParked("gh is not authenticated");
     expect(r.posts.map((p) => p.text)).toEqual([
-      "foreman parked on mac-a: docker is not responding",
+      "foreman parked on mac-a: gh is not authenticated",
     ]);
 
     await n.syncParked(null);
     await n.syncParked(null);
     expect(r.posts).toHaveLength(2);
-    expect(r.posts[1]?.text).toBe("foreman resumed on mac-a (was: docker is not responding)");
+    expect(r.posts[1]?.text).toBe("foreman resumed on mac-a (was: gh is not authenticated)");
 
     await n.syncParked("STOP file present");
     expect(r.posts).toHaveLength(3);
@@ -207,7 +208,7 @@ describe("syncParked", () => {
     const dir = stateDir();
     const r = recorder();
     const n = createNotifier({ slackWebhookUrl: HOOK }, deps(dir, r));
-    await n.syncParked("docker is not responding");
+    await n.syncParked("gh is not authenticated");
     await n.syncParked("daily session cap reached (20/20)");
     expect(r.posts).toHaveLength(1);
     await n.syncParked(null);
@@ -263,9 +264,9 @@ describe("syncDecisions", () => {
     const dir = stateDir();
     const r = recorder();
     const n = createNotifier({ slackWebhookUrl: HOOK }, deps(dir, r));
-    await n.syncParked("docker is not responding");
+    await n.syncParked("gh is not authenticated");
     await n.syncDecisions([decision(40, "Decision: a")]);
-    await n.syncParked("docker is not responding");
+    await n.syncParked("gh is not authenticated");
     expect(r.posts).toHaveLength(1); // still the one park line
   });
 });
