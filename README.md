@@ -97,7 +97,14 @@ another instance already holds.
    number back into `foreman.json`. If `project` is already set it verifies the field and reports
    drift instead of editing.
 4. Scaffolds `.foreman/` in the clone if it is absent: `config.json` with the defaults,
-   an empty `rules.md`, `settings.json` with empty `allow`/`deny`, and an empty `hooks/`.
+   an empty `rules.md`, `settings.json` with empty `allow`/`deny`, and an empty `hooks/`. It also
+   adds `.worktrees/` to the repository's `.gitignore`, because worktrees live inside the clone by
+   default and a role session's own `git add -A` would otherwise stage them.
+
+**The repository needs CI.** The merge sweep merges only on `checks success`, so a repository with
+no workflow at all never merges anything: its PRs sit approved and validated for ever, and the log
+reads `idle(nothing eligible)`. Any `pull_request` workflow will do — it is the gate the whole
+pipeline hangs on.
 
 Nothing in step 4 is committed. Review it, fill in `rules.md`, and commit it — the daemon reads
 `.foreman/` **from the worktree at dispatch time**, so a PR that changes it applies to the
@@ -793,6 +800,14 @@ branch.
   causes are an epic with no `agent-ready`, a drafted plan with no `plan-approved`, a task whose
   body has no `Parent epic: #N` line (a hand-made issue is never claimed — use `foreman epic new`),
   a `Depends on` issue still open, or a phase held by `limits.blockedPerPhase`.
+- **An approved, validated PR is never merged and `next` says `checks none`.** The repository has
+  no workflow that runs on `pull_request`, so there is no green check to merge on and nothing will
+  ever produce one. Add any CI workflow. `checks none` is not `checks failure`: it earns no rerun
+  and no fix round either, so the PR simply sits there.
+- **`approved plan file not on origin/main; retrying next tick`, for ever.** The plan PR really is
+  not merged yet, or the plan file's `NN` does not match the epic's `phase:N` label. The foreman
+  looks for `<plans.dir>/<date>-phase-NN-plan.issues.json` where `NN` is that label, zero-padded;
+  the planner is told the same rule, so a mismatch means the plan was hand-edited.
 - **`~/.foreman/<name>/artifacts/<pr>/` is empty after a validation run.** The foreman only copies
   what the validator left in `<worktree>/.validation-artifacts/<pr>/`, and only on a
   `passed`/`failed` outcome — a session that died without an outcome archives nothing. Look for the
@@ -837,7 +852,26 @@ cat > .foreman/rules.md <<'MD'
 This is a sandbox repository with no application. There is nothing to run or serve; a validator
 should confirm the acceptance criteria by reading the merged files. Label every task `area:docs`.
 MD
-git add .foreman && git commit -m "chore: foreman config" && git push
+```
+
+It also needs a check to merge on, because nothing merges on `checks none`:
+
+```bash
+mkdir -p .github/workflows
+cat > .github/workflows/ci.yml <<'YML'
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: test -f docs/sandbox.md
+YML
+git add -A && git commit -m "chore: foreman config and a check to merge on" && git push
 ```
 
 Then run the pipeline:
@@ -868,8 +902,13 @@ jq -r '[.role, .issue, .outcome, .costUsd] | @tsv' ~/.foreman/sandbox/sessions.l
 ```
 
 A pass is: the task's PR merged, its issue closed at **Done**, a `merged by foreman@<host>` comment
-on the issue, and a line in `sessions.log` per session. The whole check costs a handful of sessions
-and takes one to three hours of wall-clock; the daily cap (20) is plenty.
+on the issue, and a line in `sessions.log` per session. Letting it run on to the end of the phase
+adds the phase-closer and its review issue, which is the last stage the pipeline has.
+
+For scale: the check for `0.1.0` ran a three-task phase from `agent-ready` to a phase review issue
+in 26 minutes of wall-clock over 8 sessions and $6.69 — planner $1.35, then a builder and a
+reviewer per task, then the phase-closer, with the validator skipped by `area:docs`. Median
+claim→merge was 12 minutes. The daily cap (20) is plenty.
 
 ## 12. Developing
 

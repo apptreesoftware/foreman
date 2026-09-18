@@ -6,7 +6,7 @@ import type { Instance } from "../instance.ts";
 import { loadRepoConfig } from "../repo-config.ts";
 import { ensureProject } from "./board.ts";
 import { ensureLabels } from "./labels.ts";
-import { scaffoldRepoDir } from "./scaffold.ts";
+import { ensureWorktreesIgnored, scaffoldRepoDir } from "./scaffold.ts";
 
 /** Spec §9, in order: scopes, labels, board, scaffold. Idempotent; a second run reports and changes nothing. */
 export async function runInit(instance: Instance, out: (s: string) => void): Promise<number> {
@@ -55,5 +55,6 @@ export async function runInit(instance: Instance, out: (s: string) => void): Pro
       ? `scaffolded ${scaffold.written.join(", ")} in ${repoDir}; review and commit them`
       : ".foreman/: present",
   );
+  if (ensureWorktreesIgnored(repoDir)) out(".gitignore: added .worktrees/");
   return 0;
 }

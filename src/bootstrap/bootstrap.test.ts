@@ -1,10 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ensureProject, STATUS_OPTIONS } from "./board.ts";
 import { ensureLabels, ensurePlanLabels, LABELS, modelLabels } from "./labels.ts";
-import { scaffoldRepoDir } from "./scaffold.ts";
+import { ensureWorktreesIgnored, scaffoldRepoDir } from "./scaffold.ts";
 
 function api(over: Partial<Record<string, unknown>> = {}) {
   const calls: string[] = [];
@@ -179,5 +179,26 @@ describe("epic new", () => {
     const { epicBody } = await import("./epic.ts");
     const { parseSpecPath } = await import("../phase.ts");
     expect(parseSpecPath(epicBody("docs/specs/a.md"))).toBe("docs/specs/a.md");
+  });
+});
+
+describe("ensureWorktreesIgnored", () => {
+  const tmp = () => mkdtempSync(join(tmpdir(), "foreman-gitignore-"));
+  it("creates .gitignore when there is none, and is idempotent", () => {
+    const dir = tmp();
+    expect(ensureWorktreesIgnored(dir)).toBe(true);
+    expect(readFileSync(join(dir, ".gitignore"), "utf8")).toBe(".worktrees/\n");
+    expect(ensureWorktreesIgnored(dir)).toBe(false);
+    expect(readFileSync(join(dir, ".gitignore"), "utf8")).toBe(".worktrees/\n");
+  });
+  it("appends to an existing file without a trailing newline, and accepts either spelling", () => {
+    const dir = tmp();
+    writeFileSync(join(dir, ".gitignore"), "node_modules");
+    expect(ensureWorktreesIgnored(dir)).toBe(true);
+    expect(readFileSync(join(dir, ".gitignore"), "utf8")).toBe("node_modules\n.worktrees/\n");
+
+    const other = tmp();
+    writeFileSync(join(other, ".gitignore"), ".worktrees\n");
+    expect(ensureWorktreesIgnored(other)).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { WORKTREES_DIRNAME } from "../config.ts";
 import { defaultRepoConfig, REPO_DIRNAME } from "../repo-config.ts";
 
 const RULES = `<!-- Appended to every role prompt as "House rules". Say how to run, test and start this
@@ -27,4 +28,19 @@ export function scaffoldRepoDir(repoDir: string): { written: string[] } {
     written.push(`${REPO_DIRNAME}/hooks/`);
   }
   return { written };
+}
+
+/**
+ * `.worktrees/` in the repository's `.gitignore`. Worktrees live inside the clone by default, and
+ * a role session's own `git add -A` will otherwise stage them as gitlinks — four nested
+ * repositories in a docs PR, and a `git status` nobody can read.
+ */
+export function ensureWorktreesIgnored(repoDir: string): boolean {
+  const p = join(repoDir, ".gitignore");
+  const line = `${WORKTREES_DIRNAME}/`;
+  const body = existsSync(p) ? readFileSync(p, "utf8") : "";
+  if (body.split("\n").some((l) => l.trim() === line || l.trim() === WORKTREES_DIRNAME))
+    return false;
+  appendFileSync(p, `${body.length > 0 && !body.endsWith("\n") ? "\n" : ""}${line}\n`);
+  return true;
 }
