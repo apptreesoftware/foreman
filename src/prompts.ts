@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { REPO_DIRNAME, type RepoConfig } from "./repo-config.ts";
+import { z } from "zod";
+import { firstIssue, REPO_DIRNAME, type RepoConfig } from "./repo-config.ts";
 import type { Role } from "./types.ts";
 
 /** `roles/` and `settings/` sit beside `src/` and beside `dist/`, one level up from this file. */
@@ -15,6 +16,18 @@ export interface RepoSettingsExtra {
   allow?: string[];
   deny?: string[];
 }
+
+/**
+ * `.foreman/settings.json`. Strict and typed: a bare `JSON.parse` cast let `"allow": "x"` spread
+ * its characters into the permission list, and malformed JSON threw an unattributed SyntaxError
+ * in the middle of a dispatch.
+ */
+export const RepoSettingsExtraSchema = z
+  .object({
+    allow: z.array(z.string()).default([]),
+    deny: z.array(z.string()).default([]),
+  })
+  .strict();
 
 export interface PromptParts {
   groundRules: string;
@@ -61,11 +74,20 @@ export function readRepoRules(
   role: Role,
 ): { rules: string | null; roleRules: string | null; settings: RepoSettingsExtra | null } {
   const dir = join(worktree, REPO_DIRNAME);
-  const settingsText = readIf(join(dir, "settings.json"));
+  const settingsPath = join(dir, "settings.json");
+  const settingsText = readIf(settingsPath);
+  let settings: RepoSettingsExtra | null = null;
+  if (settingsText !== null) {
+    try {
+      settings = RepoSettingsExtraSchema.parse(JSON.parse(settingsText));
+    } catch (err) {
+      throw new Error(`${settingsPath}: ${firstIssue(err).replace(/\s+/g, " ")}`);
+    }
+  }
   return {
     rules: readIf(join(dir, "rules.md")),
     roleRules: readIf(join(dir, "roles", `${role}.md`)),
-    settings: settingsText ? (JSON.parse(settingsText) as RepoSettingsExtra) : null,
+    settings,
   };
 }
 
@@ -80,6 +102,24 @@ export function readBaseSettings(): HeadlessSettings {
   return JSON.parse(
     readFileSync(join(PACKAGE_ROOT, "settings", "headless.json"), "utf8"),
   ) as HeadlessSettings;
+}
+
+/**
+ * The four deny rules that keep a session out of its own branch's `.foreman/` and `.claude/`.
+ * Both are read back by the foreman and by Claude Code for the sessions that follow on that
+ * branch: a builder that could append to `.foreman/settings.json` would widen the reviewer's and
+ * validator's permissions, rewriting `rules.md` would rewrite the reviewer's House rules, and
+ * `.claude/settings.json` is loaded via `--setting-sources user,project` and can define hooks.
+ * The base deny list covers `~/.claude/**` and `~/.foreman/**`; these cover the worktree. `//` is
+ * Claude Code's absolute-path form.
+ */
+export function worktreeDenies(worktree: string): string[] {
+  return [
+    `Edit(//${worktree}/.foreman/**)`,
+    `Write(//${worktree}/.foreman/**)`,
+    `Edit(//${worktree}/.claude/**)`,
+    `Write(//${worktree}/.claude/**)`,
+  ];
 }
 
 /** Spec §7: the files `claude -p` is pointed at, regenerated per dispatch from the worktree's `.foreman/`. */
@@ -98,7 +138,15 @@ export function writeSessionFiles(
     plansDir: repo.plans.dir,
     specGlob: repo.plans.specGlob,
   });
-  const settings = composeSettings(readBaseSettings(), repoRules.settings);
+  const composed = composeSettings(readBaseSettings(), repoRules.settings);
+  // Appended after the merge, so a repository `allow` cannot pre-empt them either.
+  const settings = {
+    ...composed,
+    permissions: {
+      ...composed.permissions,
+      deny: [...new Set([...composed.permissions.deny, ...worktreeDenies(worktree)])],
+    },
+  };
   mkdirSync(join(stateDir, "roles"), { recursive: true });
   const promptPath = join(stateDir, "roles", `${role}.md`);
   const settingsPath = join(stateDir, "settings.json");

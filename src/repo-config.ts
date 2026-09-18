@@ -47,9 +47,43 @@ export function repoConfigPath(dir: string): string {
   return join(dir, REPO_DIRNAME, "config.json");
 }
 
+/**
+ * One line naming what is wrong: the first Zod issue's path and message, or a parse error. Used
+ * to prefix every repo-config and repo-settings failure with the file it came from, because a
+ * bare Zod blob on stderr never says which file the operator has to open.
+ */
+export function firstIssue(err: unknown): string {
+  if (err instanceof z.ZodError) {
+    const i = err.issues[0];
+    if (i) return `${i.path.length ? i.path.join(".") : "<root>"}: ${i.message}`;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** `<dir>/.foreman/config.json`, or the defaults when there is none. A bad file throws. */
 export function loadRepoConfig(dir: string): RepoConfig {
   const p = repoConfigPath(dir);
   if (!existsSync(p)) return defaultRepoConfig();
-  return RepoConfigSchema.parse(JSON.parse(readFileSync(p, "utf8")));
+  try {
+    return RepoConfigSchema.parse(JSON.parse(readFileSync(p, "utf8")));
+  } catch (err) {
+    throw new Error(`${p}: ${firstIssue(err).replace(/\s+/g, " ")}`);
+  }
+}
+
+/**
+ * Never throws: a mistyped `config.json` must not brick `foreman status`, `stop` or `go`. The
+ * caller decides what to do with `error` — ctl warns and carries on with the defaults, the
+ * daemon refuses to start so the mistake is visible in `foreman.err.log` rather than silently
+ * running a different process than the repository asked for.
+ */
+export function loadRepoConfigSafe(dir: string): { config: RepoConfig; error: string | null } {
+  try {
+    return { config: loadRepoConfig(dir), error: null };
+  } catch (err) {
+    return {
+      config: defaultRepoConfig(),
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }

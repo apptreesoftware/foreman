@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import {
   composeSettings,
   PACKAGE_ROOT,
   readRepoRules,
+  worktreeDenies,
   writeSessionFiles,
 } from "./prompts.ts";
 import { defaultRepoConfig } from "./repo-config.ts";
@@ -75,6 +76,21 @@ describe("readRepoRules", () => {
     expect(r.roleRules).toContain("@acme/serve");
     expect(r.settings?.allow).toEqual(["Bash(pnpm *)", "Bash(supabase *)"]);
   });
+  it("a malformed settings.json throws with the file path in the message", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bad-settings-"));
+    mkdirSync(join(dir, ".foreman"));
+    const file = join(dir, ".foreman", "settings.json");
+    writeFileSync(file, "{ not json");
+    expect(() => readRepoRules(dir, "builder")).toThrow(file);
+  });
+  it("a non-array allow throws instead of spreading its characters into the allow list", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bad-allow-"));
+    mkdirSync(join(dir, ".foreman"));
+    const file = join(dir, ".foreman", "settings.json");
+    writeFileSync(file, '{"allow": "x"}');
+    expect(() => readRepoRules(dir, "builder")).toThrow(file);
+    expect(() => readRepoRules(dir, "builder")).toThrow(/allow/);
+  });
   it("is all null for a role without a file, and for a repo without .foreman", () => {
     expect(readRepoRules(fixtureRepo, "builder").roleRules).toBeNull();
     expect(readRepoRules(mkdtempSync(join(tmpdir(), "bare-")), "builder")).toEqual({
@@ -101,6 +117,18 @@ describe("writeSessionFiles", () => {
     const settings = JSON.parse(readFileSync(out.settingsPath, "utf8"));
     expect(settings.permissions.allow).toContain("Bash(pnpm *)");
     expect(settings.permissions.deny).toContain("Bash(gh pr merge*)");
+  });
+  it("denies the session writes to its own branch's .foreman/ and .claude/", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "state-"));
+    const out = writeSessionFiles(stateDir, fixtureRepo, "builder", defaultRepoConfig());
+    const settings = JSON.parse(readFileSync(out.settingsPath, "utf8"));
+    expect(settings.permissions.deny).toEqual(expect.arrayContaining(worktreeDenies(fixtureRepo)));
+    expect(worktreeDenies(fixtureRepo)).toEqual([
+      `Edit(//${fixtureRepo}/.foreman/**)`,
+      `Write(//${fixtureRepo}/.foreman/**)`,
+      `Edit(//${fixtureRepo}/.claude/**)`,
+      `Write(//${fixtureRepo}/.claude/**)`,
+    ]);
   });
   it("PACKAGE_ROOT holds roles/ and settings/", () => {
     expect(existsSync(join(PACKAGE_ROOT, "roles", "ground-rules.md"))).toBe(true);

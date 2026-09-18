@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { defaultRepoConfig, loadRepoConfig } from "./repo-config.ts";
+import { defaultRepoConfig, loadRepoConfig, loadRepoConfigSafe } from "./repo-config.ts";
 
 function repo(json?: string): string {
   const dir = mkdtempSync(join(tmpdir(), "repo-"));
@@ -48,5 +48,33 @@ describe("repo config", () => {
   });
   it("rejects an unknown key so a typo is not silently ignored", () => {
     expect(() => loadRepoConfig(repo('{"check": []}'))).toThrow(/check/);
+  });
+  it("a thrown message starts with the file path", () => {
+    const dir = repo('{"cheks": []}');
+    expect(() => loadRepoConfig(dir)).toThrow(join(dir, ".foreman", "config.json"));
+  });
+});
+
+describe("loadRepoConfigSafe", () => {
+  it("a typo gives the defaults plus one error naming the file and the key", () => {
+    const dir = repo('{"cheks": []}');
+    const r = loadRepoConfigSafe(dir);
+    expect(r.config).toEqual(defaultRepoConfig());
+    expect(r.error).toContain(join(dir, ".foreman", "config.json"));
+    expect(r.error).toContain("cheks");
+    expect(r.error).not.toContain("\n");
+  });
+  it("unparseable JSON gives the defaults plus an error naming the file", () => {
+    const dir = repo("not json");
+    const r = loadRepoConfigSafe(dir);
+    expect(r.config).toEqual(defaultRepoConfig());
+    expect(r.error).toContain(join(dir, ".foreman", "config.json"));
+  });
+  it("a good file (or none) has no error", () => {
+    expect(loadRepoConfigSafe(repo('{"setup": null}'))).toEqual({
+      config: { ...defaultRepoConfig(), setup: null },
+      error: null,
+    });
+    expect(loadRepoConfigSafe(repo()).error).toBeNull();
   });
 });

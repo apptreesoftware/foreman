@@ -10,7 +10,7 @@ import { buildSnapshot, realCtx } from "../loop.ts";
 import { describeNext, formatNext } from "../next.ts";
 import type { InterruptInput } from "../release.ts";
 import { ledgerInterrupt } from "../release.ts";
-import { loadRepoConfig } from "../repo-config.ts";
+import { loadRepoConfigSafe } from "../repo-config.ts";
 import { readSessions } from "../sessions.ts";
 import { readState } from "../state-file.ts";
 import { describeStatus, formatStatus } from "../status.ts";
@@ -37,7 +37,11 @@ export async function runCtl(
   const STATE_DIR = instance.dir;
   const stopFile = join(STATE_DIR, "STOP");
   const cfg = loadConfig(instance.configPath);
-  const repo = loadRepoConfig(cfg.repoDir);
+  // A mistyped `.foreman/config.json` must not take `status`, `stop`, `abort` or `go` away: those
+  // are the operator's controls, and they are most needed exactly when something is wrong. Warn
+  // once, name the file, and carry on with the defaults.
+  const { config: repo, error: repoError } = loadRepoConfigSafe(cfg.repoDir);
+  if (repoError) process.stderr.write(`warning: ${repoError}; using defaults\n`);
 
   function statusReport() {
     return describeStatus({
