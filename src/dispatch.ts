@@ -84,10 +84,13 @@ export interface DispatchRequest {
   rebase: boolean;
 }
 
-/** The rebase round's prompt, naming the repo's own checks rather than a hardcoded pnpm trio. */
-export function rebaseNotes(checks: string[]): string {
+/**
+ * The rebase round's prompt, naming the repo's own checks rather than a hardcoded pnpm trio, and
+ * the repo's own default branch rather than a hardcoded `main`.
+ */
+export function rebaseNotes(checks: string[], defaultBranch = "main"): string {
   const cmds = checks.map((c) => `\`${c}\``).join(", ");
-  return `This is a rebase round: the PR is approved but its branch conflicts with main. Run \`git merge origin/main\`, resolve every conflict keeping both sides' intent, run ${cmds}, commit the merge and push. Change nothing else, do not open a new PR, and return \`pr_opened\` with this PR's number.`;
+  return `This is a rebase round: the PR is approved but its branch conflicts with ${defaultBranch}. Run \`git merge origin/${defaultBranch}\`, resolve every conflict keeping both sides' intent, run ${cmds}, commit the merge and push. Change nothing else, do not open a new PR, and return \`pr_opened\` with this PR's number.`;
 }
 
 /**
@@ -246,7 +249,12 @@ export function buildArgs(req: DispatchRequest, cfg: ForemanConfig): string[] {
   ];
 }
 
-export function buildPrompt(req: DispatchRequest, cfg: ForemanConfig, checks: string[]): string {
+export function buildPrompt(
+  req: DispatchRequest,
+  cfg: ForemanConfig,
+  checks: string[],
+  defaultBranch = "main",
+): string {
   const ports = stackPorts(req.isolated ? roleSessionEnv() : {});
   const project = req.isolated ? ROLE_SUPABASE_PROJECT : DEV_SUPABASE_PROJECT;
   const supabase = req.isolated ? ROLE_SUPABASE_API_URL : DEV_SUPABASE_API_URL;
@@ -262,7 +270,7 @@ export function buildPrompt(req: DispatchRequest, cfg: ForemanConfig, checks: st
     lines.push(
       `This worktree's \`packages/db/supabase/config.toml\` has been pointed at the isolated ${project} stack, and \`TONE_WEB_PORT\`/\`TONE_API_PORT\` are set, so \`pnpm db:reset\` and \`pnpm --filter @tone/foreman serve start\` stay off the owner's dev stack. Leave that file alone; it is marked skip-worktree so \`git add\` skips it, and the foreman restores it after your session.`,
     );
-  if (req.rebase) lines.push(rebaseNotes(checks));
+  if (req.rebase) lines.push(rebaseNotes(checks, defaultBranch));
   else if (req.round > 1)
     lines.push(
       `This is fix round ${req.round}. Address the reviewer/validator feedback on the PR before anything else.`,
@@ -270,7 +278,7 @@ export function buildPrompt(req: DispatchRequest, cfg: ForemanConfig, checks: st
   if (req.notes) lines.push(`Notes from the previous step:\n${req.notes}`);
   if (req.resume)
     lines.push(
-      "You are resuming interrupted work. Read your last Progress comment on the issue and `git log origin/main..HEAD`, then continue from there. Do not redo finished steps.",
+      `You are resuming interrupted work. Read your last Progress comment on the issue and \`git log origin/${defaultBranch}..HEAD\`, then continue from there. Do not redo finished steps.`,
     );
   lines.push(
     "When completely done, return the outcome object required by the output schema. Do not return it early.",
@@ -459,6 +467,8 @@ export interface DispatchDeps {
   onAttempt: (req: DispatchRequest) => Promise<void>;
   /** What a rebase round runs, named in the prompt in place of a hardcoded pnpm trio. */
   checks?: string[];
+  /** The repo's default branch, named in the prompt in place of a hardcoded `main`. */
+  defaultBranch?: string;
   signal?: AbortSignal;
   onSpawn?: (pid: number) => void;
   onActivity?: (activity: Activity, entries: FeedEntry[]) => void;
@@ -476,7 +486,7 @@ export async function runSession(
   const r = await deps.spawn("claude", buildArgs(req, cfg), {
     cwd: req.worktree,
     env: childEnv(process.env, req.isolated ? roleSessionEnv() : {}),
-    input: buildPrompt(req, cfg, deps.checks ?? DEFAULT_CHECKS),
+    input: buildPrompt(req, cfg, deps.checks ?? DEFAULT_CHECKS, deps.defaultBranch ?? "main"),
     timeoutMs: cfg.wallClockMinutes * 60_000,
     signal: deps.signal,
     onSpawn: deps.onSpawn,

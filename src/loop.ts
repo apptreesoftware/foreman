@@ -353,6 +353,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
         spawn: ctx.spawn,
         signal: ctx.signal,
         checks: ctx.repo.checks,
+        defaultBranch: ctx.defaultBranch,
         onSpawn: (pid) => setCurrent({ childPid: pid }),
         onActivity,
         onAttempt: async (a) => {

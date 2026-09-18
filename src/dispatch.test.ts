@@ -106,6 +106,12 @@ describe("buildArgs / buildPrompt", () => {
     expect(p).toContain("`echo lint`, `echo test`");
     expect(p).not.toContain("pnpm lint");
   });
+  it("a rebase round on a non-main repo merges and names the repo's own default branch", () => {
+    const p = buildPrompt({ ...req, round: 2, rebase: true }, cfg, CHECKS, "trunk");
+    expect(p).toContain("git merge origin/trunk");
+    expect(p).toContain("conflicts with trunk");
+    expect(p).not.toContain("origin/main");
+  });
   it("switches to --resume on resume", () => {
     const a = buildArgs({ ...req, resume: true }, cfg).join(" ");
     expect(a).toContain("--resume 33333333-3333-3333-3333-333333333333");
@@ -116,9 +122,17 @@ describe("buildArgs / buildPrompt", () => {
     for (const s of ["#42", "feat/42-add-thing", "docs/s.md", "o/r", "mac-a", "8082", "3005"])
       expect(p).toContain(s);
     expect(buildPrompt({ ...req, resume: true }, cfg, CHECKS)).toContain("resuming");
+    expect(buildPrompt({ ...req, resume: true }, cfg, CHECKS)).toContain(
+      "git log origin/main..HEAD",
+    );
     expect(buildPrompt({ ...req, round: 2, notes: "fix the test" }, cfg, CHECKS)).toContain(
       "fix the test",
     );
+  });
+  it("the resume prompt names a non-main repo's own default branch", () => {
+    const p = buildPrompt({ ...req, resume: true }, cfg, CHECKS, "trunk");
+    expect(p).toContain("git log origin/trunk..HEAD");
+    expect(p).not.toContain("origin/main");
   });
 });
 

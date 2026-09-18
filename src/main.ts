@@ -59,7 +59,17 @@ if (!result.ok) {
 
 const gh = new GitHub({ repo: cfg.repo, owner: cfg.owner, project: cfg.project }, realExec, dryRun);
 const repo = loadRepoConfig(cfg.repoDir);
-const defaultBranch = await gh.defaultBranch();
+// Same reasoning as the login block below: a failed, not-yet-authenticated or rate-limited `gh`
+// must not keep the daemon from starting. "main" is the fallback until a later tick's own gh
+// calls succeed; nothing here is a write, so a wrong guess costs nothing but a retried rebase.
+let defaultBranch = "main";
+try {
+  defaultBranch = await gh.defaultBranch();
+} catch (err) {
+  log("warn", "gh default branch unavailable; assuming main", {
+    error: err instanceof Error ? err.message : String(err),
+  });
+}
 
 if (once) {
   const login = await gh.viewerLogin();
