@@ -1,4 +1,4 @@
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, appendFileSync, constants, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Exec } from "./exec.ts";
 import { log } from "./log.ts";
@@ -32,6 +32,30 @@ export interface HookResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+}
+
+/**
+ * Appends to `<stateDir>/logs/hooks.log`, the one file every hook run is recorded in. Guarded: the
+ * daemon's copy of this runs inside `runRole`'s `finally`, where a full disk or a state directory
+ * that went away would otherwise turn a logging failure into a lost session.
+ */
+export function fileHookLog(stateDir: string): (line: string) => void {
+  const dir = join(stateDir, "logs");
+  const file = join(dir, "hooks.log");
+  let warned = false;
+  return (line: string) => {
+    try {
+      mkdirSync(dir, { recursive: true });
+      appendFileSync(file, `${line}\n`);
+    } catch (err) {
+      if (warned) return;
+      warned = true;
+      log("warn", "hook log append failed; continuing without it", {
+        file,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 }
 
 export function hookPath(repoDir: string, name: HookName): string {

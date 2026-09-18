@@ -1,10 +1,11 @@
-import { appendFileSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "../config.ts";
 import { Controller, Mutex } from "../control.ts";
 import { realExec } from "../exec.ts";
 import { readFeed } from "../feed.ts";
 import { GitHub } from "../github.ts";
+import { fileHookLog } from "../hooks.ts";
 import type { Instance } from "../instance.ts";
 import { launchdInstalled } from "../launchd-status.ts";
 import { log } from "../log.ts";
@@ -13,21 +14,13 @@ import { applyUnblock, applyUnblockToBoard } from "../needs-you.ts";
 import { describeNext } from "../next.ts";
 import { applyOwnerAction, applyOwnerActionToBoard } from "../owner.ts";
 import { checkEnv, preflight } from "../preflight.ts";
-import { loadRepoConfig } from "../repo-config.ts";
+import { loadRepoConfigSafe } from "../repo-config.ts";
 import { readSessions } from "../sessions.ts";
 import { initialState, MODEL_DEFAULT, readState, StateStore } from "../state-file.ts";
 import { describeStatus } from "../status.ts";
 import { applyTaskModel, applyTaskModelToBoard, phaseTasks } from "../task-model.ts";
 import { startWebServer } from "../web.ts";
 import { launchdLabel } from "./launchd.ts";
-
-/** Appends to the instance's hooks.log, the same file `realCtx` writes session hooks to. */
-function fileHookLog(stateDir: string): (line: string) => void {
-  const dir = join(stateDir, "logs");
-  mkdirSync(dir, { recursive: true });
-  const file = join(dir, "hooks.log");
-  return (line: string) => appendFileSync(file, `${line}\n`);
-}
 
 export async function runDaemon(
   instance: Instance,
@@ -48,7 +41,28 @@ export async function runDaemon(
     process.stderr.write(`foreman: project is not set; run foreman -p ${instance.name} init\n`);
     process.exit(2);
   }
-  const repo = loadRepoConfig(cfg.repoDir);
+  // Spec §4.4: the launchd wrapper this daemon replaced pulled the clone before starting, and
+  // nothing else updates it — `config.json` is read once per process from `repoDir` and the hooks
+  // resolve under it, so without this a merged PR that changes either takes effect only after a
+  // manual pull. Best-effort and never fatal: an offline Mac, a dirty clone or a diverged branch
+  // all mean "carry on with the clone as it is". Skipped for `--once`, which must not touch the
+  // working tree an operator is debugging in.
+  if (!o.once) {
+    const pull = await realExec("git", ["-C", cfg.repoDir, "pull", "--ff-only"]);
+    if (pull.code !== 0)
+      log("warn", "repo pull failed; continuing with the clone as it is", {
+        stderr: pull.stderr.trim().slice(-500),
+      });
+  }
+
+  // The daemon, unlike ctl, refuses to run on a repo config it cannot read: it would otherwise
+  // work the repository by a different process than the repository asked for. launchd restarts it
+  // every 60 s, so the line has to name the file — `foreman.err.log` is all the operator gets.
+  const { config: repo, error: repoError } = loadRepoConfigSafe(cfg.repoDir);
+  if (repoError) {
+    process.stderr.write(`foreman: ${repoError}\n`);
+    process.exit(2);
+  }
   const once = o.once;
   const dryRun = o.dryRun;
   const hookLog = fileHookLog(STATE_DIR);
