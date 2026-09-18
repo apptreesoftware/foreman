@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -54,6 +54,43 @@ describe("runHook", () => {
       log: (l) => lines.push(l),
     });
     expect(lines.some((l) => l.includes("after-session") && l.includes("code=0"))).toBe(true);
+  });
+  it("never logs session-env's stdout, only its code and stderr", async () => {
+    const lines: string[] = [];
+    await runHook(
+      "session-env",
+      repoDir,
+      { ...base, role: "validator", issue: 1, worktree: "/w", pr: 2, round: 1 },
+      realExec,
+      { log: (l) => lines.push(l) },
+    );
+    const logged = lines.join("\n");
+    expect(logged).toContain("session-env");
+    expect(logged).toContain("code=0");
+    expect(logged).not.toContain("APP_PORT=8182");
+  });
+  it("a hook that exists but is not executable is ran:false and logs why, without throwing", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "noexec-"));
+    mkdirSync(join(repo, ".foreman", "hooks"), { recursive: true });
+    const path = join(repo, ".foreman", "hooks", "preflight");
+    writeFileSync(path, "#!/bin/sh\nexit 0\n");
+    chmodSync(path, 0o644);
+    const lines: string[] = [];
+    const r = await runHook("preflight", repo, { ...base, repoDir: repo }, realExec, {
+      log: (l) => lines.push(l),
+    });
+    expect(r).toMatchObject({ ran: false, code: 0 });
+    expect(lines.some((l) => l.includes("not executable"))).toBe(true);
+  });
+  it("a directory at the hook path is ran:false and does not throw", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "hookdir-"));
+    mkdirSync(join(repo, ".foreman", "hooks", "preflight"), { recursive: true });
+    const lines: string[] = [];
+    const r = await runHook("preflight", repo, { ...base, repoDir: repo }, realExec, {
+      log: (l) => lines.push(l),
+    });
+    expect(r).toMatchObject({ ran: false, code: 0 });
+    expect(lines).toEqual([]);
   });
 });
 

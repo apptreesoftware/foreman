@@ -155,9 +155,14 @@ describe("childEnv", () => {
     expect(e.CLAUDE_CODE_USE_BEDROCK).toBeUndefined();
   });
   it("adds the extra variables, and never lets them be a billing variable", () => {
-    const e = childEnv({ PATH: "/bin" }, { APP_PORT: "8182" });
-    expect(e.APP_PORT).toBe("8182");
+    const e = childEnv(
+      { PATH: "/bin" },
+      { APP_PORT: "1", ANTHROPIC_API_KEY: "sk-x", CLAUDE_CODE_USE_BEDROCK: "1" },
+    );
+    expect(e.APP_PORT).toBe("1");
     expect(e.PATH).toBe("/bin");
+    expect(e.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(e.CLAUDE_CODE_USE_BEDROCK).toBeUndefined();
   });
   it("runSession passes req.env through to the child, from the session-env hook", async () => {
     const seen: NodeJS.ProcessEnv[] = [];

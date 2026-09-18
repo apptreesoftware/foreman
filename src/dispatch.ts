@@ -127,7 +127,17 @@ export function childEnv(
   for (const [k, v] of Object.entries(env)) {
     if (!forbidden.has(k)) out[k] = v;
   }
-  return { ...out, ...extra };
+  // `extra` comes from a served repo's `session-env` hook: arbitrary stdout, not a trusted
+  // source. Without this, a hook printing `ANTHROPIC_API_KEY=...` would put it straight into the
+  // child, defeating preflight's billing-variable check.
+  for (const [k, v] of Object.entries(extra)) {
+    if (forbidden.has(k)) {
+      log("warn", "session-env hook tried to set a billing variable; ignored", { name: k });
+      continue;
+    }
+    out[k] = v;
+  }
+  return out;
 }
 
 export function buildArgs(req: DispatchRequest, cfg: ForemanConfig): string[] {

@@ -1,6 +1,7 @@
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Exec } from "./exec.ts";
+import { log } from "./log.ts";
 import { REPO_DIRNAME } from "./repo-config.ts";
 import type { Role } from "./types.ts";
 
@@ -37,13 +38,26 @@ export function hookPath(repoDir: string, name: HookName): string {
   return join(repoDir, REPO_DIRNAME, "hooks", name);
 }
 
-function executable(p: string): boolean {
-  if (!existsSync(p)) return false;
+type Executable = "yes" | "missing" | "not-executable";
+
+/**
+ * `statSync` (not `existsSync` + `accessSync`) so a directory at the hook path is never treated
+ * as runnable: `accessSync(X_OK)` succeeds on a directory, which would otherwise hand `exec` a
+ * path it cannot run and surface as an opaque code-1 failure instead of a clear "not a hook".
+ */
+function executable(p: string): Executable {
+  let st: ReturnType<typeof statSync>;
+  try {
+    st = statSync(p);
+  } catch {
+    return "missing";
+  }
+  if (!st.isFile()) return "missing";
   try {
     accessSync(p, constants.X_OK);
-    return true;
+    return "yes";
   } catch {
-    return false;
+    return "not-executable";
   }
 }
 
@@ -73,7 +87,15 @@ export async function runHook(
   opts: { timeoutMs?: number; log?: (line: string) => void } = {},
 ): Promise<HookResult> {
   const path = hookPath(ctx.repoDir, name);
-  if (!executable(path)) return { ran: false, code: 0, stdout: "", stderr: "", timedOut: false };
+  const state = executable(path);
+  if (state !== "yes") {
+    if (state === "not-executable") {
+      const line = `${path} exists but is not executable (chmod +x)`;
+      opts.log?.(line);
+      log("warn", "hook exists but is not executable", { path });
+    }
+    return { ran: false, code: 0, stdout: "", stderr: "", timedOut: false };
+  }
   const timeoutMs = opts.timeoutMs ?? HOOK_TIMEOUT_MS;
   let timedOut = false;
   const timer = new Promise<HookResult>((resolve) =>
@@ -92,8 +114,12 @@ export async function runHook(
     (r): HookResult => ({ ran: true, code: r.code, stdout: r.stdout, stderr: r.stderr, timedOut }),
   );
   const result = await Promise.race([run, timer]);
+  // session-env's stdout is exactly the secrets it exists to inject (spec: KEY=VALUE lines meant
+  // for the child's env). The log is a persistent file under stateDir, so it must never carry
+  // that — only the exit code and stderr are safe to keep.
+  const loggedStdout = name === "session-env" ? "" : result.stdout;
   opts.log?.(
-    `${new Date().toISOString()} ${name} cwd=${cwd} code=${result.code}${result.timedOut ? " timed-out" : ""}\n${result.stdout}${result.stderr}`.trimEnd(),
+    `${new Date().toISOString()} ${name} cwd=${cwd} code=${result.code}${result.timedOut ? " timed-out" : ""}\n${loggedStdout}${result.stderr}`.trimEnd(),
   );
   return result;
 }
