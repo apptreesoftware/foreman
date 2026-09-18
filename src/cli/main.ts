@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, openSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { runEpicNew } from "../bootstrap/epic.ts";
 import { runInit } from "../bootstrap/init.ts";
@@ -44,6 +44,19 @@ function start(instance: Instance, out: (s: string) => void): number {
   child.unref();
   out(`started foreman ${instance.name} (pid ${child.pid}); log: ${logFile}`);
   return 0;
+}
+
+/**
+ * Stop, then start. `ctl stop` returns only once the daemon has posted its ledger comment and
+ * exited, so the start that follows finds the port free and state.json consistent. The STOP file
+ * that stop deliberately leaves is cleared here — `restart` means "come back up", so the new
+ * daemon must not park on it. A plain `stop` still leaves it.
+ */
+async function restart(instance: Instance, out: (s: string) => void): Promise<number> {
+  await runCtl(instance, "stop", { watch: false, json: false, value: null });
+  const stopFile = join(instance.dir, "STOP");
+  if (existsSync(stopFile)) unlinkSync(stopFile);
+  return start(instance, out);
 }
 
 async function main(): Promise<number> {
@@ -115,12 +128,7 @@ async function main(): Promise<number> {
     case "start":
       return start(instance, out);
     case "restart":
-      // `ctl stop` returns only once the daemon has posted its ledger comment and exited, so the
-      // start that follows finds the port free and state.json consistent. As with the zsh
-      // wrapper's restart, the STOP file the stop left behind stays: the new daemon serves the
-      // page but parks until `foreman go`.
-      await runCtl(instance, "stop", { watch: false, json: false, value: null });
-      return start(instance, out);
+      return restart(instance, out);
     case "stop":
     case "abort":
     case "go":
