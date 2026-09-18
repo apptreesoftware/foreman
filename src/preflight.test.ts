@@ -20,7 +20,6 @@ const cfg = parseConfig(
     host: "h",
     repoDir: "/r",
     workDir: "/w",
-    slackUser: "m",
     maxSessionsPerDay: 2,
   }),
 );

@@ -1,9 +1,10 @@
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_CONFIG_PATH, loadConfig, STATE_DIR } from "../src/config.ts";
+import { loadConfig } from "../src/config.ts";
 import { ctlCap, ctlGo, ctlModel, ctlStop } from "../src/ctl.ts";
 import { realExec } from "../src/exec.ts";
 import { GitHub } from "../src/github.ts";
+import { resolveInstance } from "../src/instance.ts";
 import { LAUNCHD_LABEL, launchdInstalled, launchdUid } from "../src/launchd-status.ts";
 import { buildSnapshot, realCtx } from "../src/loop.ts";
 import { describeNext, formatNext } from "../src/next.ts";
@@ -24,8 +25,6 @@ function pidAlive(pid: number): boolean {
     return false;
   }
 }
-const stopFile = join(STATE_DIR, "STOP");
-
 let args: ReturnType<typeof parseCtlArgs>;
 try {
   args = parseCtlArgs(process.argv.slice(2));
@@ -33,7 +32,10 @@ try {
   process.stderr.write(`${USAGE}\n`);
   process.exit(2);
 }
-const cfg = loadConfig(args.config);
+const instance = resolveInstance({ flag: args.instance, env: process.env, cwd: process.cwd() });
+const STATE_DIR = instance.dir;
+const stopFile = join(STATE_DIR, "STOP");
+const cfg = loadConfig(instance.configPath);
 
 function statusReport() {
   return describeStatus({
@@ -103,7 +105,7 @@ const deps = {
     return ledgerInterrupt(gh, { ...i, login: i.login || (await gh.viewerLogin()) });
   },
   out: (line: string) => process.stdout.write(`${line}\n`),
-  startCommand: `pnpm --filter @tone/foreman start   (config: ${args.config ?? process.env.TONE_FOREMAN_CONFIG ?? DEFAULT_CONFIG_PATH})`,
+  startCommand: `foreman -p ${instance.name} start`,
   configModel: cfg.model,
   configCap: cfg.maxSessionsPerDay,
   postModel: (model: string) => postToDaemon("model", { model }, `next session runs ${model}`),

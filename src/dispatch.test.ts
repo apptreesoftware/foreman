@@ -33,7 +33,6 @@ const cfg = parseConfig(
     host: "mac-a",
     repoDir: "/repo",
     workDir: "/work",
-    slackUser: "m",
     maxTurns: 50,
     wallClockMinutes: 1,
   }),

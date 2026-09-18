@@ -7,13 +7,13 @@ describe("parseCtlArgs", () => {
       cmd: "status",
       watch: true,
       json: false,
-      config: undefined,
+      instance: undefined,
       value: null,
     });
-    expect(parseCtlArgs(["status", "--json", "--config", "/c"])).toMatchObject({
+    expect(parseCtlArgs(["status", "--json", "-p", "widgets"])).toMatchObject({
       cmd: "status",
       json: true,
-      config: "/c",
+      instance: "widgets",
     });
     expect(parseCtlArgs(["abort"])).toMatchObject({ cmd: "abort" });
   });

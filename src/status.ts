@@ -232,7 +232,7 @@ export function formatStatus(r: StatusReport): string {
   );
   if (r.daemon === "UNKNOWN")
     lines.push(
-      "       no ~/.tone_tonic/state.json: the running daemon predates this feature; restart it to get state, the page, and ctl stop/abort",
+      "       no state.json: the running daemon predates this feature; restart it to get state, the page, and ctl stop/abort",
     );
   if (r.tick) {
     const pre = r.tick.preflight

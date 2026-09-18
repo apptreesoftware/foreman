@@ -4,9 +4,6 @@ import { join } from "node:path";
 import { z } from "zod";
 import { NotifyConfigSchema } from "./notify.ts";
 
-export const STATE_DIR = join(homedir(), ".tone_tonic");
-export const DEFAULT_CONFIG_PATH = join(STATE_DIR, "foreman.json");
-
 export const ConfigSchema = z.object({
   repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
   project: z.number().int().positive(),
@@ -18,7 +15,6 @@ export const ConfigSchema = z.object({
   maxSessionsPerDay: z.number().int().min(1).default(20),
   maxTurns: z.number().int().min(1).default(200),
   wallClockMinutes: z.number().int().min(1).default(90),
-  slackUser: z.string().min(1),
   /**
    * Passed to every `claude -p`. Defaulted rather than optional so a session never silently
    * inherits whatever the interactive CLI default happens to be on this Mac (#210).
@@ -60,8 +56,6 @@ export function parseConfig(json: string): ForemanConfig {
   };
 }
 
-export function loadConfig(path?: string): ForemanConfig {
-  return parseConfig(
-    readFileSync(path ?? process.env.TONE_FOREMAN_CONFIG ?? DEFAULT_CONFIG_PATH, "utf8"),
-  );
+export function loadConfig(path: string): ForemanConfig {
+  return parseConfig(readFileSync(path, "utf8"));
 }

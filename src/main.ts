@@ -1,11 +1,12 @@
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { DEFAULT_CONFIG_PATH, loadConfig, STATE_DIR } from "./config.ts";
+import { loadConfig } from "./config.ts";
 import { Controller, Mutex } from "./control.ts";
 import { realExec } from "./exec.ts";
 import { readFeed } from "./feed.ts";
 import { GitHub } from "./github.ts";
+import { resolveInstance } from "./instance.ts";
 import { launchdInstalled } from "./launchd-status.ts";
 import { log } from "./log.ts";
 import { buildSnapshot, ensureLogin, realCtx, runForever, runOnce } from "./loop.ts";
@@ -31,12 +32,14 @@ const { values } = parseArgs({
   options: {
     once: { type: "boolean", default: false },
     "dry-run": { type: "boolean", default: false },
-    config: { type: "string" },
+    instance: { type: "string", short: "p" },
   },
 });
 
-const cfg = loadConfig(values.config);
-const configPath = values.config ?? process.env.TONE_FOREMAN_CONFIG ?? DEFAULT_CONFIG_PATH;
+const instance = resolveInstance({ flag: values.instance, env: process.env, cwd: process.cwd() });
+const STATE_DIR = instance.dir;
+const cfg = loadConfig(instance.configPath);
+const configPath = instance.configPath;
 const once = values.once;
 const dryRun = values["dry-run"];
 

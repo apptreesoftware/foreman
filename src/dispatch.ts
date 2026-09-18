@@ -256,7 +256,6 @@ export function buildPrompt(req: DispatchRequest, cfg: ForemanConfig): string {
     `Worktree (your cwd): ${req.worktree}. Branch: ${req.branch}. Never touch main.`,
     `Spec: ${req.specPath ?? "see the issue body"}.`,
     `Local URLs: web ${ports.webUrl}, api ${ports.apiUrl}, Supabase API ${supabase} (project ${project}).`,
-    `Slack owner handle: ${cfg.slackUser}.`,
   ];
   if (req.isolated)
     lines.push(

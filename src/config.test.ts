@@ -7,7 +7,6 @@ const base = {
   host: "matthew-mbp",
   repoDir: "~/Projects/musicworld",
   workDir: "~/tone_tonic-work",
-  slackUser: "matthew",
 };
 
 describe("parseConfig", () => {
@@ -72,7 +71,6 @@ describe("parseConfig", () => {
       host: "h",
       repoDir: "/r",
       workDir: "/w",
-      slackUser: "m",
     };
     expect(parseConfig(JSON.stringify(base)).stallMinutes).toBe(5);
     expect(parseConfig(JSON.stringify({ ...base, stallMinutes: 8 })).stallMinutes).toBe(8);

@@ -6,7 +6,7 @@ import { stackPorts } from "../src/ports.ts";
 import { waitForHttp } from "./http.ts";
 
 const root = join(import.meta.dirname, "..", "..", "..");
-const stateDir = join(homedir(), ".tone_tonic");
+const stateDir = process.env.FOREMAN_STATE_DIR ?? join(homedir(), ".foreman");
 const pidFile = join(stateDir, "serve.json");
 const logDir = join(stateDir, "logs");
 
