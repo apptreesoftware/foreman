@@ -9,6 +9,10 @@
  * The foreman puts `TONE_WEB_PORT`, `TONE_API_PORT` and `SUPABASE_API_URL` in an isolated
  * session's environment; `scripts/serve.ts` and `scripts/dev-env.ts` read them back through
  * `stackPorts()`, so the same scripts serve both stacks.
+ *
+ * This is repo-specific and belongs to `tone_tonic`, not the extracted foreman daemon (#src has
+ * no Supabase/Docker/port knowledge of its own any more — see `src/hooks.ts`); it lives under
+ * `scripts/` only so `serve.ts` and `dev-env.ts` keep compiling until Task 6 removes them.
  */
 
 export const DEV_SUPABASE_PROJECT = "tone_tonic";

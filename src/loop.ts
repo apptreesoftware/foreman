@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { cp } from "node:fs/promises";
 import { join } from "node:path";
 import { describeBoard } from "./board.ts";
@@ -7,15 +7,12 @@ import { budgetUpdate } from "./budget.ts";
 import { conflictOn } from "./claim.ts";
 import type { ForemanConfig } from "./config.ts";
 import {
-  applyRoleConfig,
   branchFor,
   type DispatchRequest,
   dispatchWithRetry,
-  needsIsolatedStack,
   ensureWorktree as realEnsureWorktree,
   removeWorktree as realRemoveWorktree,
   realSpawn,
-  restoreRoleConfig,
   type SessionResult,
   type Spawner,
   transcriptPath,
@@ -24,6 +21,8 @@ import type { Exec } from "./exec.ts";
 import { realExec } from "./exec.ts";
 import { appendFeed, type FeedEntry } from "./feed.ts";
 import { type GitHubApi, modelOf, phaseOf } from "./github.ts";
+import type { HookName } from "./hooks.ts";
+import { parseSessionEnv, runHook } from "./hooks.ts";
 import { fmt, openClaim, parseClaim } from "./ledger.ts";
 import { log } from "./log.ts";
 import { createNotifier, type NotifyPort, noopNotify } from "./notify.ts";
@@ -89,6 +88,10 @@ export interface Ctx {
   repo: RepoConfig;
   /** The repo's default branch, as `git`/GitHub name it (`main`, `trunk`, ...). */
   defaultBranch: string;
+  /** This foreman instance's name (`-p`/`FOREMAN_INSTANCE`/cwd match); passed to every hook. */
+  instance: string;
+  /** Appends one line per hook run to `<stateDir>/logs/hooks.log`. */
+  hookLog: (line: string) => void;
 }
 
 export function realCtx(
@@ -100,6 +103,13 @@ export function realCtx(
   control: { signal: AbortSignal; stopMode: () => StopMode | null; state: Ctx["state"] },
   repo: RepoConfig = defaultRepoConfig(),
   defaultBranch = "main",
+  instance = "default",
+  hookLog: Ctx["hookLog"] = (() => {
+    const dir = join(stateDir, "logs");
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, "hooks.log");
+    return (line: string) => appendFileSync(file, `${line}\n`);
+  })(),
 ): Ctx {
   return {
     cfg,
@@ -136,6 +146,8 @@ export function realCtx(
     now: () => new Date().toISOString(),
     repo,
     defaultBranch,
+    instance,
+    hookLog,
   };
 }
 
@@ -263,13 +275,28 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   }
   if (r.round > 1 && r.pr)
     await gh.removeLabels("pr", r.pr, ["reviewer:changes", "validator:failed"]);
-  // Sessions that may `pnpm db:reset` or serve the app run against the isolated `tone_tonic_val`
-  // stack, not the owner's (#228). The rewrite lives only in the worktree and is undone below, so
-  // it never reaches a commit. The restore is unconditional and runs first, so a rewrite left
-  // behind by a crashed isolated session cannot be committed by a later non-isolated one.
-  const isolated = needsIsolatedStack(r.role);
-  await restoreRoleConfig(worktree, ctx.exec);
-  if (isolated) await applyRoleConfig(worktree, cfg.repoDir, ctx.exec);
+  const hookCtx = {
+    instance: ctx.instance,
+    stateDir: ctx.stateDir,
+    repoDir: cfg.repoDir,
+    role: r.role,
+    issue: r.issue.number,
+    pr: r.pr,
+    worktree,
+    round: r.round,
+  };
+  const hook = (name: HookName) => runHook(name, worktree, hookCtx, ctx.exec, { log: ctx.hookLog });
+  // Spec §6: after-session also runs before the next session on the same worktree, so whatever a
+  // crashed session left behind is undone before this one starts.
+  await hook("after-session");
+  const sessionEnv = parseSessionEnv(await hook("session-env"));
+  const before = await hook("before-session");
+  if (before.ran && before.code !== 0) {
+    await hook("after-session");
+    throw new Error(
+      `before-session hook failed (${before.code}): ${before.stderr.trim().slice(-500)}`,
+    );
+  }
   // Controller ruling (Task 6 review): always dispatch with attempt: 1 — dispatchWithRetry owns
   // retry counting internally, and no attempt count carries across loop iterations.
   const req: DispatchRequest = {
@@ -285,7 +312,8 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     attempt: 1,
     round: r.round,
     notes,
-    isolated,
+    env: sessionEnv.env,
+    promptLines: sessionEnv.promptLines,
     rebase: r.rebase === true,
   };
   const started = Date.now();
@@ -370,10 +398,10 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
       ctx.repo.limits.attempts,
     );
   } finally {
-    // Unconditional, even on a throw or an operator abort, and even for a session that was never
-    // isolated: a rewrite an earlier crashed session left behind would otherwise be committed by
-    // this one, or block `ensureWorktree`'s `git pull --ff-only`.
-    await restoreRoleConfig(worktree, ctx.exec);
+    // Unconditional, even on a throw, a session that never ran (dispatchWithRetry itself
+    // throwing) or an operator abort: whatever the served repo's after-session hook undoes must
+    // not survive into the next session on this worktree.
+    await hook("after-session");
   }
   if (flushTimer) clearTimeout(flushTimer);
   flush();
@@ -914,6 +942,9 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
       exec: ctx.exec,
       stateDir: ctx.stateDir,
       now: new Date(),
+      repoDir: ctx.cfg.repoDir,
+      instance: ctx.instance,
+      hookLog: ctx.hookLog,
     },
   );
   ctx.state?.patch({ lastPreflight: { ok: pre.ok, reason: pre.ok ? null : pre.reason } });

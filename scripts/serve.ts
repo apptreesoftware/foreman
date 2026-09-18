@@ -2,8 +2,8 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { stackPorts } from "../src/ports.ts";
 import { waitForHttp } from "./http.ts";
+import { stackPorts } from "./ports.ts";
 
 const root = join(import.meta.dirname, "..", "..", "..");
 const stateDir = process.env.FOREMAN_STATE_DIR ?? join(homedir(), ".foreman");

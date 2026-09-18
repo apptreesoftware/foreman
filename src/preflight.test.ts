@@ -3,15 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseConfig } from "./config.ts";
-import type { Exec } from "./exec.ts";
-import {
-  checkEnv,
-  countSessionsToday,
-  ensureRoleStack,
-  graphqlBudget,
-  localDate,
-  preflight,
-} from "./preflight.ts";
+import { type Exec, realExec } from "./exec.ts";
+import { checkEnv, countSessionsToday, graphqlBudget, localDate, preflight } from "./preflight.ts";
 
 const cfg = parseConfig(
   JSON.stringify({
@@ -23,20 +16,29 @@ const cfg = parseConfig(
     maxSessionsPerDay: 2,
   }),
 );
-const okExec: Exec = async (cmd, args) => {
+const okExec: Exec = async (cmd, args, opts) => {
   if (cmd === "claude" && args[0] === "auth")
     return {
       code: 0,
       stdout: '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}',
       stderr: "",
     };
-  return { code: 0, stdout: "ok", stderr: "" };
+  if (cmd === "gh" && args[0] === "auth")
+    return { code: 0, stdout: "Token scopes: 'project', 'repo'", stderr: "" };
+  if (cmd === "gh" && args[1] === "graphql") return { code: 0, stdout: "ok", stderr: "" };
+  // Everything else — notably the preflight hook itself — runs for real, so a fixture-repo
+  // test actually exercises the shell script rather than a canned stub.
+  return realExec(cmd, args, opts);
 };
+const noHooksRepo = mkdtempSync(join(tmpdir(), "tt-repo-"));
+const fixtureRepo = join(import.meta.dirname, "../test/fixtures/repo");
 const deps = (over: Partial<Parameters<typeof preflight>[1]> = {}) => ({
   env: {},
   exec: okExec,
   stateDir: mkdtempSync(join(tmpdir(), "tt-")),
   now: new Date(),
+  repoDir: noHooksRepo,
+  instance: "widgets",
   ...over,
 });
 
@@ -72,6 +74,15 @@ describe("preflight", () => {
     writeFileSync(join(d.stateDir, "sessions.log"), `{"t":"${t}"}\n{"t":"${t}"}\n`);
     expect(countSessionsToday(d.stateDir, d.now)).toBe(2);
     expect((await preflight(cfg, d)).ok).toBe(false);
+  });
+  it("fails when gh lacks the project scope", async () => {
+    const exec: Exec = async (cmd, args) =>
+      cmd === "gh" && args[0] === "auth"
+        ? { code: 0, stdout: "Token scopes: 'repo', 'read:org'", stderr: "" }
+        : okExec(cmd, args);
+    const r = await preflight(cfg, deps({ exec }));
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.reason).toContain("project scope");
   });
   it("fails when the GraphQL budget is nearly spent", async () => {
     const exec: Exec = async (cmd, args) =>
@@ -138,65 +149,22 @@ describe("preflight", () => {
     const notJson: Exec = async () => ({ code: 1, stdout: "<html>502</html>", stderr: "" });
     expect(await graphqlBudget(notJson)).toBeNull();
   });
-  it("fails when docker is down", async () => {
-    const exec: Exec = async (cmd, args) =>
-      cmd === "docker" ? { code: 1, stdout: "", stderr: "no daemon" } : okExec(cmd, args);
-    expect((await preflight(cfg, deps({ exec }))).ok).toBe(false);
-  });
-});
-
-describe("ensureRoleStack", () => {
-  const fs = () => {
-    const made: string[] = [];
-    return { made, mkdirp: (p: string) => made.push(p) };
-  };
-  const recording = (over: (cmd: string, args: string[]) => number = () => 0) => {
-    const calls: string[] = [];
-    const exec: Exec = async (cmd, args) => {
-      calls.push(`${cmd} ${args.join(" ")}`);
-      const code = over(cmd, args);
-      return { code, stdout: "", stderr: code === 0 ? "" : "boom" };
-    };
-    return { calls, exec };
-  };
-
-  // --delete, not `cp -R`: a migration deleted on main must disappear from the copy too, or the
-  // role stack keeps applying it forever.
-  it("mirrors the config, applies the role rewrite, and leaves a running stack alone", async () => {
-    const { calls, exec } = recording();
-    const f = fs();
-    const warning = await ensureRoleStack(cfg, "/state", { exec, mkdirp: f.mkdirp });
-    expect(warning).toBeNull();
-    expect(f.made).toEqual(["/state/val-stack/supabase"]);
-    expect(calls).toEqual([
-      "rsync -a --delete --exclude .branches --exclude .temp /r/packages/db/supabase/ /state/val-stack/supabase/",
-      "bash /r/packages/db/scripts/role-config.sh /state/val-stack/supabase/config.toml",
-      "supabase status -o env --workdir /state/val-stack",
-    ]);
-  });
-
-  it("starts the stack when it is down", async () => {
-    const { calls, exec } = recording((_cmd, args) => (args[0] === "status" ? 1 : 0));
-    expect(await ensureRoleStack(cfg, "/state", { exec, mkdirp: () => {} })).toBeNull();
-    expect(calls).toContain("supabase start --workdir /state/val-stack");
-  });
-
-  it("warns rather than parking the daemon when the stack will not start", async () => {
-    const { exec } = recording((cmd) => (cmd === "supabase" ? 1 : 0));
-    const w = await ensureRoleStack(cfg, "/state", { exec, mkdirp: () => {} });
-    expect(w).toContain("tone_tonic_val");
-  });
-
-  it("warns when the config cannot be copied", async () => {
-    const { exec } = recording((cmd) => (cmd === "rsync" ? 1 : 0));
-    expect(await ensureRoleStack(cfg, "/state", { exec, mkdirp: () => {} })).toContain(
-      "tone_tonic_val",
-    );
-  });
-
-  it("preflight reports it as a warning, never as a failure", async () => {
+  it("a repoDir with no hooks passes with no warnings", async () => {
     const r = await preflight(cfg, deps());
-    expect(r.ok).toBe(true);
+    expect(r).toEqual({ ok: true, warnings: [] });
+  });
+  it("the fixture repo's preflight hook passes with its warning", async () => {
+    const r = await preflight(cfg, deps({ repoDir: fixtureRepo }));
+    expect(r).toEqual({ ok: true, warnings: ["fixture warning"] });
+  });
+  it("parks when the fixture preflight hook fails", async () => {
+    process.env.FAIL_PREFLIGHT = "1";
+    try {
+      const r = await preflight(cfg, deps({ repoDir: fixtureRepo }));
+      expect(r).toEqual({ ok: false, reason: "fixture says no" });
+    } finally {
+      delete process.env.FAIL_PREFLIGHT;
+    }
   });
 });
 

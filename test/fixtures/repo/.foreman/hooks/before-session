@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "$FOREMAN_ROLE $FOREMAN_ISSUE $FOREMAN_WORKTREE" > "$FOREMAN_WORKTREE/.before-ran"

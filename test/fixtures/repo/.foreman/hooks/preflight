@@ -1,0 +1,5 @@
+#!/bin/sh
+echo "warn: fixture warning"
+[ -n "$FOREMAN_STATE_DIR" ] || { echo "no state dir" >&2; exit 1; }
+[ "$FAIL_PREFLIGHT" = "1" ] && { echo "first line" >&2; echo "fixture says no" >&2; exit 3; }
+exit 0

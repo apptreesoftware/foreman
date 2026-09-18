@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseConfig } from "./config.ts";
 import {
-  applyRoleConfig,
   branchFor,
   buildArgs,
   buildPrompt,
@@ -12,10 +11,8 @@ import {
   type DispatchRequest,
   dispatchWithRetry,
   ensureWorktree,
-  needsIsolatedStack,
   parseResult,
   realSpawn,
-  restoreRoleConfig,
   runSession,
   type Spawner,
   slugify,
@@ -49,7 +46,8 @@ const req: DispatchRequest = {
   attempt: 1,
   round: 1,
   notes: "",
-  isolated: false,
+  env: {},
+  promptLines: [],
   rebase: false,
 };
 const CHECKS = ["pnpm lint", "pnpm typecheck", "pnpm test"];
@@ -119,7 +117,7 @@ describe("buildArgs / buildPrompt", () => {
   });
   it("prompt carries issue, branch, spec, round and notes", () => {
     const p = buildPrompt(req, cfg, CHECKS);
-    for (const s of ["#42", "feat/42-add-thing", "docs/s.md", "o/r", "mac-a", "8082", "3005"])
+    for (const s of ["#42", "feat/42-add-thing", "docs/s.md", "o/r", "mac-a"])
       expect(p).toContain(s);
     expect(buildPrompt({ ...req, resume: true }, cfg, CHECKS)).toContain("resuming");
     expect(buildPrompt({ ...req, resume: true }, cfg, CHECKS)).toContain(
@@ -134,6 +132,19 @@ describe("buildArgs / buildPrompt", () => {
     expect(p).toContain("git log origin/trunk..HEAD");
     expect(p).not.toContain("origin/main");
   });
+  it("appends the session-env hook's prompt lines after the Spec: line, in order", () => {
+    const p = buildPrompt(
+      { ...req, promptLines: ["Local URLs: web http://localhost:8182", "second"] },
+      cfg,
+      CHECKS,
+    );
+    const specIdx = p.indexOf("Spec:");
+    const firstIdx = p.indexOf("Local URLs: web http://localhost:8182");
+    const secondIdx = p.indexOf("second");
+    expect(specIdx).toBeGreaterThanOrEqual(0);
+    expect(firstIdx).toBeGreaterThan(specIdx);
+    expect(secondIdx).toBeGreaterThan(firstIdx);
+  });
 });
 
 describe("childEnv", () => {
@@ -144,138 +155,21 @@ describe("childEnv", () => {
     expect(e.CLAUDE_CODE_USE_BEDROCK).toBeUndefined();
   });
   it("adds the extra variables, and never lets them be a billing variable", () => {
-    const e = childEnv({ PATH: "/bin" }, { TONE_WEB_PORT: "8182" });
-    expect(e.TONE_WEB_PORT).toBe("8182");
+    const e = childEnv({ PATH: "/bin" }, { APP_PORT: "8182" });
+    expect(e.APP_PORT).toBe("8182");
     expect(e.PATH).toBe("/bin");
   });
-});
-
-describe("isolated role stack", () => {
-  it("covers the sessions that reset the database or serve the app", () => {
-    expect(needsIsolatedStack("reviewer")).toBe(true);
-    expect(needsIsolatedStack("validator")).toBe(true);
-    expect(needsIsolatedStack("planner")).toBe(false);
-    expect(needsIsolatedStack("phase-closer")).toBe(false);
-  });
-
-  // The hazard is what the builder touches, not how the issue is labelled: `.claude/roles/builder.md`
-  // tells every builder to run `pnpm db:reset` if it changed `packages/db`, so an `area:api` issue
-  // that adds a migration would drop the owner's database. A builder never needs the owner's data
-  // or ports, so it is isolated unconditionally.
-  it("isolates every builder, whatever the issue is labelled", () => {
-    expect(needsIsolatedStack("builder")).toBe(true);
-  });
-
-  it("points an isolated session's prompt at the role stack", () => {
-    const p = buildPrompt({ ...req, role: "validator", isolated: true }, cfg, CHECKS);
-    expect(p).toContain("web http://localhost:8182");
-    expect(p).toContain("api http://localhost:3105");
-    expect(p).toContain("http://127.0.0.1:55621 (project tone_tonic_val)");
-    expect(p).toContain("config.toml");
-    expect(p).not.toContain("8082");
-    expect(p).not.toContain("3005");
-    expect(p).not.toContain("55321");
-  });
-
-  it("leaves a non-isolated session on the dev stack", () => {
-    const p = buildPrompt(req, cfg, CHECKS);
-    expect(p).toContain("http://127.0.0.1:55321 (project tone_tonic)");
-    expect(p).not.toContain("config.toml");
-  });
-
-  it("gives an isolated child the role ports and Supabase URL", async () => {
+  it("runSession passes req.env through to the child, from the session-env hook", async () => {
     const seen: NodeJS.ProcessEnv[] = [];
     const spawn: Spawner = async (_c, _a, opts) => {
       seen.push(opts.env);
       return { code: 0, stdout: okJson(), stderr: "", timedOut: false, interrupted: false };
     };
-    await runSession({ ...req, isolated: true }, cfg, { spawn, onAttempt: async () => {} });
-    await runSession(req, cfg, { spawn, onAttempt: async () => {} });
-    expect(seen[0]).toMatchObject({
-      TONE_WEB_PORT: "8182",
-      TONE_API_PORT: "3105",
-      SUPABASE_API_URL: "http://127.0.0.1:55621",
+    await runSession({ ...req, env: { APP_PORT: "8182" } }, cfg, {
+      spawn,
+      onAttempt: async () => {},
     });
-    expect(seen[1]?.TONE_WEB_PORT).toBeUndefined();
-    expect(seen[1]?.SUPABASE_API_URL).toBeUndefined();
-  });
-
-  it("applyRoleConfig rewrites the worktree's config with the worktree's script", async () => {
-    const calls: string[] = [];
-    const exec: Exec = async (cmd, args) => {
-      calls.push(`${cmd} ${args.join(" ")}`);
-      return { code: 0, stdout: "", stderr: "" };
-    };
-    await applyRoleConfig("/work/42", "/repo", exec, () => true);
-    expect(calls[0]).toBe(
-      "bash /work/42/packages/db/scripts/role-config.sh /work/42/packages/db/supabase/config.toml",
-    );
-  });
-
-  it("falls back to the clone's script for a branch that predates it", async () => {
-    const calls: string[] = [];
-    const exec: Exec = async (cmd, args) => {
-      calls.push(`${cmd} ${args.join(" ")}`);
-      return { code: 0, stdout: "", stderr: "" };
-    };
-    await applyRoleConfig("/work/42", "/repo", exec, () => false);
-    expect(calls).toContain(
-      "bash /repo/packages/db/scripts/role-config.sh /work/42/packages/db/supabase/config.toml",
-    );
-  });
-
-  it("applyRoleConfig marks the rewritten config skip-worktree so a builder's `git add -A` leaves it alone", async () => {
-    // The role prompt's standing instruction is `git add -A && git commit`, and a prompt sentence
-    // cannot beat a wildcard add. The mechanical guard is the index flag: git add skips a
-    // skip-worktree path, so the tone_tonic_val rewrite can never reach a commit.
-    const calls: string[] = [];
-    const exec: Exec = async (cmd, args) => {
-      calls.push(`${cmd} ${args.join(" ")}`);
-      return { code: 0, stdout: "", stderr: "" };
-    };
-    await applyRoleConfig("/work/42", "/repo", exec, () => true);
-    expect(calls).toEqual([
-      "bash /work/42/packages/db/scripts/role-config.sh /work/42/packages/db/supabase/config.toml",
-      "git -C /work/42 update-index --skip-worktree packages/db/supabase/config.toml",
-    ]);
-  });
-
-  it("applyRoleConfig throws when the skip-worktree flag cannot be set", async () => {
-    const exec: Exec = async (cmd) =>
-      cmd === "git"
-        ? { code: 1, stdout: "", stderr: "unable to mark file" }
-        : { code: 0, stdout: "", stderr: "" };
-    await expect(applyRoleConfig("/work/42", "/repo", exec, () => true)).rejects.toThrow(
-      /skip-worktree/,
-    );
-  });
-
-  it("restoreRoleConfig clears skip-worktree before checking the config out", async () => {
-    const calls: string[] = [];
-    const exec: Exec = async (cmd, args) => {
-      calls.push(`${cmd} ${args.join(" ")}`);
-      return { code: 0, stdout: "", stderr: "" };
-    };
-    await restoreRoleConfig("/work/42", exec);
-    expect(calls).toEqual([
-      "git -C /work/42 update-index --no-skip-worktree packages/db/supabase/config.toml",
-      "git -C /work/42 checkout -- packages/db/supabase/config.toml",
-    ]);
-  });
-
-  it("applyRoleConfig throws rather than let a session keep the dev config", async () => {
-    const exec: Exec = async (cmd) =>
-      cmd === "bash"
-        ? { code: 1, stdout: "", stderr: "no such config" }
-        : { code: 0, stdout: "", stderr: "" };
-    await expect(applyRoleConfig("/work/42", "/repo", exec)).rejects.toThrow(
-      /role-config\.sh failed/,
-    );
-  });
-
-  it("restoreRoleConfig swallows a git failure", async () => {
-    const exec: Exec = async () => ({ code: 1, stdout: "", stderr: "not a git repo" });
-    await expect(restoreRoleConfig("/work/42", exec)).resolves.toBeUndefined();
+    expect(seen[0]?.APP_PORT).toBe("8182");
   });
 });
 

@@ -89,6 +89,7 @@ async function next(): Promise<void> {
     },
     repo,
     defaultBranch,
+    instance.name,
   );
   process.stdout.write(formatNext(describeNext(await buildSnapshot(ctx), repo)));
 }

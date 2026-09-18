@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type StackPorts, stackPorts } from "../src/ports.ts";
+import { type StackPorts, stackPorts } from "./ports.ts";
 
 export function parseStatusEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {};

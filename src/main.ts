@@ -49,6 +49,8 @@ const result = await preflight(cfg, {
   exec: realExec,
   stateDir: STATE_DIR,
   now: new Date(),
+  repoDir: cfg.repoDir,
+  instance: instance.name,
 });
 if (!result.ok) {
   log(once ? "error" : "warn", "preflight failed", { reason: result.reason });
@@ -86,6 +88,7 @@ if (once) {
     },
     repo,
     defaultBranch,
+    instance.name,
   );
   await runOnce(ctx);
   process.exit(0);
@@ -139,6 +142,7 @@ const ctx = realCtx(
   },
   repo,
   defaultBranch,
+  instance.name,
 );
 const stopFile = join(STATE_DIR, "STOP");
 // Computed once at startup: whether the launchd agent is bootstrapped never changes for the life

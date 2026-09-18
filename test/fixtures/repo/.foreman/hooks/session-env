@@ -1,0 +1,6 @@
+#!/bin/sh
+echo "APP_PORT=8182"
+echo "prompt: Local URLs: web http://localhost:8182"
+echo "ROLE=$FOREMAN_ROLE"
+echo "prompt: second line"
+echo "ignored line without equals"

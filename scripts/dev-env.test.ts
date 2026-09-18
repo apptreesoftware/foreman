@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { roleSessionEnv, stackPorts } from "../src/ports.ts";
 import { parseStatusEnv, renderEnvFiles } from "./dev-env.ts";
+import { roleSessionEnv, stackPorts } from "./ports.ts";
 
 const status = `API_URL="http://127.0.0.1:55321"\nANON_KEY="anon.jwt"\nSERVICE_ROLE_KEY="service.jwt"\nDB_URL="postgresql://x"\n`;
 

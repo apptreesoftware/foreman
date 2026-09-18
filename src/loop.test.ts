@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { comment, epic, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
 import { parseConfig } from "./config.ts";
 import type { Spawner } from "./dispatch.ts";
-import type { Exec } from "./exec.ts";
+import { type Exec, realExec } from "./exec.ts";
 import type { GitHubApi } from "./github.ts";
 import { fmt } from "./ledger.ts";
 import {
@@ -163,6 +163,8 @@ function ctx(over: Partial<Ctx>): Ctx {
     state: null,
     repo: defaultRepoConfig(),
     defaultBranch: "main",
+    instance: "widgets",
+    hookLog: () => {},
     ...over,
   };
 }
@@ -333,71 +335,71 @@ describe("execute", () => {
     ).toBe(true);
     expect(calls).toContain("setStatus PVTI_1 In Review");
   });
-  it("claim: applies the isolated Supabase config and restores it afterwards", async () => {
-    const execCalls = (over: Parameters<typeof ctx>[0], calls: string[]) =>
+  it("runs the served repo's session hooks around the session, wiring env and prompt lines into the dispatch", async () => {
+    const fixtureRepo = join(import.meta.dirname, "../test/fixtures/repo");
+    const wt = mkdtempSync(join(tmpdir(), "tt-hooks-wt-"));
+    const seen: { env?: NodeJS.ProcessEnv; input?: string } = {};
+    const spawn: Spawner = async (_c, _a, opts) => {
+      seen.env = opts.env;
+      seen.input = opts.input;
+      return {
+        code: 0,
+        timedOut: false,
+        interrupted: false,
+        stderr: "",
+        stdout: JSON.stringify({
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          num_turns: 2,
+          total_cost_usd: 0.5,
+          duration_ms: 100,
+          session_id: "s",
+          result: "x",
+          structured_output: { outcome: "pr_opened", pr: 9, notes: "" },
+        }),
+      };
+    };
+    const i = issue({ number: 1 });
+    const { gh } = fakeGh([i]);
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
       ctx({
-        exec: async (cmd, args) => {
-          calls.push(`${cmd} ${args.join(" ")}`);
-          return { code: 0, stdout: "", stderr: "" };
-        },
-        ...over,
-      });
-    const restore = [
-      "git -C /work/1 update-index --no-skip-worktree packages/db/supabase/config.toml",
-      "git -C /work/1 checkout -- packages/db/supabase/config.toml",
-    ];
-    const apply = [
-      ...restore,
-      // The stub worktree has no checkout on disk, so this exercises the clone fallback.
-      "bash /repo/packages/db/scripts/role-config.sh /work/1/packages/db/supabase/config.toml",
-      // skip-worktree keeps the rewrite out of the session's `git add -A`.
-      "git -C /work/1 update-index --skip-worktree packages/db/supabase/config.toml",
-      ...restore,
-    ];
-
-    const reviewer: string[] = [];
-    await execute(
-      { type: "claim", issue: 1, role: "reviewer", pr: 5, round: 1 },
-      execCalls(
-        {
-          gh: fakeGh([issue({ number: 1, status: "In Review" })]).gh,
-          spawn: okSpawn({ outcome: "approved", pr: 5, notes: "" }),
-        },
-        reviewer,
+        gh,
+        cfg: { ...cfg, repoDir: fixtureRepo },
+        // Real exec so the fixture hooks actually run; the spawn double stands in for `claude`.
+        exec: realExec,
+        spawn,
+        ensureWorktree: async () => wt,
+      }),
+    );
+    expect(existsSync(join(wt, ".before-ran"))).toBe(true);
+    expect(existsSync(join(wt, ".after-ran"))).toBe(true);
+    expect(seen.env?.APP_PORT).toBe("8182");
+    expect(seen.input).toContain("Local URLs");
+  });
+  it("still runs after-session when the dispatch itself throws", async () => {
+    const fixtureRepo = join(import.meta.dirname, "../test/fixtures/repo");
+    const wt = mkdtempSync(join(tmpdir(), "tt-hooks-throw-"));
+    const spawn: Spawner = async () => {
+      throw new Error("boom: claude never started");
+    };
+    const i = issue({ number: 1 });
+    const { gh } = fakeGh([i]);
+    await expect(
+      execute(
+        { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+        ctx({
+          gh,
+          cfg: { ...cfg, repoDir: fixtureRepo },
+          exec: realExec,
+          spawn,
+          ensureWorktree: async () => wt,
+        }),
       ),
-    );
-    expect(reviewer).toEqual(apply);
-
-    const dbBuilder: string[] = [];
-    await execute(
-      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
-      execCalls(
-        { gh: fakeGh([issue({ number: 1, labels: ["phase:1", "area:db"] })]).gh },
-        dbBuilder,
-      ),
-    );
-    expect(dbBuilder).toEqual(apply);
-
-    // Every builder is isolated, not just the `area:db` ones: a builder on any issue may add a
-    // migration and run `pnpm db:reset`.
-    const webBuilder: string[] = [];
-    await execute(
-      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
-      execCalls(
-        { gh: fakeGh([issue({ number: 1, labels: ["phase:1", "area:web"] })]).gh },
-        webBuilder,
-      ),
-    );
-    expect(webBuilder).toEqual(apply);
-
-    // A role that is never isolated still restores, before and after: a rewrite a crashed session
-    // left behind must not survive into this one's commits.
-    const planner: string[] = [];
-    await execute(
-      { type: "claim", issue: 1, role: "planner", pr: null, round: 1 },
-      execCalls({ gh: fakeGh([issue({ number: 1 })]).gh }, planner),
-    );
-    expect(planner).toEqual([...restore, ...restore]);
+    ).rejects.toThrow("boom: claude never started");
+    expect(existsSync(join(wt, ".before-ran"))).toBe(true);
+    expect(existsSync(join(wt, ".after-ran"))).toBe(true);
   });
   it("claim: releases on conflict with an alphabetically earlier host", async () => {
     const i = issue({
@@ -897,7 +899,7 @@ describe("daily cap override", () => {
   // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
   const okExec: Exec = async () => ({
     code: 0,
-    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
     stderr: "",
   });
   // A sessions.log already at the configured cap of 20 for the day the tick runs on.
@@ -1187,7 +1189,7 @@ describe("runOnce abort mid-plan", () => {
     // preflight only needs exec to succeed; the exact stdout keeps `claude auth status` happy.
     const exec: Exec = async () => ({
       code: 0,
-      stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+      stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
       stderr: "",
     });
     const stateDir = mkdtempSync(join(tmpdir(), "tt-loop-abort-"));
@@ -1266,7 +1268,7 @@ describe("live activity", () => {
     const exec: Exec = async () => ({
       code: 0,
       stderr: "",
-      stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+      stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
     });
     await runOnce(
       ctx({ gh, exec, state: m.store, stateDir: mkdtempSync(join(tmpdir(), "tt-loop-")) }),
@@ -1292,7 +1294,7 @@ describe("live activity", () => {
     const exec: Exec = async () => ({
       code: 0,
       stderr: "",
-      stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+      stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
     });
     await runOnce(ctx({ gh, exec, state: m.store, stateDir: dir }));
     const board = m.get().board as { phases: Array<Record<string, unknown>> };
@@ -1317,7 +1319,7 @@ describe("tick outcome (#223)", () => {
   // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
   const okExec: Exec = async () => ({
     code: 0,
-    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
     stderr: "",
   });
   const stateDir = () => mkdtempSync(join(tmpdir(), "tt-loop-tick-"));
@@ -1519,7 +1521,7 @@ describe("notifications", () => {
   // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
   const okExec: Exec = async () => ({
     code: 0,
-    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}',
+    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
     stderr: "",
   });
   const tmp = () => mkdtempSync(join(tmpdir(), "tt-notify-loop-"));

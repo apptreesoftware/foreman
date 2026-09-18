@@ -7,14 +7,6 @@ import type { ForemanConfig } from "./config.ts";
 import type { Exec } from "./exec.ts";
 import type { FeedEntry } from "./feed.ts";
 import { log } from "./log.ts";
-import {
-  DEV_SUPABASE_API_URL,
-  DEV_SUPABASE_PROJECT,
-  ROLE_SUPABASE_API_URL,
-  ROLE_SUPABASE_PROJECT,
-  roleSessionEnv,
-  stackPorts,
-} from "./ports.ts";
 import { FORBIDDEN_ENV } from "./preflight.ts";
 import { type Activity, emptyActivity, foldEvent } from "./stream.ts";
 import type { Role } from "./types.ts";
@@ -46,25 +38,6 @@ export const OUTCOME_JSON_SCHEMA = {
   additionalProperties: false,
 };
 
-/** Repo-relative paths the isolated-stack rewrite touches (#228). */
-export const ROLE_CONFIG_SCRIPT = "packages/db/scripts/role-config.sh";
-export const SUPABASE_CONFIG = "packages/db/supabase/config.toml";
-
-/**
- * True for the sessions that may drop and re-seed a database or serve the app: the builder, the
- * reviewer and the validator. Those run against project `tone_tonic_val` on 556xx instead of the
- * owner's dev stack.
- *
- * The builder is isolated whatever the issue is labelled, deliberately: `.claude/roles/builder.md`
- * keys `pnpm db:reset` on having changed `packages/db`, not on `area:db`, so an `area:api` issue
- * that adds a migration would otherwise drop the owner's database — the exact failure #228 exists
- * to prevent. A builder never needs the owner's data or ports, so isolating it always costs
- * nothing and removes the label proxy. The planner and the phase-closer touch neither.
- */
-export function needsIsolatedStack(role: Role): boolean {
-  return role === "builder" || role === "reviewer" || role === "validator";
-}
-
 export interface DispatchRequest {
   role: Role;
   issue: number;
@@ -78,8 +51,9 @@ export interface DispatchRequest {
   attempt: number;
   round: number;
   notes: string;
-  /** Run against the isolated `tone_tonic_val` stack; see `needsIsolatedStack`. */
-  isolated: boolean;
+  /** The served repo's `session-env` hook output: extra child env and prompt lines. */
+  env: Record<string, string>;
+  promptLines: string[];
   /** A builder round that only merges origin/main into the PR branch (#237). */
   rebase: boolean;
 }
@@ -91,67 +65,6 @@ export interface DispatchRequest {
 export function rebaseNotes(checks: string[], defaultBranch = "main"): string {
   const cmds = checks.map((c) => `\`${c}\``).join(", ");
   return `This is a rebase round: the PR is approved but its branch conflicts with ${defaultBranch}. Run \`git merge origin/${defaultBranch}\`, resolve every conflict keeping both sides' intent, run ${cmds}, commit the merge and push. Change nothing else, do not open a new PR, and return \`pr_opened\` with this PR's number.`;
-}
-
-/**
- * The rewrite script to run: the worktree's own, or the clone's when the branch predates the
- * script (an in-flight PR branched before #228 merged). Missing in both is not survivable — the
- * caller throws rather than let the session run against the dev stack.
- */
-export function roleConfigScript(
-  worktree: string,
-  repoDir: string,
-  exists: (p: string) => boolean = existsSync,
-): string {
-  const inWorktree = join(worktree, ROLE_CONFIG_SCRIPT);
-  return exists(inWorktree) ? inWorktree : join(repoDir, ROLE_CONFIG_SCRIPT);
-}
-
-/**
- * Points the worktree's Supabase config at the role stack. The caller restores first (`runRole`
- * does it unconditionally), so a rewrite a crashed session left behind cannot stack up. Throws on
- * failure: a session that silently kept the dev config would `pnpm db:reset` the owner's database.
- */
-export async function applyRoleConfig(
-  worktree: string,
-  repoDir: string,
-  exec: Exec,
-  exists: (p: string) => boolean = existsSync,
-): Promise<void> {
-  const r = await exec("bash", [
-    roleConfigScript(worktree, repoDir, exists),
-    join(worktree, SUPABASE_CONFIG),
-  ]);
-  if (r.code !== 0)
-    throw new Error(`role-config.sh failed in ${worktree}: ${r.stderr.trim() || r.stdout.trim()}`);
-  // The role prompt's standing instruction is `git add -A && git commit`, and a sentence asking
-  // the session to leave this file alone cannot beat a wildcard add. skip-worktree is the
-  // mechanical guard: `git add` ignores a skip-worktree path, so the tone_tonic_val rewrite can
-  // never reach a commit (and never reach CI, whose ci-config.sh would not recognise it).
-  const flag = await exec("git", [
-    "-C",
-    worktree,
-    "update-index",
-    "--skip-worktree",
-    SUPABASE_CONFIG,
-  ]);
-  if (flag.code !== 0)
-    throw new Error(
-      `could not mark ${SUPABASE_CONFIG} skip-worktree in ${worktree}: ${flag.stderr.trim()}`,
-    );
-}
-
-/** Undoes `applyRoleConfig` so the rewrite never reaches a commit. Never throws. */
-export async function restoreRoleConfig(worktree: string, exec: Exec): Promise<void> {
-  // Clear the flag first (ignoring its error: a worktree that was never isolated has none set),
-  // otherwise checkout would refuse to touch the file.
-  await exec("git", ["-C", worktree, "update-index", "--no-skip-worktree", SUPABASE_CONFIG]);
-  const r = await exec("git", ["-C", worktree, "checkout", "--", SUPABASE_CONFIG]);
-  if (r.code !== 0)
-    log("warn", "could not restore the worktree's supabase config", {
-      worktree,
-      stderr: r.stderr.trim(),
-    });
 }
 
 export interface SessionResult {
@@ -255,21 +168,14 @@ export function buildPrompt(
   checks: string[],
   defaultBranch = "main",
 ): string {
-  const ports = stackPorts(req.isolated ? roleSessionEnv() : {});
-  const project = req.isolated ? ROLE_SUPABASE_PROJECT : DEV_SUPABASE_PROJECT;
-  const supabase = req.isolated ? ROLE_SUPABASE_API_URL : DEV_SUPABASE_API_URL;
   const lines = [
     `Role: ${req.role}. Repository: ${cfg.repo}. Host: ${cfg.host}. Session: ${req.sessionId}.`,
     `Task issue: #${req.issue} — ${req.title}.`,
     req.pr ? `Pull request: #${req.pr}.` : "Pull request: none yet.",
     `Worktree (your cwd): ${req.worktree}. Branch: ${req.branch}. Never touch main.`,
     `Spec: ${req.specPath ?? "see the issue body"}.`,
-    `Local URLs: web ${ports.webUrl}, api ${ports.apiUrl}, Supabase API ${supabase} (project ${project}).`,
+    ...req.promptLines,
   ];
-  if (req.isolated)
-    lines.push(
-      `This worktree's \`packages/db/supabase/config.toml\` has been pointed at the isolated ${project} stack, and \`TONE_WEB_PORT\`/\`TONE_API_PORT\` are set, so \`pnpm db:reset\` and \`pnpm --filter @tone/foreman serve start\` stay off the owner's dev stack. Leave that file alone; it is marked skip-worktree so \`git add\` skips it, and the foreman restores it after your session.`,
-    );
   if (req.rebase) lines.push(rebaseNotes(checks, defaultBranch));
   else if (req.round > 1)
     lines.push(
@@ -485,7 +391,7 @@ export async function runSession(
   let activity = emptyActivity();
   const r = await deps.spawn("claude", buildArgs(req, cfg), {
     cwd: req.worktree,
-    env: childEnv(process.env, req.isolated ? roleSessionEnv() : {}),
+    env: childEnv(process.env, req.env),
     input: buildPrompt(req, cfg, deps.checks ?? DEFAULT_CHECKS, deps.defaultBranch ?? "main"),
     timeoutMs: cfg.wallClockMinutes * 60_000,
     signal: deps.signal,
