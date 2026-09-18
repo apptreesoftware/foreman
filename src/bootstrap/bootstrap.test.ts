@@ -58,12 +58,15 @@ describe("labels", () => {
 describe("board", () => {
   it("creates, links and sets the five Status options when project is unset", async () => {
     const { gh, calls } = api();
+    const created: number[] = [];
     const r = await ensureProject(gh, {
       owner: "acme",
       repo: "acme/widgets",
       project: null,
       title: "widgets",
+      onCreated: (n) => created.push(n),
     });
+    expect(created).toEqual([7]);
     expect(r).toEqual({ number: 7, created: true, drift: [] });
     expect(calls).toEqual(["create widgets", "link 7", `options F1 ${STATUS_OPTIONS.join("|")}`]);
   });
@@ -74,6 +77,7 @@ describe("board", () => {
       repo: "acme/widgets",
       project: 3,
       title: "widgets",
+      onCreated: () => expect.unreachable("nothing is created when the project is known"),
     });
     expect(r.created).toBe(false);
     expect(r.drift).toEqual([
@@ -89,9 +93,34 @@ describe("board", () => {
       }),
     });
     expect(
-      (await ensureProject(gh, { owner: "acme", repo: "acme/widgets", project: 3, title: "w" }))
-        .drift,
+      (
+        await ensureProject(gh, {
+          owner: "acme",
+          repo: "acme/widgets",
+          project: 3,
+          title: "w",
+          onCreated: () => undefined,
+        })
+      ).drift,
     ).toEqual([]);
+  });
+  it("records the number before linking, so a failed link leaves no orphan board", async () => {
+    const { gh } = api({
+      linkProject: async () => {
+        throw new Error("gh project link failed");
+      },
+    });
+    const created: number[] = [];
+    await expect(
+      ensureProject(gh, {
+        owner: "acme",
+        repo: "acme/widgets",
+        project: null,
+        title: "widgets",
+        onCreated: (n) => created.push(n),
+      }),
+    ).rejects.toThrow("gh project link failed");
+    expect(created).toEqual([7]);
   });
 });
 
@@ -118,6 +147,10 @@ describe("epic new", () => {
     const { matchesGlob } = await import("./epic.ts");
     expect(matchesGlob("docs/**/*.md", "docs/specs/a.md")).toBe(true);
     expect(matchesGlob("docs/**/*.md", "docs/a.md")).toBe(true);
+    expect(matchesGlob("docs/**/*.md", "docs/a/b/c.md")).toBe(true);
+    expect(matchesGlob("docs/**/*.md", "docs/superpowers/specs/2026-09-17-x-design.md")).toBe(true);
+    expect(matchesGlob("docs/**", "docs/a/b.md")).toBe(true);
+    expect(matchesGlob("docs/?.md", "docs/.md")).toBe(false);
     expect(matchesGlob("docs/**/*.md", "src/a.md")).toBe(false);
     expect(matchesGlob("docs/**/*.md", "docs/a.txt")).toBe(false);
   });

@@ -33,13 +33,18 @@ export async function runInit(instance: Instance, out: (s: string) => void): Pro
     repo,
     project,
     title: repo.slice(repo.indexOf("/") + 1),
+    // Written before the board is linked and its options set, so a failure in either is
+    // recoverable: the next `init` verifies the board it already has instead of making another.
+    onCreated: (number) => {
+      writeFileSync(
+        instance.configPath,
+        `${JSON.stringify({ ...raw, project: number }, null, 2)}\n`,
+      );
+      out(`project ${number} created; recorded in foreman.json`);
+    },
   });
   if (board.created) {
-    writeFileSync(
-      instance.configPath,
-      `${JSON.stringify({ ...raw, project: board.number }, null, 2)}\n`,
-    );
-    out(`project ${board.number} created, linked, Status options set; foreman.json updated`);
+    out(`project ${board.number} linked, Status options set`);
   } else if (board.drift.length) {
     for (const d of board.drift) out(`project ${board.number}: ${d}`);
     return 1;

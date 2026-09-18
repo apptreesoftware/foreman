@@ -4,13 +4,23 @@ import { GitHub } from "../github.ts";
 import type { Instance } from "../instance.ts";
 import { loadRepoConfig } from "../repo-config.ts";
 
+/**
+ * Placeholders for the two `**` forms. They stand in until every `*` has been expanded, because
+ * expanding them in place would let the last `*` rewrite the `.*` the first step just wrote —
+ * which is how `docs/**` once matched one segment and no more.
+ */
+const ANY_PATH = "\u0000";
+const ANY_CHARS = "\u0001";
+
 /** A tiny glob: `**` matches any path, `*` matches within one segment; enough for a spec glob. */
 export function matchesGlob(glob: string, path: string): boolean {
   const re = glob
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*\//g, "(?:.*/)?")
-    .replace(/\*\*/g, ".*")
-    .replace(/\*/g, "[^/]*");
+    .replace(/[.+^${}()|[\]\\?]/g, "\\$&")
+    .replace(/\*\*\//g, ANY_PATH)
+    .replace(/\*\*/g, ANY_CHARS)
+    .replace(/\*/g, "[^/]*")
+    .replaceAll(ANY_PATH, "(?:.*/)?")
+    .replaceAll(ANY_CHARS, ".*");
   return new RegExp(`^${re}$`).test(path);
 }
 

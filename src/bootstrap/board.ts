@@ -13,10 +13,20 @@ type Api = Pick<
  */
 export async function ensureProject(
   gh: Api,
-  o: { owner: string; repo: string; project: number | null; title: string },
+  o: {
+    owner: string;
+    repo: string;
+    project: number | null;
+    title: string;
+    /** Called with the new number the moment it exists, before the link and the options. */
+    onCreated: (number: number) => void;
+  },
 ): Promise<{ number: number; created: boolean; drift: string[] }> {
   if (o.project === null) {
     const number = await gh.createProject(o.owner, o.title);
+    // Recorded first: a throw from the link or the options then leaves a board the next `init`
+    // finds and verifies, rather than an orphan and a second project.
+    o.onCreated(number);
     await gh.linkProject(number, o.owner);
     const fields = await gh.projectFields(number, o.owner);
     if (!fields.status) throw new Error(`project ${number} has no Status field`);
