@@ -1,0 +1,2 @@
+#!/bin/sh
+echo after > "$FOREMAN_WORKTREE/.after-ran"

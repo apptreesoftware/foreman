@@ -27,6 +27,12 @@ export function validatorRequired(labels: string[], skipLabels: string[]): boole
   const areas = labels.filter((l) => l.startsWith("area:"));
   return areas.length === 0 || areas.some((a) => !skipLabels.includes(a));
 }
+
+/** The skip-list labels this issue actually carries — what the skip is justified by, by name. */
+export function matchedSkipLabels(labels: string[], skipLabels: string[]): string[] {
+  return labels.filter((l) => skipLabels.includes(l));
+}
+
 const UNPHASED = 99;
 
 /** True once the free recovery for this head commit is used up and CI is still red. */

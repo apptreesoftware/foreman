@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { cp } from "node:fs/promises";
 import { join } from "node:path";
 import { describeBoard } from "./board.ts";
@@ -22,8 +22,8 @@ import type { Exec } from "./exec.ts";
 import { realExec } from "./exec.ts";
 import { appendFeed, type FeedEntry } from "./feed.ts";
 import { type GitHubApi, modelOf, phaseOf } from "./github.ts";
-import type { HookName } from "./hooks.ts";
-import { parseSessionEnv, runHook } from "./hooks.ts";
+import type { HookName, HookResult } from "./hooks.ts";
+import { fileHookLog, parseSessionEnv, runHook } from "./hooks.ts";
 import { fmt, openClaim, parseClaim } from "./ledger.ts";
 import { log } from "./log.ts";
 import { createNotifier, type NotifyPort, noopNotify } from "./notify.ts";
@@ -33,6 +33,7 @@ import {
   parseSpecPath,
   planPhaseNumber,
 } from "./phase.ts";
+import { matchedSkipLabels } from "./pick.ts";
 import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts";
 import { graphqlBudget, preflight } from "./preflight.ts";
 import { writeSessionFiles } from "./prompts.ts";
@@ -106,12 +107,7 @@ export function realCtx(
   repo: RepoConfig = defaultRepoConfig(),
   defaultBranch = "main",
   instance = "default",
-  hookLog: Ctx["hookLog"] = (() => {
-    const dir = join(stateDir, "logs");
-    mkdirSync(dir, { recursive: true });
-    const file = join(dir, "hooks.log");
-    return (line: string) => appendFileSync(file, `${line}\n`);
-  })(),
+  hookLog: Ctx["hookLog"] = fileHookLog(stateDir),
 ): Ctx {
   return {
     cfg,
@@ -252,21 +248,32 @@ function sessionMetrics(
   };
 }
 
-async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
+type HookFn = (name: HookName) => Promise<HookResult>;
+
+interface SessionSetup {
+  worktree: string;
+  sessionId: string;
+  resume: boolean;
+  notes: string;
+  sessionEnv: ReturnType<typeof parseSessionEnv>;
+  files: ReturnType<typeof writeSessionFiles>;
+  hook: HookFn;
+}
+
+/**
+ * Everything between the claim and the first `claude` spawn: the worktree (and the repo's `setup`
+ * command inside it), the resume decision, the repo's session hooks, and the prompt and settings
+ * files composed from the worktree's `.foreman/`. Every step of it can throw, which is why it is
+ * one function `runRole` can wrap. `held` carries the hook runner back out the moment there is a
+ * worktree to run it in, so the failure path can still run `after-session`.
+ */
+async function prepareSession(
+  ctx: Ctx,
+  r: RunRole,
+  branch: string,
+  held: { hook: HookFn | null },
+): Promise<SessionSetup> {
   const { cfg, gh } = ctx;
-  if (ctx.dryRun) {
-    log("info", "dry-run: would dispatch", {
-      issue: r.issue.number,
-      role: r.role,
-      pr: r.pr,
-      round: r.round,
-      resume: r.resumeSessionId,
-    });
-    return;
-  }
-  const prs = await gh.listOpenPRs();
-  const branch =
-    prs.find((p) => p.number === r.pr)?.headRefName ?? branchFor(r.issue.number, r.issue.title);
   const worktree = await ctx.ensureWorktree(cfg, r.issue.number, branch, ctx.exec);
   let sessionId = r.resumeSessionId ?? randomUUID();
   let resume = r.resumeSessionId !== null;
@@ -288,23 +295,107 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     worktree,
     round: r.round,
   };
-  const hook = (name: HookName) => runHook(name, worktree, hookCtx, ctx.exec, { log: ctx.hookLog });
+  const hook: HookFn = (name) => runHook(name, worktree, hookCtx, ctx.exec, { log: ctx.hookLog });
+  held.hook = hook;
   // Spec §6: after-session also runs before the next session on the same worktree, so whatever a
   // crashed session left behind is undone before this one starts.
   await hook("after-session");
-  const sessionEnv = parseSessionEnv(await hook("session-env"));
+  const env = await hook("session-env");
+  if (env.ran && env.code !== 0)
+    throw new Error(`session-env hook failed (${env.code}): ${env.stderr.trim().slice(-500)}`);
+  const sessionEnv = parseSessionEnv(env);
   const before = await hook("before-session");
-  if (before.ran && before.code !== 0) {
-    await hook("after-session");
+  if (before.ran && before.code !== 0)
     throw new Error(
       `before-session hook failed (${before.code}): ${before.stderr.trim().slice(-500)}`,
     );
-  }
   // The base prompt and base settings this package ships, composed with the served repo's
   // `.foreman/rules.md`, `.foreman/roles/<role>.md` and `.foreman/settings.json`, written where
   // `claude -p` is pointed at them. Regenerated per dispatch, so an edit to either side lands on
   // the next session without restarting the daemon.
   const files = writeSessionFiles(ctx.stateDir, worktree, r.role, ctx.repo);
+  return { worktree, sessionId, resume, notes, sessionEnv, files, hook };
+}
+
+/**
+ * A setup failure lands here, after the claim comment and the assignment are already on the issue.
+ * Left to throw it reached `runForever`'s catch, and the next tick saw our own open claim and
+ * dispatched the same role into the same failure — every tick, for ever, with nothing labelled,
+ * released or notified. So: close the ledger entry, block the issue with what failed, tell the
+ * owner, and return so the tick carries on. No attempt counting across ticks — a broken hook or a
+ * broken worktree is the operator's to fix, and `blocked` is how they are asked.
+ */
+async function blockOnSetupFailure(
+  ctx: Ctx,
+  r: RunRole,
+  err: unknown,
+  hook: HookFn | null,
+): Promise<void> {
+  const { cfg, gh } = ctx;
+  const message = err instanceof Error ? err.message : String(err);
+  const firstLine = message.split("\n")[0]?.trim() || message;
+  log("error", "session setup failed; blocking the issue", {
+    issue: r.issue.number,
+    role: r.role,
+    error: message,
+  });
+  if (hook) {
+    // Best-effort: after-session is the repo's undo, and a setup that got as far as a worktree may
+    // already have changed it. Its own failure must not take the bookkeeping below down with it.
+    try {
+      await hook("after-session");
+    } catch (e) {
+      log("warn", "after-session failed after a setup failure", {
+        issue: r.issue.number,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  await gh.comment("issue", r.issue.number, fmt.released(cfg.host, `setup failed: ${firstLine}`));
+  await gh.unassign(r.issue.number, ctx.login);
+  await gh.addLabels("issue", r.issue.number, ["blocked"]);
+  await gh.comment(
+    "issue",
+    r.issue.number,
+    `blocked by foreman@${cfg.host}: ${message.slice(0, 1500)}`,
+  );
+  await ctx.notify.send({
+    kind: "blocked",
+    issue: r.issue.number,
+    title: r.issue.title,
+    reason: `setup failed: ${firstLine}`,
+  });
+  ctx.state?.patch({ current: null });
+}
+
+async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
+  const { cfg, gh } = ctx;
+  if (ctx.dryRun) {
+    log("info", "dry-run: would dispatch", {
+      issue: r.issue.number,
+      role: r.role,
+      pr: r.pr,
+      round: r.round,
+      resume: r.resumeSessionId,
+    });
+    return;
+  }
+  const prs = await gh.listOpenPRs();
+  const branch =
+    prs.find((p) => p.number === r.pr)?.headRefName ?? branchFor(r.issue.number, r.issue.title);
+  const held: { hook: HookFn | null } = { hook: null };
+  let setup: SessionSetup;
+  try {
+    setup = await prepareSession(ctx, r, branch, held);
+  } catch (err) {
+    await blockOnSetupFailure(ctx, r, err, held.hook);
+    return;
+  }
+  const { worktree, sessionId, resume, notes, sessionEnv, files, hook } = setup;
+  // Spec §6: the hooks bracket this one dispatch, not each attempt. `session-env` and
+  // `before-session` ran once above; `dispatchWithRetry` below may spawn `claude` up to
+  // `limits.attempts` times inside that bracket, and `after-session` runs once when the last of
+  // them is done.
   // Controller ruling (Task 6 review): always dispatch with attempt: 1 — dispatchWithRetry owns
   // retry counting internally, and no attempt count carries across loop iterations.
   const req: DispatchRequest = {
@@ -791,14 +882,21 @@ export async function execute(
       // reads re-reading a board that has not moved. The normal poll interval is soon enough.
       return "noop";
     }
-    case "skip_validator":
+    case "skip_validator": {
       await gh.addLabels("pr", action.pr, ["validator:skipped"]);
+      // Name the labels that justified the skip: the skip list is per repository, so a fixed
+      // "infra/db/shared" sentence was wrong everywhere but the repository it was written for.
+      const skipped = matchedSkipLabels(
+        (await issueFor(ctx, action.issue, snapshot)).labels,
+        ctx.repo.validator.skipLabels,
+      );
       await gh.comment(
         "pr",
         action.pr,
-        `validator skipped by foreman@${cfg.host}: issue areas are infra/db/shared only`,
+        `validator skipped by foreman@${cfg.host}: issue carries only ${skipped.join(", ")}`,
       );
       return "continue";
+    }
     case "block":
       await gh.addLabels("issue", action.issue, ["blocked"]);
       await gh.comment("issue", action.issue, `blocked by foreman@${cfg.host}: ${action.reason}`);

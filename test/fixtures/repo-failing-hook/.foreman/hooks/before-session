@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "fixture before-session refuses: the stack is not up" >&2
+exit 1

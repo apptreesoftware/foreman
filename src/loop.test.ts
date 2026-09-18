@@ -245,6 +245,27 @@ describe("execute", () => {
       `comment issue 1 ${fmt.ciRerun("mac-a", sha)}`,
     ]);
   });
+  it("skip_validator: names the skip-list labels the issue actually carries", async () => {
+    const i = issue({
+      number: 1,
+      status: "In Review",
+      labels: ["area:db", "area:infra", "size:S"],
+    });
+    const { gh, calls } = fakeGh([i]);
+    const repo = defaultRepoConfig();
+    await execute(
+      { type: "skip_validator", pr: 9, issue: 1 },
+      ctx({
+        gh,
+        repo: { ...repo, validator: { skipLabels: ["area:db", "area:infra", "area:shared"] } },
+      }),
+      snapshot({ issues: [i] }),
+    );
+    expect(calls).toContain("addLabels pr 9 validator:skipped");
+    expect(calls).toContain(
+      "comment pr 9 validator skipped by foreman@mac-a: issue carries only area:db, area:infra",
+    );
+  });
   it("merge: merges, comments, closes, marks Done, removes worktree", async () => {
     const i = issue({ number: 1, status: "In Review" });
     const { gh, calls } = fakeGh([i]);
@@ -401,6 +422,86 @@ describe("execute", () => {
     ).rejects.toThrow("boom: claude never started");
     expect(existsSync(join(wt, ".before-ran"))).toBe(true);
     expect(existsSync(join(wt, ".after-ran"))).toBe(true);
+  });
+  it("a failing before-session hook blocks the issue instead of wedging the tick", async () => {
+    const fixtureRepo = join(import.meta.dirname, "../test/fixtures/repo-failing-hook");
+    const wt = mkdtempSync(join(tmpdir(), "tt-hook-fail-wt-"));
+    const i = issue({ number: 1 });
+    const { gh, calls } = fakeGh([i]);
+    const notify = recordNotify();
+    let spawned = false;
+    const r = await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        notify: notify.port,
+        cfg: { ...cfg, repoDir: fixtureRepo },
+        exec: realExec,
+        spawn: async () => {
+          spawned = true;
+          throw new Error("claude must never be spawned here");
+        },
+        ensureWorktree: async () => wt,
+      }),
+    );
+    expect(r).toBe("stop");
+    expect(spawned).toBe(false);
+    // after-session still ran, so whatever a half-finished before-session left is undone.
+    expect(existsSync(join(wt, ".after-ran"))).toBe(true);
+    expect(
+      calls.some((c) => c.startsWith("comment issue 1 released by mac-a: setup failed:")),
+    ).toBe(true);
+    expect(calls).toContain("unassign 1 matthewtsmith");
+    expect(calls).toContain("addLabels issue 1 blocked");
+    const blocked = calls.find((c) => c.startsWith("comment issue 1 blocked by foreman@mac-a:"));
+    expect(blocked).toContain("the stack is not up");
+    expect(notify.kinds()).toEqual(["blocked"]);
+  });
+  it("a worktree that cannot be created blocks the issue too", async () => {
+    const i = issue({ number: 1 });
+    const { gh, calls } = fakeGh([i]);
+    const notify = recordNotify();
+    let spawned = false;
+    const r = await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        notify: notify.port,
+        spawn: async () => {
+          spawned = true;
+          throw new Error("claude must never be spawned here");
+        },
+        ensureWorktree: async () => {
+          throw new Error("setup command failed in /work/1: no lockfile");
+        },
+      }),
+    );
+    expect(r).toBe("stop");
+    expect(spawned).toBe(false);
+    expect(
+      calls.some((c) =>
+        c.startsWith("comment issue 1 released by mac-a: setup failed: setup command failed"),
+      ),
+    ).toBe(true);
+    expect(calls).toContain("addLabels issue 1 blocked");
+    expect(calls).toContain("unassign 1 matthewtsmith");
+    expect(notify.kinds()).toEqual(["blocked"]);
+  });
+  it("a setup failure clears state.current so the page does not show a session that never ran", async () => {
+    const i = issue({ number: 1 });
+    const { gh } = fakeGh([i]);
+    const st = memState();
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        state: st.store,
+        ensureWorktree: async () => {
+          throw new Error("boom");
+        },
+      }),
+    );
+    expect(st.get().current).toBeNull();
   });
   it("claim: releases on conflict with an alphabetically earlier host", async () => {
     const i = issue({
