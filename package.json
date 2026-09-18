@@ -9,7 +9,7 @@
   },
   "type": "module",
   "bin": {
-    "foreman": "dist/main.js"
+    "foreman": "dist/cli/main.js"
   },
   "files": [
     "dist",
@@ -23,7 +23,7 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/web.html dist/web.html",
-    "dev": "tsx src/main.ts",
+    "dev": "tsx src/cli/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "lint": "biome check .",
