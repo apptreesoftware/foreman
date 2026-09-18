@@ -13,6 +13,9 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm, registry-url: "https://registry.npmjs.org" }
+      # setup-node gives Node 22's bundled npm (10.x), which has no OIDC publish. Trusted
+      # publishing needs npm 11.5+, so upgrade before the publish step.
+      - run: npm i -g npm@11
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck

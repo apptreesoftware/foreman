@@ -910,15 +910,26 @@ gh release create v0.1.1 --title "0.1.1" --notes "…"
 ```
 
 There is no `NPM_TOKEN` secret. The workflow authenticates through **npm trusted publishing**:
-`npm publish` from npm 11.5+ (which `setup-node` with Node 22 provides) exchanges the job's GitHub
-OIDC token for a short-lived publish credential, which is why the job needs `id-token: write`.
+`npm publish` exchanges the job's GitHub OIDC token for a short-lived publish credential, which is
+why the job needs `id-token: write`. That needs npm 11.5 or newer, and `setup-node` installs
+whatever npm Node 22 bundles (10.x), so the workflow runs `npm i -g npm@11` first.
 
-Trusted publishing is configured per package on npmjs.com, and the package has to exist first, so
-`0.1.0` was published by hand from a logged-in Mac. **Owner action, once:** on
+Trusted publishing is configured per package on npmjs.com, and the package has to exist there
+first, so the very first version is published by hand from a logged-in Mac:
+
+```bash
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+npm publish --access public --provenance=false --otp=<code from your authenticator>
+```
+
+`--provenance=false` because `publishConfig` asks for provenance and only a CI job with an OIDC
+token can produce it; `--otp` because npm requires a second factor for a publish from a laptop.
+
+**Owner action, once, after that first publish:** on
 <https://www.npmjs.com/package/@apptreesoftware/foreman/access> → **Trusted publishing** → add a
 GitHub Actions publisher with organization `apptreesoftware`, repository `foreman`, workflow
-`release.yml`, environment blank. Until that is done, the release job fails at `npm publish` with
-a 404/403 rather than publishing.
+`release.yml`, environment blank. Until that is done the release job fails at `npm publish`, and
+every version has to go out by hand.
 
 ## License
 
