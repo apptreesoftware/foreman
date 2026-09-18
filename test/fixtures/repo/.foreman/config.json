@@ -1,0 +1,8 @@
+{
+  "setup": "echo setup",
+  "checks": ["echo lint", "echo test"],
+  "plans": { "dir": "docs/plans", "specGlob": "docs/**/*.md" },
+  "validator": { "skipLabels": ["area:infra"] },
+  "limits": { "fixRounds": 2, "ciReruns": 1, "blockedPerPhase": 2, "staleHours": 2, "attempts": 3 },
+  "models": ["opus", "sonnet"]
+}

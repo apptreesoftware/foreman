@@ -59,6 +59,7 @@ function input(over: Partial<StatusInput> = {}): StatusInput {
     stallMinutes: 5,
     repo: "o/r",
     configModel: "opus",
+    modelChoices: MODEL_CHOICES,
     ...over,
   };
 }

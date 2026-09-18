@@ -8,17 +8,23 @@ import {
   skipValidatorActions,
   validatorRequired,
 } from "./merge.ts";
+import { defaultRepoConfig } from "./repo-config.ts";
 
 const ready = ["reviewer:approved", "validator:passed"];
 const inReview = (over = {}) =>
   issue({ number: 20, status: "In Review", labels: ["phase:1", "area:web"], ...over });
+const INFRA_EXEMPT_SKIP = ["area:infra", "area:db", "area:shared"];
+const INFRA_EXEMPT = { ...defaultRepoConfig(), validator: { skipLabels: INFRA_EXEMPT_SKIP } };
 
 describe("validatorRequired", () => {
-  it("is false only when every area is infra/db/shared", () => {
-    expect(validatorRequired(["area:infra"])).toBe(false);
-    expect(validatorRequired(["area:db", "area:shared"])).toBe(false);
-    expect(validatorRequired(["area:db", "area:web"])).toBe(true);
-    expect(validatorRequired(["size:S"])).toBe(true);
+  it("is false only when the skip list names every area", () => {
+    expect(validatorRequired(["area:infra"], INFRA_EXEMPT_SKIP)).toBe(false);
+    expect(validatorRequired(["area:db", "area:shared"], INFRA_EXEMPT_SKIP)).toBe(false);
+    expect(validatorRequired(["area:db", "area:web"], INFRA_EXEMPT_SKIP)).toBe(true);
+    expect(validatorRequired(["size:S"], INFRA_EXEMPT_SKIP)).toBe(true);
+  });
+  it("is true for every area with the default empty skip list", () => {
+    expect(validatorRequired(["area:infra"], [])).toBe(true);
   });
 });
 
@@ -70,13 +76,24 @@ describe("actions", () => {
     });
     expect(mergeActions(s)).toEqual([{ type: "merge", pr: 1, issue: 20 }]);
   });
-  it("skipValidatorActions marks infra-only PRs after approval", () => {
+  it("skipValidatorActions marks infra-only PRs after approval, when the skip list names infra", () => {
     const s = snapshot({
       issues: [inReview({ labels: ["phase:1", "area:infra"] })],
       prs: [pr({ number: 3, issue: 20, labels: ["reviewer:approved"] })],
     });
-    expect(skipValidatorActions(s)).toEqual([{ type: "skip_validator", pr: 3, issue: 20 }]);
-    expect(skipValidatorActions(snapshot({ issues: [inReview()], prs: s.prs }))).toEqual([]);
+    expect(skipValidatorActions(s, INFRA_EXEMPT)).toEqual([
+      { type: "skip_validator", pr: 3, issue: 20 },
+    ]);
+    expect(
+      skipValidatorActions(snapshot({ issues: [inReview()], prs: s.prs }), INFRA_EXEMPT),
+    ).toEqual([]);
+  });
+  it("skipValidatorActions offers nothing with the default empty skip list", () => {
+    const s = snapshot({
+      issues: [inReview({ labels: ["phase:1", "area:infra"] })],
+      prs: [pr({ number: 3, issue: 20, labels: ["reviewer:approved"] })],
+    });
+    expect(skipValidatorActions(s)).toEqual([]);
   });
   it("blockActions ends the line for a PR whose CI stays red (#362)", () => {
     const sha = "1111111111111111111111111111111111111111";

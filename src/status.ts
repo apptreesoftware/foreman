@@ -7,7 +7,6 @@ import {
   CAP_CHOICES,
   type CurrentSession,
   type ForemanState,
-  MODEL_CHOICES,
   type StopMode,
 } from "./state-file.ts";
 import { liveWaits } from "./waiting.ts";
@@ -37,6 +36,8 @@ export interface StatusInput {
   repo: string;
   /** `model` from foreman.json; the state file's `model` overrides it while set (#210). */
   configModel: string;
+  /** The repo's `models`; the page and `ctl status` offer these as one-click choices. */
+  modelChoices: readonly string[];
 }
 
 export interface StatusReport {
@@ -184,7 +185,7 @@ export function describeStatus(i: StatusInput): StatusReport {
       current: s?.model ?? i.configModel,
       configured: i.configModel,
       source: s?.model ? "override" : "config",
-      choices: MODEL_CHOICES,
+      choices: i.modelChoices,
     },
     tick: s
       ? {

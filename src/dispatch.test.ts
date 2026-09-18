@@ -12,7 +12,6 @@ import {
   type DispatchRequest,
   dispatchWithRetry,
   ensureWorktree,
-  MAX_ATTEMPTS,
   needsIsolatedStack,
   parseResult,
   realSpawn,
@@ -53,6 +52,7 @@ const req: DispatchRequest = {
   isolated: false,
   rebase: false,
 };
+const CHECKS = ["pnpm lint", "pnpm typecheck", "pnpm test"];
 const okJson = (extra = "") =>
   `{"type":"result","subtype":"success","is_error":false,"num_turns":3,"total_cost_usd":1.25,"duration_ms":6000,"session_id":"${req.sessionId}","result":"done","structured_output":{"outcome":"pr_opened","pr":77,"notes":"ok"},"permission_denials":[]${extra}}`;
 
@@ -94,11 +94,17 @@ describe("buildArgs / buildPrompt", () => {
     expect(buildArgs(req, { ...cfg, model: "sonnet" }).join(" ")).toContain("--model sonnet");
   });
   it("a rebase round says so instead of announcing a fix round (#237)", () => {
-    const p = buildPrompt({ ...req, round: 2, rebase: true, notes: "merge main" }, cfg);
+    const p = buildPrompt({ ...req, round: 2, rebase: true, notes: "merge main" }, cfg, CHECKS);
     expect(p).toContain("rebase round");
     expect(p).toContain("git merge origin/main");
+    expect(p).toContain("`pnpm lint`, `pnpm typecheck`, `pnpm test`");
     expect(p).not.toContain("fix round");
-    expect(buildPrompt({ ...req, round: 2, rebase: false }, cfg)).toContain("fix round 2");
+    expect(buildPrompt({ ...req, round: 2, rebase: false }, cfg, CHECKS)).toContain("fix round 2");
+  });
+  it("a rebase round names the repo's own checks", () => {
+    const p = buildPrompt({ ...req, round: 2, rebase: true }, cfg, ["echo lint", "echo test"]);
+    expect(p).toContain("`echo lint`, `echo test`");
+    expect(p).not.toContain("pnpm lint");
   });
   it("switches to --resume on resume", () => {
     const a = buildArgs({ ...req, resume: true }, cfg).join(" ");
@@ -106,11 +112,13 @@ describe("buildArgs / buildPrompt", () => {
     expect(a).not.toContain("--session-id");
   });
   it("prompt carries issue, branch, spec, round and notes", () => {
-    const p = buildPrompt(req, cfg);
+    const p = buildPrompt(req, cfg, CHECKS);
     for (const s of ["#42", "feat/42-add-thing", "docs/s.md", "o/r", "mac-a", "8082", "3005"])
       expect(p).toContain(s);
-    expect(buildPrompt({ ...req, resume: true }, cfg)).toContain("resuming");
-    expect(buildPrompt({ ...req, round: 2, notes: "fix the test" }, cfg)).toContain("fix the test");
+    expect(buildPrompt({ ...req, resume: true }, cfg, CHECKS)).toContain("resuming");
+    expect(buildPrompt({ ...req, round: 2, notes: "fix the test" }, cfg, CHECKS)).toContain(
+      "fix the test",
+    );
   });
 });
 
@@ -145,7 +153,7 @@ describe("isolated role stack", () => {
   });
 
   it("points an isolated session's prompt at the role stack", () => {
-    const p = buildPrompt({ ...req, role: "validator", isolated: true }, cfg);
+    const p = buildPrompt({ ...req, role: "validator", isolated: true }, cfg, CHECKS);
     expect(p).toContain("web http://localhost:8182");
     expect(p).toContain("api http://localhost:3105");
     expect(p).toContain("http://127.0.0.1:55621 (project tone_tonic_val)");
@@ -156,7 +164,7 @@ describe("isolated role stack", () => {
   });
 
   it("leaves a non-isolated session on the dev stack", () => {
-    const p = buildPrompt(req, cfg);
+    const p = buildPrompt(req, cfg, CHECKS);
     expect(p).toContain("http://127.0.0.1:55321 (project tone_tonic)");
     expect(p).not.toContain("config.toml");
   });
@@ -319,7 +327,7 @@ describe("ensureWorktree", () => {
     expect(r.calls).toContain(
       "git -C /repo worktree add -B feat/42-add-thing /work/42 origin/main",
     );
-    expect(r.calls.some((c) => c.startsWith("pnpm install"))).toBe(true);
+    expect(r.calls.some((c) => c.startsWith("sh -c pnpm install"))).toBe(true);
   });
   it("tracks the remote branch when it exists (resume on another Mac)", async () => {
     const r = record(true, false);
@@ -334,10 +342,28 @@ describe("ensureWorktree", () => {
     expect(r.calls.some((c) => c.includes("worktree add"))).toBe(false);
     expect(r.calls).toContain("git -C /work/42 pull --ff-only");
   });
+  it("runs the repo's own setup command instead of a hardcoded pnpm install", async () => {
+    const r = record(false, false);
+    await ensureWorktree(cfg, req.issue, req.branch, r.exec, r.exists, "echo setup");
+    expect(r.calls).toContain("sh -c echo setup");
+    expect(r.calls.some((c) => c.startsWith("pnpm install"))).toBe(false);
+  });
+  it("skips setup entirely when it is null", async () => {
+    const r = record(false, false);
+    await ensureWorktree(cfg, req.issue, req.branch, r.exec, r.exists, null);
+    expect(r.calls.some((c) => c.startsWith("sh -c"))).toBe(false);
+  });
+  it("creates from a repo's own default branch, not a hardcoded main", async () => {
+    const r = record(false, false);
+    await ensureWorktree(cfg, req.issue, req.branch, r.exec, r.exists, "pnpm install", "trunk");
+    expect(r.calls).toContain(
+      "git -C /repo worktree add -B feat/42-add-thing /work/42 origin/trunk",
+    );
+  });
 });
 
 describe("dispatchWithRetry", () => {
-  it("resumes after max-turns and stops at MAX_ATTEMPTS", async () => {
+  it("resumes after max-turns and stops at the default attempt count", async () => {
     const seen: boolean[] = [];
     const spawn: Spawner = async (_cmd, args) => {
       seen.push(args.includes("--resume"));
@@ -352,7 +378,24 @@ describe("dispatchWithRetry", () => {
     };
     const r = await dispatchWithRetry(req, cfg, { spawn, onAttempt: async () => {} });
     expect(seen).toEqual([false, true, true]);
-    expect(seen).toHaveLength(MAX_ATTEMPTS);
+    expect(seen).toHaveLength(3);
+    expect(r.outcome).toBeNull();
+  });
+  it("honours a repo's own attempt count", async () => {
+    const seen: boolean[] = [];
+    const spawn: Spawner = async (_cmd, args) => {
+      seen.push(args.includes("--resume"));
+      return {
+        code: 1,
+        stdout:
+          '{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":50,"total_cost_usd":1,"duration_ms":1,"session_id":"x","result":null}',
+        stderr: "",
+        timedOut: false,
+        interrupted: false,
+      };
+    };
+    const r = await dispatchWithRetry(req, cfg, { spawn, onAttempt: async () => {} }, 1);
+    expect(seen).toHaveLength(1);
     expect(r.outcome).toBeNull();
   });
   it("returns on the first successful outcome", async () => {

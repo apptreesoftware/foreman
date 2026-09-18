@@ -83,12 +83,16 @@ export const MODEL_DEFAULT = "default";
 export const ModelSchema = z.string().regex(/^[a-z0-9][a-z0-9.-]{0,63}$/);
 /**
  * The label that pins one issue's sessions to a model, outranking the live override and
- * `foreman.json`. A label has to exist in the repo, so the page offers only `MODEL_CHOICES`
- * here (plus `MODEL_DEFAULT`, which removes the label); `gh issue edit --add-label` can still
- * attach any `model:<name>` whose name passes `ModelSchema`.
+ * `foreman.json`. A label has to exist in the repo, so the page offers only the repo's
+ * configured `models` here (plus `MODEL_DEFAULT`, which removes the label); `gh issue edit
+ * --add-label` can still attach any `model:<name>` whose name passes `ModelSchema`.
  */
 export const MODEL_LABEL_PREFIX = "model:";
-export const TaskModelChoiceSchema = z.enum([...MODEL_CHOICES, MODEL_DEFAULT]);
+/**
+ * Any well-formed model name, plus `MODEL_DEFAULT`. The allowlist check against a repo's
+ * configured `models` moves to the web handler, so this schema stays a shape check only.
+ */
+export const TaskModelChoiceSchema = z.union([ModelSchema, z.literal(MODEL_DEFAULT)]);
 export type TaskModelChoice = z.infer<typeof TaskModelChoiceSchema>;
 
 /**

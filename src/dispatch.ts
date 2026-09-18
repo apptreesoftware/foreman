@@ -46,8 +46,6 @@ export const OUTCOME_JSON_SCHEMA = {
   additionalProperties: false,
 };
 
-export const MAX_ATTEMPTS = 3;
-
 /** Repo-relative paths the isolated-stack rewrite touches (#228). */
 export const ROLE_CONFIG_SCRIPT = "packages/db/scripts/role-config.sh";
 export const SUPABASE_CONFIG = "packages/db/supabase/config.toml";
@@ -86,8 +84,11 @@ export interface DispatchRequest {
   rebase: boolean;
 }
 
-export const REBASE_NOTES =
-  "This is a rebase round: the PR is approved but its branch conflicts with main. Run `git merge origin/main`, resolve every conflict keeping both sides' intent, run `pnpm lint`, `pnpm typecheck` and `pnpm test`, commit the merge and push. Change nothing else, do not open a new PR, and return `pr_opened` with this PR's number.";
+/** The rebase round's prompt, naming the repo's own checks rather than a hardcoded pnpm trio. */
+export function rebaseNotes(checks: string[]): string {
+  const cmds = checks.map((c) => `\`${c}\``).join(", ");
+  return `This is a rebase round: the PR is approved but its branch conflicts with main. Run \`git merge origin/main\`, resolve every conflict keeping both sides' intent, run ${cmds}, commit the merge and push. Change nothing else, do not open a new PR, and return \`pr_opened\` with this PR's number.`;
+}
 
 /**
  * The rewrite script to run: the worktree's own, or the clone's when the branch predates the
@@ -245,7 +246,7 @@ export function buildArgs(req: DispatchRequest, cfg: ForemanConfig): string[] {
   ];
 }
 
-export function buildPrompt(req: DispatchRequest, cfg: ForemanConfig): string {
+export function buildPrompt(req: DispatchRequest, cfg: ForemanConfig, checks: string[]): string {
   const ports = stackPorts(req.isolated ? roleSessionEnv() : {});
   const project = req.isolated ? ROLE_SUPABASE_PROJECT : DEV_SUPABASE_PROJECT;
   const supabase = req.isolated ? ROLE_SUPABASE_API_URL : DEV_SUPABASE_API_URL;
@@ -261,7 +262,7 @@ export function buildPrompt(req: DispatchRequest, cfg: ForemanConfig): string {
     lines.push(
       `This worktree's \`packages/db/supabase/config.toml\` has been pointed at the isolated ${project} stack, and \`TONE_WEB_PORT\`/\`TONE_API_PORT\` are set, so \`pnpm db:reset\` and \`pnpm --filter @tone/foreman serve start\` stay off the owner's dev stack. Leave that file alone; it is marked skip-worktree so \`git add\` skips it, and the foreman restores it after your session.`,
     );
-  if (req.rebase) lines.push(REBASE_NOTES);
+  if (req.rebase) lines.push(rebaseNotes(checks));
   else if (req.round > 1)
     lines.push(
       `This is fix round ${req.round}. Address the reviewer/validator feedback on the PR before anything else.`,
@@ -329,6 +330,8 @@ export async function ensureWorktree(
   branch: string,
   exec: Exec,
   exists: (p: string) => boolean = existsSync,
+  setup: string | null = "pnpm install",
+  defaultBranch = "main",
 ): Promise<string> {
   const dir = join(cfg.workDir, String(issue));
   const git = async (args: string[], cwd = cfg.repoDir) => {
@@ -345,7 +348,7 @@ export async function ensureWorktree(
       await git(["worktree", "add", "-B", branch, dir, `origin/${branch}`]);
       await exec("git", ["-C", dir, "branch", `--set-upstream-to=origin/${branch}`]);
     } else {
-      await git(["worktree", "add", "-B", branch, dir, "origin/main"]);
+      await git(["worktree", "add", "-B", branch, dir, `origin/${defaultBranch}`]);
     }
   } else {
     const r = await exec("git", ["-C", dir, "pull", "--ff-only"]);
@@ -355,9 +358,11 @@ export async function ensureWorktree(
         stderr: r.stderr.trim(),
       });
   }
-  const install = await exec("pnpm", ["install"], { cwd: dir });
-  if (install.code !== 0)
-    throw new Error(`pnpm install failed in ${dir}: ${install.stderr.slice(-2000)}`);
+  if (setup !== null) {
+    const install = await exec("sh", ["-c", setup], { cwd: dir });
+    if (install.code !== 0)
+      throw new Error(`setup command failed in ${dir}: ${install.stderr.slice(-2000)}`);
+  }
   trustWorktree(dir);
   return dir;
 }
@@ -452,10 +457,14 @@ export const realSpawn: Spawner = (cmd, args, opts) =>
 export interface DispatchDeps {
   spawn: Spawner;
   onAttempt: (req: DispatchRequest) => Promise<void>;
+  /** What a rebase round runs, named in the prompt in place of a hardcoded pnpm trio. */
+  checks?: string[];
   signal?: AbortSignal;
   onSpawn?: (pid: number) => void;
   onActivity?: (activity: Activity, entries: FeedEntry[]) => void;
 }
+
+const DEFAULT_CHECKS = ["pnpm lint", "pnpm typecheck", "pnpm test"];
 
 export async function runSession(
   req: DispatchRequest,
@@ -467,7 +476,7 @@ export async function runSession(
   const r = await deps.spawn("claude", buildArgs(req, cfg), {
     cwd: req.worktree,
     env: childEnv(process.env, req.isolated ? roleSessionEnv() : {}),
-    input: buildPrompt(req, cfg),
+    input: buildPrompt(req, cfg, deps.checks ?? DEFAULT_CHECKS),
     timeoutMs: cfg.wallClockMinutes * 60_000,
     signal: deps.signal,
     onSpawn: deps.onSpawn,
@@ -517,9 +526,10 @@ export async function dispatchWithRetry(
   req: DispatchRequest,
   cfg: ForemanConfig,
   deps: DispatchDeps,
+  attempts = 3,
 ): Promise<SessionResult> {
   let last: SessionResult | null = null;
-  for (let attempt = req.attempt; attempt < req.attempt + MAX_ATTEMPTS; attempt++) {
+  for (let attempt = req.attempt; attempt < req.attempt + attempts; attempt++) {
     // An abort landing between attempts (the first attempt always runs) must not post another
     // "session …" comment and spawn a child just to kill it.
     if (attempt > req.attempt && deps.signal?.aborted) break;
@@ -538,6 +548,6 @@ export async function dispatchWithRetry(
       timedOut: r.timedOut,
     });
   }
-  if (!last) throw new Error("dispatchWithRetry: MAX_ATTEMPTS must be at least 1");
+  if (!last) throw new Error("dispatchWithRetry: attempts must be at least 1");
   return last;
 }

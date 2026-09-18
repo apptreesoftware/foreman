@@ -111,6 +111,7 @@ describe("web server", () => {
       taskModels.push(`${issue} ${model}`);
       return `#${issue} runs as ${model}`;
     },
+    modelChoices: () => [...MODEL_CHOICES],
     html: "<title>Foreman</title>",
   });
   let base = "";

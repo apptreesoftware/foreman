@@ -3,6 +3,7 @@ import { describeNext } from "./next.ts";
 import { ownerItems } from "./owner.ts";
 import { phaseProgress } from "./phase-progress.ts";
 import { describePipeline } from "./pipeline.ts";
+import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { MergeRecord, SessionLogEntry } from "./sessions.ts";
 import type { Board, CurrentSession, PipelineRow } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
@@ -19,12 +20,13 @@ export function describeBoard(
   s: Snapshot,
   i: WaitingInput,
   logs: BoardLogs = { sessions: [], merges: [] },
+  repo: RepoConfig = defaultRepoConfig(),
 ): Board {
-  const next = describeNext(s);
+  const next = describeNext(s, repo);
   return {
     at: s.now,
-    waiting: describeWaiting(s, i),
-    pipeline: describePipeline(s),
+    waiting: describeWaiting(s, i, repo),
+    pipeline: describePipeline(s, repo),
     owner: ownerItems(s),
     needsYou: needsYouItems(s),
     phases: phaseProgress(s, logs.sessions, logs.merges),

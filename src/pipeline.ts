@@ -2,12 +2,16 @@ import { modelOf } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
 import { mergeDecision } from "./merge.ts";
 import { issuePhase, validatorRequired } from "./pick.ts";
+import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { PipelineRow, StageState } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
 
 const STATUS_RANK: Record<string, number> = { "In Progress": 0, "In Review": 1 };
 
-export function describePipeline(s: Snapshot): PipelineRow[] {
+export function describePipeline(
+  s: Snapshot,
+  repo: RepoConfig = defaultRepoConfig(),
+): PipelineRow[] {
   const rows: PipelineRow[] = [];
   for (const i of s.issues) {
     if (i.state !== "OPEN" || i.labels.includes("epic")) continue;
@@ -30,7 +34,8 @@ export function describePipeline(s: Snapshot): PipelineRow[] {
     else if (has("validator:skipped")) validate = "skipped";
     else if (has("validator:failed")) validate = "failed";
     else if (role === "validator") validate = "active";
-    else if (review === "done" && !validatorRequired(i.labels)) validate = "skipped";
+    else if (review === "done" && !validatorRequired(i.labels, repo.validator.skipLabels))
+      validate = "skipped";
     const merge: StageState = pr && mergeDecision(pr, i).ok ? "active" : "pending";
 
     rows.push({

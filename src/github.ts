@@ -207,6 +207,19 @@ export class GitHub {
     return (JSON.parse(await this.gh(["api", "user"])) as { login: string }).login;
   }
 
+  async defaultBranch(): Promise<string> {
+    const out = await this.gh([
+      "repo",
+      "view",
+      this.cfg.repo,
+      "--json",
+      "defaultBranchRef",
+      "--jq",
+      ".defaultBranchRef.name",
+    ]);
+    return out.trim() || "main";
+  }
+
   /** `owner`/`name` for the repository query; `cfg.owner` owns the project, not necessarily the repo. */
   private repoArgs(): string[] {
     const [owner, name] = this.cfg.repo.split("/");
@@ -575,5 +588,6 @@ export type GitHubApi = Pick<
   | "createIssue"
   | "addSubIssue"
   | "viewerLogin"
+  | "defaultBranch"
   | "dryRun"
 >;

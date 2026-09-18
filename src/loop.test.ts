@@ -24,6 +24,7 @@ import {
   type TickOutcome,
 } from "./loop.ts";
 import type { LabelledIssue, NotifyEvent, NotifyPort } from "./notify.ts";
+import { defaultRepoConfig } from "./repo-config.ts";
 import type { Issue } from "./types.ts";
 
 const cfg = parseConfig(
@@ -68,6 +69,7 @@ function fakeGh(issues: Issue[]) {
     createIssue: async () => 999,
     addSubIssue: rec("addSubIssue"),
     viewerLogin: async () => "matthewtsmith",
+    defaultBranch: async () => "main",
   };
   return { gh, calls };
 }
@@ -159,6 +161,8 @@ function ctx(over: Partial<Ctx>): Ctx {
     signal: new AbortController().signal,
     stopMode: () => null,
     state: null,
+    repo: defaultRepoConfig(),
+    defaultBranch: "main",
     ...over,
   };
 }

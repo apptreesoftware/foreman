@@ -8,6 +8,7 @@ import { log } from "./log.ts";
 import type { NextReport } from "./next.ts";
 import {
   CapSchema,
+  MODEL_DEFAULT,
   ModelSchema,
   type NeedsYouItem,
   type OwnerAction,
@@ -45,6 +46,8 @@ export interface WebDeps {
   phaseTasks: () => PhaseTask[];
   /** Swaps the issue's `model:<name>` label; only called for a task `phaseTasks` lists (#259). */
   setTaskModel: (issue: number, model: TaskModelChoice) => Promise<string>;
+  /** The repo's configured `models`; the task-model allowlist beyond `MODEL_DEFAULT`. */
+  modelChoices: () => string[];
   /** Page HTML; defaults to src/web.html. Injectable for tests. */
   html?: string;
 }
@@ -161,6 +164,10 @@ export function createWebServer(d: WebDeps): http.Server {
         // Same allowlist pattern as /api/owner: only a task the board lists under a phase.
         if (!d.phaseTasks().some((t) => t.issue === issue))
           return json(res, 400, { ok: false, error: `#${issue} is not a task on the board` });
+        // TaskModelChoiceSchema now accepts any well-formed name; the repo's configured models
+        // are the actual allowlist, checked here so a typo'd model does not reach a label.
+        if (model !== MODEL_DEFAULT && !d.modelChoices().includes(model))
+          return json(res, 400, { ok: false, error: "model not offered" });
         return json(res, 200, { ok: true, message: await d.setTaskModel(issue, model) });
       }
       if (url === "/api/cap") {

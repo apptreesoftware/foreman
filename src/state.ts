@@ -4,6 +4,7 @@ import { reclaimActions, resumeAction } from "./claim.ts";
 import { blockActions, mergeActions, skipValidatorActions } from "./merge.ts";
 import { phaseActions } from "./phase.ts";
 import { type Kind, pick } from "./pick.ts";
+import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { Action, Role, Snapshot } from "./types.ts";
 
 export function roleFor(kind: Kind): Role {
@@ -11,7 +12,7 @@ export function roleFor(kind: Kind): Role {
 }
 
 /** Order matters: the loop executes in order and stops after the first action that starts a session. */
-export function plan(s: Snapshot): Action[] {
+export function plan(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): Action[] {
   const resume = resumeAction(s);
   if (resume) return [resume];
   const out: Action[] = [
@@ -20,12 +21,12 @@ export function plan(s: Snapshot): Action[] {
     ...mergeActions(s),
     // Before the pick: a rerun that turns the checks green makes the next tick's merge possible
     // and saves the builder round the picker would otherwise queue (#362).
-    ...ciActions(s),
-    ...skipValidatorActions(s),
-    ...reclaimActions(s),
-    ...blockActions(s),
+    ...ciActions(s, repo),
+    ...skipValidatorActions(s, repo),
+    ...reclaimActions(s, repo.limits.staleHours),
+    ...blockActions(s, repo),
   ];
-  const c = pick(s);
+  const c = pick(s, repo);
   if (c)
     out.push({
       type: "claim",

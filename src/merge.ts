@@ -1,8 +1,9 @@
 import { fixRound, openClaim } from "./ledger.ts";
-import { ciRerunsSpent, MAX_FIX_ROUNDS, validatorRequired } from "./pick.ts";
+import { ciRerunsSpent, validatorRequired } from "./pick.ts";
+import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { Action, Issue, PullRequest, Snapshot } from "./types.ts";
 
-export { VALIDATOR_EXEMPT_AREAS, validatorRequired } from "./pick.ts";
+export { validatorRequired } from "./pick.ts";
 
 export function mergeDecision(
   pr: PullRequest,
@@ -32,19 +33,23 @@ export function mergeActions(s: Snapshot): Action[] {
     .map(({ pr, issue }) => ({ type: "merge", pr: pr.number, issue: issue.number }));
 }
 
-export function skipValidatorActions(s: Snapshot): Action[] {
+export function skipValidatorActions(
+  s: Snapshot,
+  repo: RepoConfig = defaultRepoConfig(),
+): Action[] {
   return pairs(s)
     .filter(
       ({ pr, issue }) =>
         issue.status === "In Review" &&
         pr.labels.includes("reviewer:approved") &&
         !pr.labels.some((l) => l.startsWith("validator:")) &&
-        !validatorRequired(issue.labels),
+        !validatorRequired(issue.labels, repo.validator.skipLabels),
     )
     .map(({ pr, issue }) => ({ type: "skip_validator", pr: pr.number, issue: issue.number }));
 }
 
-export function blockActions(s: Snapshot): Action[] {
+export function blockActions(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): Action[] {
+  const { fixRounds, ciReruns } = repo.limits;
   return pairs(s)
     .filter(
       ({ pr, issue }) =>
@@ -55,15 +60,15 @@ export function blockActions(s: Snapshot): Action[] {
           pr.labels.includes("validator:failed") ||
           // Red CI that survived its rerun and its fix rounds ends here too, or the PR would sit
           // at idle for ever the way #344 did (#362).
-          (pr.checks === "failure" && ciRerunsSpent(pr, issue))) &&
-        fixRound(issue.comments) >= MAX_FIX_ROUNDS,
+          (pr.checks === "failure" && ciRerunsSpent(pr, issue, ciReruns))) &&
+        fixRound(issue.comments) >= fixRounds,
     )
     .map(({ pr, issue }) => ({
       type: "block",
       issue: issue.number,
       reason:
-        pr.checks === "failure" && ciRerunsSpent(pr, issue)
-          ? `CI still red after a rerun and ${MAX_FIX_ROUNDS} fix rounds`
-          : `reviewer/validator requested changes after ${MAX_FIX_ROUNDS} fix rounds`,
+        pr.checks === "failure" && ciRerunsSpent(pr, issue, ciReruns)
+          ? `CI still red after a rerun and ${fixRounds} fix rounds`
+          : `reviewer/validator requested changes after ${fixRounds} fix rounds`,
     }));
 }

@@ -20,15 +20,15 @@ export function parseDirectionCritical(specText: string): boolean {
 }
 
 export function parseSpecPath(body: string): string | null {
-  const m = /## Spec\s*\n[\s\S]*?(docs\/[\w./-]+\.md)/.exec(body);
+  const m = /## Spec\s*\n[\s\S]*?([\w./-]+\.md)/.exec(body);
   return m ? (m[1] as string) : null;
 }
 
-/** docs/superpowers/specs/<date>-phase-NN-<slug>-design.md → docs/superpowers/plans/<today>-phase-NN-plan.issues.json */
-export function planIssuesPath(specPath: string, today: string): string {
+/** docs/superpowers/specs/<date>-phase-NN-<slug>-design.md → <planDir>/<today>-phase-NN-plan.issues.json */
+export function planIssuesPath(specPath: string, today: string, planDir: string): string {
   const m = /phase-(\d\d)/.exec(specPath);
   const nn = m ? m[1] : "xx";
-  return `docs/superpowers/plans/${today}-phase-${nn}-plan.issues.json`;
+  return `${planDir}/${today}-phase-${nn}-plan.issues.json`;
 }
 
 export function phaseComplete(e: Epic, issues: Issue[]): boolean {

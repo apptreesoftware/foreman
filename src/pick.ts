@@ -1,5 +1,6 @@
 import { parseDependsOn, parseTouches, phaseOf, sizeOf, touchesOverlap } from "./github.ts";
 import { ciRerunCount, fixRound, openClaim } from "./ledger.ts";
+import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { Epic, Issue, PullRequest, Size, Snapshot } from "./types.ts";
 
 export type Kind = "build" | "fix" | "review" | "validate" | "rebase";
@@ -14,30 +15,16 @@ export interface Candidate {
   contended: boolean;
 }
 
-export const MAX_FIX_ROUNDS = 2;
-/**
- * Reruns of a red PR's failed jobs before the foreman stops treating the failure as a flake and
- * pays for a builder round (#362). One: a rerun costs nothing but runner time, and a second one
- * has never told us anything the first did not.
- */
-export const MAX_CI_RERUNS = 1;
-/**
- * Open blocked tasks in one phase before the foreman stops starting new builds there (#237).
- * Every blocked task is owner work; piling more builds on top of them only breeds conflicts.
- */
-export const MAX_BLOCKED_PER_PHASE = 2;
-export const VALIDATOR_EXEMPT_AREAS = ["area:infra", "area:db", "area:shared"];
-
-/** True when the issue touches anything beyond infra/db/shared (no area label ⇒ required). */
-export function validatorRequired(labels: string[]): boolean {
+/** True when the issue touches anything the skip list does not name (no area label ⇒ required). */
+export function validatorRequired(labels: string[], skipLabels: string[]): boolean {
   const areas = labels.filter((l) => l.startsWith("area:"));
-  return areas.length === 0 || areas.some((a) => !VALIDATOR_EXEMPT_AREAS.includes(a));
+  return areas.length === 0 || areas.some((a) => !skipLabels.includes(a));
 }
 const UNPHASED = 99;
 
 /** True once the free recovery for this head commit is used up and CI is still red. */
-export function ciRerunsSpent(pr: PullRequest, i: Issue): boolean {
-  return ciRerunCount(i.comments, pr.headSha) >= MAX_CI_RERUNS;
+export function ciRerunsSpent(pr: PullRequest, i: Issue, ciReruns: number): boolean {
+  return ciRerunCount(i.comments, pr.headSha) >= ciReruns;
 }
 
 export function issuePhase(i: Issue): number {
@@ -63,8 +50,8 @@ export function depsClosed(i: Issue, issues: Issue[]): boolean {
   );
 }
 
-/** Phases with `MAX_BLOCKED_PER_PHASE` or more open, non-epic blocked tasks, ascending. */
-export function heldPhases(s: Snapshot): number[] {
+/** Phases with `blockedPerPhase` or more open, non-epic blocked tasks, ascending. */
+export function heldPhases(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): number[] {
   const counts = new Map<number, number>();
   for (const i of s.issues) {
     if (i.state !== "OPEN" || i.labels.includes("epic") || !i.labels.includes("blocked")) continue;
@@ -72,7 +59,7 @@ export function heldPhases(s: Snapshot): number[] {
     counts.set(phase, (counts.get(phase) ?? 0) + 1);
   }
   return [...counts]
-    .filter(([, n]) => n >= MAX_BLOCKED_PER_PHASE)
+    .filter(([, n]) => n >= repo.limits.blockedPerPhase)
     .map(([phase]) => phase)
     .sort((a, b) => a - b);
 }
@@ -83,8 +70,8 @@ function inFlightTouches(s: Snapshot): string[][] {
   return s.issues.filter((i) => withPr.has(i.number)).map((i) => parseTouches(i.body));
 }
 
-export function buildCandidates(s: Snapshot): Candidate[] {
-  const held = new Set(heldPhases(s));
+export function buildCandidates(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): Candidate[] {
+  const held = new Set(heldPhases(s, repo));
   const busy = inFlightTouches(s);
   return s.issues
     .filter((i) => i.state === "OPEN" && i.status === "Ready" && i.labels.includes("agent-ready"))
@@ -107,7 +94,7 @@ export function buildCandidates(s: Snapshot): Candidate[] {
     });
 }
 
-export function jobCandidates(s: Snapshot): Candidate[] {
+export function jobCandidates(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): Candidate[] {
   const out: Candidate[] = [];
   for (const pr of s.prs) {
     if (pr.issue === null || pr.isDraft) continue;
@@ -127,19 +114,23 @@ export function jobCandidates(s: Snapshot): Candidate[] {
     // or validating a branch whose own suite fails spends a session on the wrong question, and
     // once the PR is approved and validated no other branch here fires at all — which is how a
     // flake stalled #344 for an hour (#362).
-    if (pr.checks === "failure" && ciRerunsSpent(pr, i)) {
+    if (pr.checks === "failure" && ciRerunsSpent(pr, i, repo.limits.ciReruns)) {
       const round = fixRound(i.comments) + 1;
-      if (round <= MAX_FIX_ROUNDS) out.push({ kind: "fix", round, ...base });
+      if (round <= repo.limits.fixRounds) out.push({ kind: "fix", round, ...base });
     } else if (has("reviewer:changes") || has("validator:failed")) {
       // The fix round merges origin/main itself (builder.md), so a conflict never queues twice.
       const round = fixRound(i.comments) + 1;
-      if (round <= MAX_FIX_ROUNDS) out.push({ kind: "fix", round, ...base });
+      if (round <= repo.limits.fixRounds) out.push({ kind: "fix", round, ...base });
     } else if (!has("reviewer:approved")) out.push({ kind: "review", round: 1, ...base });
     else if (pr.mergeable === "CONFLICTING")
       // Approved but unmergeable: a rebase-only builder round at the *current* fix round, so it
-      // never counts toward MAX_FIX_ROUNDS. Ahead of validation, which would run on a stale base.
+      // never counts toward fixRounds. Ahead of validation, which would run on a stale base.
       out.push({ kind: "rebase", round: fixRound(i.comments), ...base });
-    else if (!has("validator:passed") && !has("validator:skipped") && validatorRequired(i.labels))
+    else if (
+      !has("validator:passed") &&
+      !has("validator:skipped") &&
+      validatorRequired(i.labels, repo.validator.skipLabels)
+    )
       out.push({ kind: "validate", round: 1, ...base });
   }
   return out;
@@ -159,6 +150,6 @@ export function prioritize(cs: Candidate[]): Candidate[] {
   );
 }
 
-export function pick(s: Snapshot): Candidate | null {
-  return prioritize([...jobCandidates(s), ...buildCandidates(s)])[0] ?? null;
+export function pick(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): Candidate | null {
+  return prioritize([...jobCandidates(s, repo), ...buildCandidates(s, repo)])[0] ?? null;
 }

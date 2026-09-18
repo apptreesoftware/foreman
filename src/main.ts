@@ -14,6 +14,7 @@ import { applyUnblock, applyUnblockToBoard } from "./needs-you.ts";
 import { describeNext } from "./next.ts";
 import { applyOwnerAction, applyOwnerActionToBoard } from "./owner.ts";
 import { checkEnv, preflight } from "./preflight.ts";
+import { loadRepoConfig } from "./repo-config.ts";
 import { readSessions } from "./sessions.ts";
 import { initialState, MODEL_DEFAULT, readState, StateStore } from "./state-file.ts";
 import { describeStatus } from "./status.ts";
@@ -57,14 +58,25 @@ if (!result.ok) {
 } else log("info", "preflight ok", { host: cfg.host, once, dryRun, warnings: result.warnings });
 
 const gh = new GitHub({ repo: cfg.repo, owner: cfg.owner, project: cfg.project }, realExec, dryRun);
+const repo = loadRepoConfig(cfg.repoDir);
+const defaultBranch = await gh.defaultBranch();
 
 if (once) {
   const login = await gh.viewerLogin();
-  const ctx = realCtx(cfg, gh, login, dryRun, STATE_DIR, {
-    signal: new AbortController().signal,
-    stopMode: () => null,
-    state: null,
-  });
+  const ctx = realCtx(
+    cfg,
+    gh,
+    login,
+    dryRun,
+    STATE_DIR,
+    {
+      signal: new AbortController().signal,
+      stopMode: () => null,
+      state: null,
+    },
+    repo,
+    defaultBranch,
+  );
   await runOnce(ctx);
   process.exit(0);
 }
@@ -104,11 +116,20 @@ const controller = new Controller((mode) => {
 });
 controller.install();
 const lock = new Mutex();
-const ctx = realCtx(cfg, gh, login, dryRun, STATE_DIR, {
-  signal: controller.signal,
-  stopMode: () => controller.stopMode,
-  state: store,
-});
+const ctx = realCtx(
+  cfg,
+  gh,
+  login,
+  dryRun,
+  STATE_DIR,
+  {
+    signal: controller.signal,
+    stopMode: () => controller.stopMode,
+    state: store,
+  },
+  repo,
+  defaultBranch,
+);
 const stopFile = join(STATE_DIR, "STOP");
 // Computed once at startup: whether the launchd agent is bootstrapped never changes for the life
 // of this process, so there is no need to re-check it on every status request.
@@ -129,8 +150,9 @@ const web = await startWebServer({
       stallMinutes: cfg.stallMinutes,
       repo: cfg.repo,
       configModel: cfg.model,
+      modelChoices: repo.models,
     }),
-  next: () => lock.run(async () => describeNext(await buildSnapshot(ctx))),
+  next: () => lock.run(async () => describeNext(await buildSnapshot(ctx), repo)),
   act: async (cmd) => {
     if (cmd === "go") {
       if (existsSync(stopFile)) unlinkSync(stopFile);
@@ -179,6 +201,7 @@ const web = await startWebServer({
     if (board) store.patch({ board: applyTaskModelToBoard(board, issue, model) });
     return message;
   },
+  modelChoices: () => repo.models,
   needsYouItems: () => store.get().board?.needsYou ?? [],
   unblock: async (issue) => {
     // The stored row carries the project item id the tick already read, so the gate costs one

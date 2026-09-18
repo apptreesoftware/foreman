@@ -1,7 +1,5 @@
 import type { Exec } from "./exec.ts";
 
-const PLAN_DIR = "docs/superpowers/plans";
-
 /**
  * The approved plan is read from `origin/main`, never from the clone's working tree: nothing
  * else in the daemon pulls `repoDir`, so a merged plan PR would otherwise stay invisible until
@@ -12,17 +10,22 @@ export async function fetchOrigin(exec: Exec, repoDir: string): Promise<boolean>
   return r.code === 0;
 }
 
-/** Repo-relative `*.issues.json` paths tracked on `origin/main`. */
-export async function listPlanFilesOnMain(exec: Exec, repoDir: string): Promise<string[]> {
+/** Repo-relative `*.issues.json` paths tracked on `origin/<defaultBranch>`. */
+export async function listPlanFilesOnMain(
+  exec: Exec,
+  repoDir: string,
+  planDir: string,
+  defaultBranch: string,
+): Promise<string[]> {
   const r = await exec("git", [
     "-C",
     repoDir,
     "ls-tree",
     "-r",
     "--name-only",
-    "origin/main",
+    `${defaultBranch}`,
     "--",
-    PLAN_DIR,
+    planDir,
   ]);
   if (r.code !== 0) return [];
   return r.stdout
@@ -35,7 +38,8 @@ export async function readPlanFileOnMain(
   exec: Exec,
   repoDir: string,
   repoRelPath: string,
+  defaultBranch: string,
 ): Promise<string | null> {
-  const r = await exec("git", ["-C", repoDir, "show", `origin/main:${repoRelPath}`]);
+  const r = await exec("git", ["-C", repoDir, "show", `${defaultBranch}:${repoRelPath}`]);
   return r.code === 0 ? r.stdout : null;
 }

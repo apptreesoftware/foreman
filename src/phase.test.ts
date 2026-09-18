@@ -29,6 +29,7 @@ describe("parsers", () => {
       planIssuesPath(
         "docs/superpowers/specs/2026-09-03-phase-01-identity-roster-design.md",
         "2026-09-10",
+        "docs/superpowers/plans",
       ),
     ).toBe("docs/superpowers/plans/2026-09-10-phase-01-plan.issues.json");
   });

@@ -36,6 +36,7 @@ import {
 import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts";
 import { graphqlBudget, preflight } from "./preflight.ts";
 import { ledgerInterrupt } from "./release.ts";
+import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import {
   appendMerge,
   appendSession,
@@ -66,9 +67,9 @@ export interface Ctx {
   copyDir: (src: string, dest: string) => Promise<void>;
   login: string;
   readFile: (absPath: string) => string | null;
-  /** Repo-relative `*.issues.json` paths on `origin/main`. */
+  /** Repo-relative `*.issues.json` paths on `origin/<defaultBranch>`. */
   planFiles: () => Promise<string[]>;
-  /** Content of a repo-relative path on `origin/main`, or null when it is not there. */
+  /** Content of a repo-relative path on `origin/<defaultBranch>`, or null when it is not there. */
   readPlanFile: (repoRelPath: string) => Promise<string | null>;
   ensureWorktree: (
     cfg: ForemanConfig,
@@ -84,6 +85,10 @@ export interface Ctx {
   stopMode: () => StopMode | null;
   /** The daemon's state.json writer; null for --once runs and tests. */
   state: Pick<StateStore, "patch" | "get"> | null;
+  /** `.foreman/config.json` from the served repo; defaults when the repo has none. */
+  repo: RepoConfig;
+  /** The repo's default branch, as `git`/GitHub name it (`main`, `trunk`, ...). */
+  defaultBranch: string;
 }
 
 export function realCtx(
@@ -93,6 +98,8 @@ export function realCtx(
   dryRun: boolean,
   stateDir: string,
   control: { signal: AbortSignal; stopMode: () => StopMode | null; state: Ctx["state"] },
+  repo: RepoConfig = defaultRepoConfig(),
+  defaultBranch = "main",
 ): Ctx {
   return {
     cfg,
@@ -119,12 +126,16 @@ export function realCtx(
     },
     login,
     readFile: (p) => (existsSync(p) ? readFileSync(p, "utf8") : null),
-    planFiles: () => listPlanFilesOnMain(realExec, cfg.repoDir),
-    readPlanFile: (p) => readPlanFileOnMain(realExec, cfg.repoDir, p),
-    ensureWorktree: realEnsureWorktree,
+    planFiles: () =>
+      listPlanFilesOnMain(realExec, cfg.repoDir, repo.plans.dir, `origin/${defaultBranch}`),
+    readPlanFile: (p) => readPlanFileOnMain(realExec, cfg.repoDir, p, `origin/${defaultBranch}`),
+    ensureWorktree: (c, issue, branch, exec) =>
+      realEnsureWorktree(c, issue, branch, exec, undefined, repo.setup, defaultBranch),
     removeWorktree: realRemoveWorktree,
     transcriptExists: (w, s) => existsSync(transcriptPath(w, s)),
     now: () => new Date().toISOString(),
+    repo,
+    defaultBranch,
   };
 }
 
@@ -341,6 +352,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
       {
         spawn: ctx.spawn,
         signal: ctx.signal,
+        checks: ctx.repo.checks,
         onSpawn: (pid) => setCurrent({ childPid: pid }),
         onActivity,
         onAttempt: async (a) => {
@@ -354,6 +366,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
           await gh.comment("issue", a.issue, fmt.session(a.sessionId, cfg.host, a.role, a.attempt));
         },
       },
+      ctx.repo.limits.attempts,
     );
   } finally {
     // Unconditional, even on a throw or an operator abort, and even for a session that was never
@@ -554,7 +567,8 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   const epic = await issueFor(ctx, epicNumber, snapshot);
   const specPath = parseSpecPath(epic.body) ?? "";
   const nn =
-    /phase-(\d\d)/.exec(specPath)?.[1] ?? /phase-(\d\d)/.exec(planIssuesPath(specPath, "x"))?.[1];
+    /phase-(\d\d)/.exec(specPath)?.[1] ??
+    /phase-(\d\d)/.exec(planIssuesPath(specPath, "x", ctx.repo.plans.dir))?.[1];
   // Nothing else in the daemon refreshes repoDir, so a plan PR merged minutes ago is only
   // visible after this fetch; a failed fetch falls back to the last known origin/main (#189).
   if (!(await fetchOrigin(ctx.exec, cfg.repoDir)))
@@ -916,7 +930,7 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   // A decision issue is opened by a role session, not by the foreman, so the snapshot is the only
   // place it shows up; the notifier announces each one once.
   await ctx.notify.syncDecisions(snapshot.issues);
-  const actions = plan(snapshot);
+  const actions = plan(snapshot, ctx.repo);
   const names = actions.map((a) =>
     // Every non-idle Action variant carries either "issue" or "epic" — never neither — so a
     // third fallback branch is unreachable (and TS correctly types it as `never`).
@@ -935,6 +949,7 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
       cap: capFor(ctx),
     },
     { sessions, merges: readMerges(ctx.stateDir) },
+    ctx.repo,
   );
   ctx.state?.patch({ lastPlan: names, board });
   const afterReads = await graphqlBudget(ctx.exec);

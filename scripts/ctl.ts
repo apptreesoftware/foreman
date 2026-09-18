@@ -10,6 +10,7 @@ import { buildSnapshot, realCtx } from "../src/loop.ts";
 import { describeNext, formatNext } from "../src/next.ts";
 import type { InterruptInput } from "../src/release.ts";
 import { ledgerInterrupt } from "../src/release.ts";
+import { loadRepoConfig } from "../src/repo-config.ts";
 import { readSessions } from "../src/sessions.ts";
 import { readState } from "../src/state-file.ts";
 import { describeStatus, formatStatus } from "../src/status.ts";
@@ -36,6 +37,7 @@ const instance = resolveInstance({ flag: args.instance, env: process.env, cwd: p
 const STATE_DIR = instance.dir;
 const stopFile = join(STATE_DIR, "STOP");
 const cfg = loadConfig(instance.configPath);
+const repo = loadRepoConfig(cfg.repoDir);
 
 function statusReport() {
   return describeStatus({
@@ -51,6 +53,7 @@ function statusReport() {
     stallMinutes: cfg.stallMinutes,
     repo: cfg.repo,
     configModel: cfg.model,
+    modelChoices: repo.models,
   });
 }
 
@@ -72,12 +75,22 @@ async function status(): Promise<void> {
 
 async function next(): Promise<void> {
   const gh = new GitHub({ repo: cfg.repo, owner: cfg.owner, project: cfg.project }, realExec, true);
-  const ctx = realCtx(cfg, gh, await gh.viewerLogin(), true, STATE_DIR, {
-    signal: new AbortController().signal,
-    stopMode: () => null,
-    state: null,
-  });
-  process.stdout.write(formatNext(describeNext(await buildSnapshot(ctx))));
+  const defaultBranch = await gh.defaultBranch();
+  const ctx = realCtx(
+    cfg,
+    gh,
+    await gh.viewerLogin(),
+    true,
+    STATE_DIR,
+    {
+      signal: new AbortController().signal,
+      stopMode: () => null,
+      state: null,
+    },
+    repo,
+    defaultBranch,
+  );
+  process.stdout.write(formatNext(describeNext(await buildSnapshot(ctx), repo)));
 }
 
 function ghForRelease() {

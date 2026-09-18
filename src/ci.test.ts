@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { comment, epic, issue, pr, snapshot } from "../test/helpers.ts";
 import { ciActions } from "./ci.ts";
 import { fmt } from "./ledger.ts";
-import { jobCandidates, MAX_CI_RERUNS } from "./pick.ts";
+import { jobCandidates } from "./pick.ts";
+import { defaultRepoConfig } from "./repo-config.ts";
 
 const SHA = "1111111111111111111111111111111111111111";
 const OTHER_SHA = "2222222222222222222222222222222222222222";
@@ -37,7 +38,7 @@ describe("ciActions", () => {
       issueOver: { comments: [comment(fmt.ciRerun("mac-a", SHA))] },
     });
     expect(ciActions(spent)).toEqual([]);
-    expect(MAX_CI_RERUNS).toBe(1);
+    expect(defaultRepoConfig().limits.ciReruns).toBe(1);
   });
 
   it("starts the budget over on a new push, because the sha is the key", () => {

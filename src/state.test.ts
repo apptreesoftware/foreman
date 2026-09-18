@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { comment, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
 import { fmt } from "./ledger.ts";
+import { defaultRepoConfig } from "./repo-config.ts";
 import { plan } from "./state.ts";
 
 describe("plan", () => {
@@ -71,7 +72,22 @@ describe("plan", () => {
 });
 
 describe("plan with an approved infra-only PR", () => {
-  it("skips the validator and does not claim a validate job in the same iteration", () => {
+  it("skips the validator and does not claim a validate job in the same iteration, when the repo's skip list names infra", () => {
+    const infra = issue({ number: 40, status: "In Review", labels: ["phase:1", "area:infra"] });
+    const actions = plan(
+      snapshot({
+        issues: [infra],
+        prs: [pr({ number: 9, issue: 40, labels: ["reviewer:approved"] })],
+      }),
+      {
+        ...defaultRepoConfig(),
+        validator: { skipLabels: ["area:infra", "area:db", "area:shared"] },
+      },
+    );
+    expect(actions).toContainEqual({ type: "skip_validator", pr: 9, issue: 40 });
+    expect(actions.some((a) => a.type === "claim")).toBe(false);
+  });
+  it("with the default empty skip list, an infra-only PR still gets a validate claim", () => {
     const infra = issue({ number: 40, status: "In Review", labels: ["phase:1", "area:infra"] });
     const actions = plan(
       snapshot({
@@ -79,7 +95,7 @@ describe("plan with an approved infra-only PR", () => {
         prs: [pr({ number: 9, issue: 40, labels: ["reviewer:approved"] })],
       }),
     );
-    expect(actions).toContainEqual({ type: "skip_validator", pr: 9, issue: 40 });
-    expect(actions.some((a) => a.type === "claim")).toBe(false);
+    expect(actions.some((a) => a.type === "skip_validator")).toBe(false);
+    expect(actions.some((a) => a.type === "claim" && a.role === "validator")).toBe(true);
   });
 });

@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { comment, epic, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
 import { fmt } from "./ledger.ts";
-import {
-  buildCandidates,
-  heldPhases,
-  jobCandidates,
-  MAX_BLOCKED_PER_PHASE,
-  pick,
-  prioritize,
-} from "./pick.ts";
+import { buildCandidates, heldPhases, jobCandidates, pick, prioritize } from "./pick.ts";
+import { defaultRepoConfig } from "./repo-config.ts";
+
+const INFRA_EXEMPT = {
+  ...defaultRepoConfig(),
+  validator: { skipLabels: ["area:infra", "area:db", "area:shared"] },
+};
 
 describe("buildCandidates", () => {
   it("requires Ready + agent-ready + no open claim + deps closed + not blocked", () => {
@@ -185,7 +184,7 @@ describe("blocked backpressure (#237)", () => {
         issue({ number: 4, labels: ["phase:2", "agent-ready"] }),
       ],
     });
-    expect(MAX_BLOCKED_PER_PHASE).toBe(2);
+    expect(defaultRepoConfig().limits.blockedPerPhase).toBe(2);
     expect(buildCandidates(s).map((c) => c.issue)).toEqual([4]);
     expect(heldPhases(s)).toEqual([1]);
   });
@@ -261,13 +260,21 @@ describe("prioritize / pick", () => {
 });
 
 describe("jobCandidates respects validatorRequired", () => {
-  it("offers no validate job for an approved PR on an infra-only issue", () => {
+  it("offers no validate job for an approved PR on an infra-only issue whose skip list names it", () => {
     const infra = issue({ number: 30, status: "In Review", labels: ["phase:1", "area:infra"] });
     const s = snapshot({
       issues: [infra],
       prs: [pr({ issue: 30, labels: ["reviewer:approved"] })],
     });
-    expect(jobCandidates(s)).toEqual([]);
+    expect(jobCandidates(s, INFRA_EXEMPT)).toEqual([]);
+  });
+  it("with the default empty skip list, an infra-only issue still needs a validator", () => {
+    const infra = issue({ number: 30, status: "In Review", labels: ["phase:1", "area:infra"] });
+    const s = snapshot({
+      issues: [infra],
+      prs: [pr({ issue: 30, labels: ["reviewer:approved"] })],
+    });
+    expect(jobCandidates(s)[0]?.kind).toBe("validate");
   });
   it("still offers validate for an approved PR on a web issue", () => {
     const web = issue({ number: 31, status: "In Review", labels: ["phase:1", "area:web"] });

@@ -1,4 +1,5 @@
 import { mergeDecision } from "./merge.ts";
+import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import { plan } from "./state.ts";
 import type { Action, Snapshot } from "./types.ts";
 
@@ -55,8 +56,8 @@ function explain(a: Action, s: Snapshot): string {
   }
 }
 
-export function describeNext(s: Snapshot): NextReport {
-  const actions = plan(s);
+export function describeNext(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): NextReport {
+  const actions = plan(s, repo);
   const stopIdx = actions.findIndex((a) => SESSION_ACTIONS.has(a.type));
   return {
     actions: actions.map(actionName),

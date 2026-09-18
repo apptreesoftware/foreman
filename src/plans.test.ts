@@ -27,6 +27,8 @@ describe("fetchOrigin", () => {
   });
 });
 
+const PLAN_DIR = "docs/superpowers/plans";
+
 describe("listPlanFilesOnMain", () => {
   it("lists only *.issues.json tracked on origin/main", async () => {
     const { exec, calls } = fakeExec(() => ({
@@ -34,25 +36,27 @@ describe("listPlanFilesOnMain", () => {
       stdout:
         "docs/superpowers/plans/2026-09-04-phase-01-plan.md\ndocs/superpowers/plans/2026-09-04-phase-01-plan.issues.json\n",
     }));
-    expect(await listPlanFilesOnMain(exec, "/repo")).toEqual([
+    expect(await listPlanFilesOnMain(exec, "/repo", PLAN_DIR, "origin/main")).toEqual([
       "docs/superpowers/plans/2026-09-04-phase-01-plan.issues.json",
     ]);
     expect(calls[0]).toContain("origin/main");
   });
   it("is empty when git fails", async () => {
     const { exec } = fakeExec(() => ({ code: 1 }));
-    expect(await listPlanFilesOnMain(exec, "/repo")).toEqual([]);
+    expect(await listPlanFilesOnMain(exec, "/repo", PLAN_DIR, "origin/main")).toEqual([]);
   });
 });
 
 describe("readPlanFileOnMain", () => {
   it("reads the file content from origin/main", async () => {
     const { exec, calls } = fakeExec(() => ({ code: 0, stdout: '{"epic":1}' }));
-    expect(await readPlanFileOnMain(exec, "/repo", "docs/p.issues.json")).toBe('{"epic":1}');
+    expect(await readPlanFileOnMain(exec, "/repo", "docs/p.issues.json", "origin/main")).toBe(
+      '{"epic":1}',
+    );
     expect(calls[0]).toEqual(["-C", "/repo", "show", "origin/main:docs/p.issues.json"]);
   });
   it("is null when the path is not on origin/main", async () => {
     const { exec } = fakeExec(() => ({ code: 128 }));
-    expect(await readPlanFileOnMain(exec, "/repo", "docs/p.issues.json")).toBeNull();
+    expect(await readPlanFileOnMain(exec, "/repo", "docs/p.issues.json", "origin/main")).toBeNull();
   });
 });

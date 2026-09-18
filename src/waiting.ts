@@ -1,7 +1,8 @@
 import { parseDependsOn } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
 import { buildingEpic, planAwaitingOwner } from "./phase.ts";
-import { heldPhases, issuePhase, MAX_FIX_ROUNDS } from "./pick.ts";
+import { heldPhases, issuePhase } from "./pick.ts";
+import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import { WAIT_KINDS, type WaitItem } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
 
@@ -54,7 +55,11 @@ function blockedReason(comments: Snapshot["issues"][number]["comments"]): string
   return first.replace(/^blocked by [^:]*:\s*/, "").slice(0, 100);
 }
 
-export function describeWaiting(s: Snapshot, i: WaitingInput): WaitItem[] {
+export function describeWaiting(
+  s: Snapshot,
+  i: WaitingInput,
+  repo: RepoConfig = defaultRepoConfig(),
+): WaitItem[] {
   const out: WaitItem[] = [...liveWaits(i)];
   const byNumber = new Map(s.issues.map((x) => [x.number, x]));
   const isEpic = (n: number) => byNumber.get(n)?.labels.includes("epic") ?? false;
@@ -112,7 +117,7 @@ export function describeWaiting(s: Snapshot, i: WaitingInput): WaitItem[] {
         x.labels.includes("blocked") &&
         issuePhase(x) === phase,
     ).length;
-  for (const phase of heldPhases(s))
+  for (const phase of heldPhases(s, repo))
     out.push({
       kind: "human",
       subject: `phase ${phase}`,
@@ -163,7 +168,7 @@ export function describeWaiting(s: Snapshot, i: WaitingInput): WaitItem[] {
       });
     if (p.labels.includes("reviewer:changes") || p.labels.includes("validator:failed")) {
       const round = fixRound(x.comments) + 1;
-      if (round <= MAX_FIX_ROUNDS)
+      if (round <= repo.limits.fixRounds)
         out.push({
           kind: "review_cycle",
           subject: `PR #${p.number}`,
