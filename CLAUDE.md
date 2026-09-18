@@ -29,7 +29,7 @@ pnpm typecheck
 pnpm test            # vitest, no network; hook tests run real shell fixtures
 pnpm build           # tsc to dist/ + copies src/web.html
 pnpm dev -- help     # run the CLI from source
-pnpm link --global   # make `foreman` on this Mac run this clone
+npm link             # make `foreman` on this Mac run this clone (rebuild with pnpm build after changes)
 pnpm test -- src/hooks.test.ts          # one file
 ```
 
@@ -51,4 +51,4 @@ CI (`.github/workflows/ci.yml`) runs lint, typecheck, test, build on every push.
 
 ## Working on a served repository
 
-To dogfood a change: `pnpm link --global` here, then in the served repository `foreman -p <name> run --once --dry-run` before `start`. State lives under `~/.foreman/<name>/`; `foreman -p <name> stop` before touching it. Never run two daemons on one instance, and never point two instances at the same `repoDir`.
+To dogfood a change: `npm link` here, then `pnpm build` after every change, then in the served repository `foreman -p <name> run --once --dry-run` before `start`. State lives under `~/.foreman/<name>/`; `foreman -p <name> stop` before touching it. Never run two daemons on one instance, and never point two instances at the same `repoDir`.
