@@ -1,24 +1,43 @@
 {
-  "name": "@tone/foreman",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@apptreesoftware/foreman",
+  "version": "0.1.0",
+  "description": "Runs a GitHub issue pipeline unattended with claude -p sessions, one daemon per repository",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apptreesoftware/foreman.git"
+  },
   "type": "module",
+  "bin": {
+    "foreman": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "roles",
+    "settings",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.18 <23"
+  },
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "start": "tsx src/main.ts",
-    "dev-env": "tsx scripts/dev-env.ts",
-    "serve": "tsx scripts/serve.ts",
-    "ctl": "tsx scripts/ctl.ts",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/web.html dist/web.html",
+    "dev": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "lint": "biome check ."
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
     "@types/node": "^22.20.1",
     "tsx": "^4.23.13",
-    "typescript": "^7.0.2",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   }
 }
