@@ -953,16 +953,19 @@ There is no `NPM_TOKEN` secret. The workflow authenticates through **npm trusted
 why the job needs `id-token: write`. That needs npm 11.5 or newer, and `setup-node` installs
 whatever npm Node 22 bundles (10.x), so the workflow runs `npm i -g npm@11` first.
 
+Provenance attestations are off because npm only generates them for a public or internal
+repository and this one is private; set `"provenance": true` in `publishConfig` if the repository
+is ever made public.
+
 Trusted publishing is configured per package on npmjs.com, and the package has to exist there
 first, so the very first version is published by hand from a logged-in Mac:
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
-npm publish --access public --provenance=false --otp=<code from your authenticator>
+npm publish --access public --otp=<code from your authenticator>
 ```
 
-`--provenance=false` because `publishConfig` asks for provenance and only a CI job with an OIDC
-token can produce it; `--otp` because npm requires a second factor for a publish from a laptop.
+`--otp` because npm requires a second factor for a publish from a laptop.
 
 **Owner action, once, after that first publish:** on
 <https://www.npmjs.com/package/@apptreesoftware/foreman/access> → **Trusted publishing** → add a

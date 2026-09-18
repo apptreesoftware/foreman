@@ -22,8 +22,7 @@
   },
   "packageManager": "pnpm@11.9.0",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/web.html dist/web.html",
