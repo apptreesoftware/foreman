@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  type Dirent,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 
@@ -24,17 +32,37 @@ export function instanceFor(name: string, home = FOREMAN_HOME): Instance {
   return { name, dir, configPath: join(dir, CONFIG_FILENAME) };
 }
 
+/** `readdirSync`, treating an unreadable dir (permissions, a concurrent delete, ...) as empty. */
+function readEntries(dir: string): Dirent[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+
 export function listInstances(home = FOREMAN_HOME): Instance[] {
   if (!existsSync(home)) return [];
-  return readdirSync(home, { withFileTypes: true })
+  return readEntries(home)
     .filter((d) => d.isDirectory() && existsSync(join(home, d.name, CONFIG_FILENAME)))
     .map((d) => instanceFor(d.name, home))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** `resolve()`, canonicalised through symlinks when the path exists on disk. */
+function canonicalise(p: string): string {
+  const resolved = resolve(p);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    // Doesn't exist yet (e.g. a configured repoDir that has not been cloned) — compare as given.
+    return resolved;
+  }
+}
+
 function within(child: string, parent: string): boolean {
-  const c = resolve(child);
-  const p = resolve(parent);
+  const c = canonicalise(child);
+  const p = canonicalise(parent);
   return c === p || c.startsWith(p + sep);
 }
 

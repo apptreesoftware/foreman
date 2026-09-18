@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -30,6 +30,18 @@ describe("instance layout", () => {
   it("listInstances on a missing home is empty", () => {
     expect(listInstances(join(home(), "nope"))).toEqual([]);
   });
+  it("listInstances on an unreadable home is empty, not a throw", () => {
+    const h = home();
+    add(h, "a");
+    // Root ignores directory permissions, so this assertion is meaningless there.
+    if (process.getuid?.() === 0) return;
+    chmodSync(h, 0o000);
+    try {
+      expect(listInstances(h)).toEqual([]);
+    } finally {
+      chmodSync(h, 0o755);
+    }
+  });
 });
 
 describe("resolveInstance", () => {
@@ -59,6 +71,24 @@ describe("resolveInstance", () => {
     add(h, "a", "/repos/a");
     add(h, "b", "/repos/b");
     expect(resolveInstance({ env: {}, cwd: "/repos/b/.worktrees/12/src", home: h }).name).toBe("b");
+  });
+  it("matches a cwd through a symlink on either side", () => {
+    const real = mkdtempSync(join(tmpdir(), "foreman-real-"));
+    const linkParent = mkdtempSync(join(tmpdir(), "foreman-link-"));
+    const link = join(linkParent, "repo");
+    symlinkSync(real, link);
+    // A second, unrelated instance in each home so a match can only come from the symlink
+    // comparison actually working, not from the "sole instance" fallback masking a miss.
+    // repoDir configured as the symlink; cwd is the real (dereferenced) path.
+    const h = home();
+    add(h, "a", link);
+    add(h, "other", "/repos/other");
+    expect(resolveInstance({ env: {}, cwd: real, home: h }).name).toBe("a");
+    // The reverse: repoDir is the real path; cwd goes through the symlink.
+    const h2 = home();
+    add(h2, "b", real);
+    add(h2, "other", "/repos/other");
+    expect(resolveInstance({ env: {}, cwd: link, home: h2 }).name).toBe("b");
   });
   it("then the sole instance", () => {
     const h = home();
