@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { Exec } from "./exec.ts";
+import type { Exec, ExecResult } from "./exec.ts";
 import {
   GitHub,
   modelOf,
@@ -373,5 +373,128 @@ describe("GitHub writes", () => {
     const edit = calls.find((c) => c[2] === "item-edit");
     expect(edit).toContain("--single-select-option-id");
     expect(edit).toContain("PVTI_x");
+  });
+});
+
+describe("GitHub bootstrap calls", () => {
+  const exec = (r: Partial<ExecResult>, calls: string[][] = []): Exec => {
+    return async (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return { code: 0, stdout: "", stderr: "", ...r };
+    };
+  };
+
+  it("tokenScopes reads the scopes off gh auth status", async () => {
+    const gh = new GitHub(cfg, exec({ stderr: "  - Token scopes: 'project', 'repo'\n" }), false);
+    expect(await gh.tokenScopes()).toEqual(["project", "repo"]);
+    expect(await new GitHub(cfg, exec({ stdout: "" }), false).tokenScopes()).toEqual([]);
+  });
+
+  it("listLabels asks the repo for names only", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, exec({ stdout: "epic\nblocked\n\n" }, calls), false);
+    expect(await gh.listLabels()).toEqual(["epic", "blocked"]);
+    expect(calls[0]).toEqual([
+      "gh",
+      "label",
+      "list",
+      "--repo",
+      cfg.repo,
+      "--limit",
+      "200",
+      "--json",
+      "name",
+      "--jq",
+      ".[].name",
+    ]);
+  });
+
+  it("createLabel passes name, color and description", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, exec({}, calls), false);
+    await gh.createLabel({ name: "epic", color: "5319E7", description: "A phase's parent issue" });
+    expect(calls[0]).toEqual([
+      "gh",
+      "label",
+      "create",
+      "epic",
+      "--repo",
+      cfg.repo,
+      "--color",
+      "5319E7",
+      "--description",
+      "A phase's parent issue",
+    ]);
+  });
+
+  it("createProject answers the new project's number", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, exec({ stdout: '{"number":12,"id":"PVT_x"}' }, calls), false);
+    expect(await gh.createProject("acme", "widgets")).toBe(12);
+    expect(calls[0]).toEqual([
+      "gh",
+      "project",
+      "create",
+      "--owner",
+      "acme",
+      "--title",
+      "widgets",
+      "--format",
+      "json",
+    ]);
+  });
+
+  it("linkProject links the board to the repository", async () => {
+    const calls: string[][] = [];
+    await new GitHub(cfg, exec({}, calls), false).linkProject(12, "acme");
+    expect(calls[0]).toEqual([
+      "gh",
+      "project",
+      "link",
+      "12",
+      "--owner",
+      "acme",
+      "--repo",
+      cfg.repo,
+    ]);
+  });
+
+  it("projectFields answers the project id and the Status field", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, fakeExec(calls), false);
+    const f = await gh.projectFields(2, "acme");
+    expect(f.projectId).toBe("PVT_kwHOAIlXYM4BiXbz");
+    expect(f.status?.options.map((o) => o.name)).toEqual([
+      "Backlog",
+      "Ready",
+      "In Progress",
+      "In Review",
+      "Done",
+    ]);
+  });
+
+  it("projectFields answers a null status when the board has no Status field", async () => {
+    const gh = new GitHub(cfg, exec({ stdout: '{"id":"P","fields":[]}' }), false);
+    expect((await gh.projectFields(2, "acme")).status).toBeNull();
+  });
+
+  it("setStatusOptions sends one mutation naming the field and every option", async () => {
+    const calls: string[][] = [];
+    await new GitHub(cfg, exec({}, calls), false).setStatusOptions("F1", ["A", "B"]);
+    expect(calls[0]?.slice(0, 4)).toEqual(["gh", "api", "graphql", "-f"]);
+    const query = calls[0]?.[4] as string;
+    expect(query).toContain('fieldId: "F1"');
+    expect(query).toContain('{name: "A", color: GRAY');
+    expect(query).toContain('{name: "B", color: GRAY');
+  });
+
+  it("fileOnDefaultBranch is the contents API's exit code", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, exec({ stdout: "abc\n" }, calls), false);
+    expect(await gh.fileOnDefaultBranch("docs/a.md")).toBe(true);
+    expect(calls[0]).toEqual(["gh", "api", `repos/${cfg.repo}/contents/docs/a.md`, "--jq", ".sha"]);
+    expect(await new GitHub(cfg, exec({ code: 1 }), false).fileOnDefaultBranch("docs/a.md")).toBe(
+      false,
+    );
   });
 });

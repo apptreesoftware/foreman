@@ -6,7 +6,8 @@ import type { CheckState, Comment, Issue, Mergeable, PullRequest, Size, Status }
 export interface GhConfig {
   repo: string;
   owner: string;
-  project: number;
+  /** Undefined until `foreman init` has created the board; nothing that reads it runs before then. */
+  project: number | undefined;
 }
 type Kind = "issue" | "pr";
 
@@ -384,6 +385,116 @@ export class GitHub {
     return r.code === 0 && r.stdout.trim() ? r.stdout.trim() : null;
   }
 
+  /** Scopes of the current token, from `gh auth status`'s "Token scopes:" line. */
+  async tokenScopes(): Promise<string[]> {
+    const r = await this.exec("gh", ["auth", "status"]);
+    const m = /Token scopes: (.*)/.exec(`${r.stdout}\n${r.stderr}`);
+    return m ? [...(m[1] as string).matchAll(/'([^']+)'/g)].map((x) => x[1] as string) : [];
+  }
+
+  async listLabels(): Promise<string[]> {
+    const out = await this.gh([
+      "label",
+      "list",
+      "--repo",
+      this.cfg.repo,
+      "--limit",
+      "200",
+      "--json",
+      "name",
+      "--jq",
+      ".[].name",
+    ]);
+    return out
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+  }
+
+  createLabel(l: { name: string; color: string; description: string }): Promise<void> {
+    return this.write([
+      "label",
+      "create",
+      l.name,
+      "--repo",
+      this.cfg.repo,
+      "--color",
+      l.color,
+      "--description",
+      l.description,
+    ]);
+  }
+
+  async createProject(owner: string, title: string): Promise<number> {
+    const out = JSON.parse(
+      await this.gh(["project", "create", "--owner", owner, "--title", title, "--format", "json"]),
+    ) as { number: number };
+    return out.number;
+  }
+
+  linkProject(number: number, owner: string): Promise<void> {
+    return this.write([
+      "project",
+      "link",
+      String(number),
+      "--owner",
+      owner,
+      "--repo",
+      this.cfg.repo,
+    ]);
+  }
+
+  async projectFields(
+    number: number,
+    owner: string,
+  ): Promise<{
+    projectId: string;
+    status: { id: string; options: Array<{ id: string; name: string }> } | null;
+  }> {
+    const view = JSON.parse(
+      await this.gh(["project", "view", String(number), "--owner", owner, "--format", "json"]),
+    ) as { id: string };
+    const fields = JSON.parse(
+      await this.gh([
+        "project",
+        "field-list",
+        String(number),
+        "--owner",
+        owner,
+        "--format",
+        "json",
+      ]),
+    ) as {
+      fields: Array<{ id: string; name: string; options?: Array<{ id: string; name: string }> }>;
+    };
+    const status = fields.fields.find((f) => f.name === "Status");
+    return {
+      projectId: view.id,
+      status: status?.options ? { id: status.id, options: status.options } : null,
+    };
+  }
+
+  /** Replaces the single-select options wholesale; only ever called on a project `init` just created. */
+  setStatusOptions(fieldId: string, names: string[]): Promise<void> {
+    const options = names.map((n) => `{name: "${n}", color: GRAY, description: ""}`).join(", ");
+    return this.write([
+      "api",
+      "graphql",
+      "-f",
+      `query=mutation { updateProjectV2Field(input: {fieldId: "${fieldId}", singleSelectOptions: [${options}]}) { projectV2Field { ... on ProjectV2SingleSelectField { id } } } }`,
+    ]);
+  }
+
+  async fileOnDefaultBranch(path: string): Promise<boolean> {
+    const r = await this.exec("gh", [
+      "api",
+      `repos/${this.cfg.repo}/contents/${path}`,
+      "--jq",
+      ".sha",
+    ]);
+    return r.code === 0;
+  }
+
   async statusField(): Promise<{
     fieldId: string;
     projectId: string;
@@ -595,5 +706,30 @@ export type GitHubApi = Pick<
   | "addSubIssue"
   | "viewerLogin"
   | "defaultBranch"
+  | "tokenScopes"
+  | "listLabels"
+  | "createLabel"
+  | "createProject"
+  | "linkProject"
+  | "projectFields"
+  | "setStatusOptions"
+  | "fileOnDefaultBranch"
   | "dryRun"
+>;
+
+/** What `foreman init` and `foreman epic new` need of `GitHub`, and nothing else. */
+export type BootstrapApi = Pick<
+  GitHub,
+  | "tokenScopes"
+  | "listLabels"
+  | "createLabel"
+  | "createProject"
+  | "linkProject"
+  | "projectFields"
+  | "setStatusOptions"
+  | "fileOnDefaultBranch"
+  | "createIssue"
+  | "addToProject"
+  | "setStatus"
+  | "addLabels"
 >;

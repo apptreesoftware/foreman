@@ -6,7 +6,8 @@ import { NotifyConfigSchema } from "./notify.ts";
 
 export const ConfigSchema = z.object({
   repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
-  project: z.number().int().positive(),
+  /** The board's number. Absent until `foreman init` creates it, which is what fills this in. */
+  project: z.number().int().positive().optional(),
   host: z.string().min(1),
   repoDir: z.string().min(1),
   /** Where role worktrees live. Absent means `<repoDir>/.worktrees`, so they stay in the repo. */

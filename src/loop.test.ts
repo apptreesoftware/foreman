@@ -70,6 +70,14 @@ function fakeGh(issues: Issue[]) {
     addSubIssue: rec("addSubIssue"),
     viewerLogin: async () => "matthewtsmith",
     defaultBranch: async () => "main",
+    tokenScopes: async () => ["project"],
+    listLabels: async () => [],
+    createLabel: rec("createLabel"),
+    createProject: async () => 1,
+    linkProject: rec("linkProject"),
+    projectFields: async () => ({ projectId: "PVT_1", status: null }),
+    setStatusOptions: rec("setStatusOptions"),
+    fileOnDefaultBranch: async () => true,
   };
   return { gh, calls };
 }

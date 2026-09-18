@@ -74,6 +74,8 @@ export async function runCtl(
   }
 
   async function next(): Promise<void> {
+    if (cfg.project === undefined)
+      throw new Error(`project is not set; run foreman -p ${instance.name} init`);
     const gh = new GitHub(
       { repo: cfg.repo, owner: cfg.owner, project: cfg.project },
       realExec,

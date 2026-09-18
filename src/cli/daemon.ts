@@ -43,6 +43,11 @@ export async function runDaemon(
 
   const STATE_DIR = instance.dir;
   const cfg = loadConfig(instance.configPath);
+  // Every tick reads the board; without one there is nothing to run, and `init` is what makes it.
+  if (cfg.project === undefined) {
+    process.stderr.write(`foreman: project is not set; run foreman -p ${instance.name} init\n`);
+    process.exit(2);
+  }
   const repo = loadRepoConfig(cfg.repoDir);
   const once = o.once;
   const dryRun = o.dryRun;
