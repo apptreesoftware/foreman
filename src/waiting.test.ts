@@ -45,6 +45,38 @@ describe("describeWaiting", () => {
       detail: "#7 is agent-ready but Status Backlog",
     });
   });
+  it("an agent-ready issue with no `Parent epic:` line is explained, not hidden", () => {
+    // The picker takes planner tasks only, and nothing adopts an issue onto the board any more,
+    // so without this line a hand-made issue sits Ready for ever with no candidate and no log.
+    const s = snapshot({
+      issues: [issue({ number: 7, body: "## Depends on\nNone\n\n## Spec\ndocs/x.md" })],
+    });
+    expect(describeWaiting(s, base)[0]).toMatchObject({
+      kind: "human",
+      subject: "#7",
+      detail: "#7 is agent-ready but not a planner task (no Parent epic line)",
+    });
+  });
+  it("stays quiet once the issue carries its `Parent epic:` line", () => {
+    expect(kinds(snapshot({ issues: [issue({ number: 7 })] }))).toEqual([]);
+  });
+  it("reports an off-board agent-ready issue the same way", () => {
+    const s = snapshot({
+      issues: [
+        issue({
+          number: 8,
+          status: null,
+          itemId: null,
+          body: "## Depends on\nNone\n\n## Spec\ndocs/x.md",
+        }),
+      ],
+    });
+    expect(describeWaiting(s, base)[0]).toMatchObject({
+      kind: "human",
+      subject: "#8",
+      detail: "#8 is agent-ready but not a planner task (no Parent epic line)",
+    });
+  });
   it("stays quiet for an agent-ready issue that is In Progress or claimed", () => {
     const claimed = issue({
       number: 7,

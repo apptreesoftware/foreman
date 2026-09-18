@@ -1,4 +1,4 @@
-import { parseDependsOn } from "./github.ts";
+import { parentEpicOf, parseDependsOn } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
 import { buildingEpic, planAwaitingOwner } from "./phase.ts";
 import { heldPhases, issuePhase } from "./pick.ts";
@@ -202,19 +202,33 @@ export function describeWaiting(
         });
     }
   }
-  // `agent-ready` but parked in a Status the picker never reads. Backlog and Done are the two
-  // that no other line explains: Backlog is where the planner leaves a task whose dependencies
-  // were still open, and Done on an open issue is a stale write. In Progress and In Review are
-  // normal mid-flight states, so they stay quiet (#249).
+  // `agent-ready` and yet unpickable. Two reasons, one line each, because neither leaves any
+  // other trace: no candidate, no session, no log.
+  //  - Parked in a Status the picker never reads. Backlog and Done are the two that no other
+  //    line explains: Backlog is where the planner leaves a task whose dependencies were still
+  //    open, and Done on an open issue is a stale write. In Progress and In Review are normal
+  //    mid-flight states, so they stay quiet (#249).
+  //  - No `Parent epic: #N` line, which the picker now requires. Nothing adopts an issue onto
+  //    the board any more either, so a hand-made issue — Ready, or off the board entirely —
+  //    would otherwise sit there for ever. Reporting it is all this does; the owner adds the
+  //    line or the planner does.
   for (const x of s.issues) {
     if (x.state !== "OPEN" || isEpic(x.number) || !x.labels.includes("agent-ready")) continue;
-    if ((x.status !== "Backlog" && x.status !== "Done") || openClaim(x.comments)) continue;
-    out.push({
-      kind: "human",
-      subject: `#${x.number}`,
-      detail: `#${x.number} is agent-ready but Status ${x.status}`,
-      since: x.updatedAt,
-    });
+    if (openClaim(x.comments)) continue;
+    if (x.status === "Backlog" || x.status === "Done")
+      out.push({
+        kind: "human",
+        subject: `#${x.number}`,
+        detail: `#${x.number} is agent-ready but Status ${x.status}`,
+        since: x.updatedAt,
+      });
+    else if (parentEpicOf(x.body) === null)
+      out.push({
+        kind: "human",
+        subject: `#${x.number}`,
+        detail: `#${x.number} is agent-ready but not a planner task (no Parent epic line)`,
+        since: x.updatedAt,
+      });
   }
   for (const x of s.issues) {
     const open = openClaim(x.comments);
