@@ -123,12 +123,17 @@ describe("writeSessionFiles", () => {
     const out = writeSessionFiles(stateDir, fixtureRepo, "builder", defaultRepoConfig());
     const settings = JSON.parse(readFileSync(out.settingsPath, "utf8"));
     expect(settings.permissions.deny).toEqual(expect.arrayContaining(worktreeDenies(fixtureRepo)));
-    expect(worktreeDenies(fixtureRepo)).toEqual([
-      `Edit(//${fixtureRepo}/.foreman/**)`,
-      `Write(//${fixtureRepo}/.foreman/**)`,
-      `Edit(//${fixtureRepo}/.claude/**)`,
-      `Write(//${fixtureRepo}/.claude/**)`,
+    // Exactly two leading slashes: `//` is Claude Code's absolute-path prefix and the path that
+    // follows it has none of its own. `///Users/…` loses one character to the parser and then
+    // matches nothing at all.
+    const rules = worktreeDenies("/Users/me/.worktrees/123");
+    expect(rules).toEqual([
+      "Edit(//Users/me/.worktrees/123/.foreman/**)",
+      "Write(//Users/me/.worktrees/123/.foreman/**)",
+      "Edit(//Users/me/.worktrees/123/.claude/**)",
+      "Write(//Users/me/.worktrees/123/.claude/**)",
     ]);
+    for (const r of [...rules, ...worktreeDenies(fixtureRepo)]) expect(r).not.toMatch(/\(\/\/\//);
   });
   it("PACKAGE_ROOT holds roles/ and settings/", () => {
     expect(existsSync(join(PACKAGE_ROOT, "roles", "ground-rules.md"))).toBe(true);

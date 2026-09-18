@@ -110,16 +110,18 @@ export function readBaseSettings(): HeadlessSettings {
  * branch: a builder that could append to `.foreman/settings.json` would widen the reviewer's and
  * validator's permissions, rewriting `rules.md` would rewrite the reviewer's House rules, and
  * `.claude/settings.json` is loaded via `--setting-sources user,project` and can define hooks.
- * The base deny list covers `~/.claude/**` and `~/.foreman/**`; these cover the worktree. `//` is
- * Claude Code's absolute-path form.
+ * The base deny list covers `~/.claude/**` and `~/.foreman/**`; these cover the worktree.
+ *
+ * `//` is Claude Code's absolute-path prefix and it replaces the path's own leading slash, so an
+ * already-absolute worktree has to give that slash up: `//Users/me/wt/.foreman/**`, never
+ * `///Users/…`, which the rule parser shortens to `//Users/…` and which then matches nothing.
  */
 export function worktreeDenies(worktree: string): string[] {
-  return [
-    `Edit(//${worktree}/.foreman/**)`,
-    `Write(//${worktree}/.foreman/**)`,
-    `Edit(//${worktree}/.claude/**)`,
-    `Write(//${worktree}/.claude/**)`,
-  ];
+  const abs = worktree.replace(/^\/+/, "");
+  return ["foreman", "claude"].flatMap((dir) => [
+    `Edit(//${abs}/.${dir}/**)`,
+    `Write(//${abs}/.${dir}/**)`,
+  ]);
 }
 
 /** Spec §7: the files `claude -p` is pointed at, regenerated per dispatch from the worktree's `.foreman/`. */
