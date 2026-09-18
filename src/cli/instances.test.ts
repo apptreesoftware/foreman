@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { addInstance } from "./instances.ts";
+import { addInstance, parseWebPort } from "./instances.ts";
 
 describe("addInstance", () => {
   it("writes foreman.json with the first free port from 8090", () => {
@@ -26,6 +26,21 @@ describe("addInstance", () => {
     expect(() =>
       addInstance({ name: "b", repo: "acme/b", repoDir: "/r/b", host: "h", webPort: 9000, home }),
     ).toThrow(/9000.*a/);
+  });
+  it("refuses a --web-port that is not a port, and writes nothing", () => {
+    const home = mkdtempSync(join(tmpdir(), "home-"));
+    // `Number("8O91")` — a capital O for a zero — is NaN, which JSON.stringify writes as null.
+    expect(() =>
+      addInstance({ name: "a", repo: "acme/a", repoDir: "/r/a", webPort: Number("8O91"), home }),
+    ).toThrow(/whole number from 1 to 65535/);
+    expect(() =>
+      addInstance({ name: "a", repo: "acme/a", repoDir: "/r/a", webPort: 70000, home }),
+    ).toThrow(/whole number from 1 to 65535/);
+    expect(existsSync(join(home, "a", "foreman.json"))).toBe(false);
+  });
+  it("parseWebPort quotes what was typed", () => {
+    expect(parseWebPort("8091")).toBe(8091);
+    expect(() => parseWebPort("8O91")).toThrow(/got "8O91"/);
   });
   it("host defaults to the lowercased short hostname", () => {
     const home = mkdtempSync(join(tmpdir(), "home-"));

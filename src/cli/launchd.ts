@@ -17,6 +17,8 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
 export function renderPlist(o: {
   label: string;
+  /** The interpreter, spelled out: launchd posix_spawns argv[0] itself and resolves no shebang. */
+  node: string;
   foremanBin: string;
   instance: string;
   stateDir: string;
@@ -29,7 +31,7 @@ export function renderPlist(o: {
 <dict>
   <key>Label</key><string>${esc(o.label)}</string>
   <key>ProgramArguments</key>
-  <array><string>${esc(o.foremanBin)}</string><string>-p</string><string>${esc(o.instance)}</string><string>run</string></array>
+  <array><string>${esc(o.node)}</string><string>${esc(o.foremanBin)}</string><string>-p</string><string>${esc(o.instance)}</string><string>run</string></array>
   <key>EnvironmentVariables</key>
   <dict><key>HOME</key><string>${esc(o.home)}</string><key>PATH</key><string>${esc(o.path)}</string></dict>
   <key>RunAtLoad</key><true/>
@@ -52,6 +54,10 @@ export async function launchdInstall(i: Instance, foremanBin: string): Promise<s
     p,
     renderPlist({
       label,
+      // The node running this command, by absolute path: a bare `foreman` would leave launchd to
+      // exec a file that may not be executable and a `#!/usr/bin/env node` it cannot resolve from
+      // the plist's PATH. A node moved by `nvm use` needs `launchd install` run again.
+      node: process.execPath,
       foremanBin,
       instance: i.name,
       stateDir: i.dir,

@@ -8,6 +8,7 @@ describe("launchd", () => {
   it("plist runs `foreman -p <name> run` with KeepAlive, logs under the state dir, and no billing vars", () => {
     const p = renderPlist({
       label: "com.apptreesoftware.foreman.widgets",
+      node: "/usr/local/bin/node",
       foremanBin: "/opt/homebrew/bin/foreman",
       instance: "widgets",
       stateDir: "/Users/me/.foreman/widgets",
@@ -16,7 +17,7 @@ describe("launchd", () => {
     });
     expect(p).toContain("<key>Label</key><string>com.apptreesoftware.foreman.widgets</string>");
     expect(p).toContain(
-      "<string>/opt/homebrew/bin/foreman</string><string>-p</string><string>widgets</string><string>run</string>",
+      "<string>/usr/local/bin/node</string><string>/opt/homebrew/bin/foreman</string><string>-p</string><string>widgets</string><string>run</string>",
     );
     expect(p).toContain("<key>KeepAlive</key><true/>");
     expect(p).toContain("<key>RunAtLoad</key><true/>");

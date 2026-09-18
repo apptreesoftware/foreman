@@ -14,7 +14,7 @@ import { parseCli, USAGE } from "./args.ts";
 import { runCtl } from "./ctl.ts";
 import { runDaemon } from "./daemon.ts";
 import { runHookCommand } from "./hooks.ts";
-import { addInstance, formatList } from "./instances.ts";
+import { addInstance, formatList, parseWebPort } from "./instances.ts";
 import { launchdInstall, launchdLabel, launchdUninstall } from "./launchd.ts";
 
 function pidAlive(pid: number): boolean {
@@ -79,7 +79,8 @@ async function main(): Promise<number> {
       repo,
       repoDir,
       host: typeof cli.args.host === "string" ? cli.args.host : undefined,
-      webPort: typeof cli.args["web-port"] === "string" ? Number(cli.args["web-port"]) : undefined,
+      webPort:
+        typeof cli.args["web-port"] === "string" ? parseWebPort(cli.args["web-port"]) : undefined,
     });
     out(`added ${i.name}: ${i.configPath}\nnext: foreman -p ${i.name} init`);
     return 0;

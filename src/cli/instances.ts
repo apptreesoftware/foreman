@@ -4,6 +4,22 @@ import { type Instance, instanceFor, listInstances, writeInstanceConfig } from "
 
 const FIRST_PORT = 8090;
 
+const portError = (got: unknown) =>
+  `--web-port must be a whole number from 1 to 65535, got ${JSON.stringify(got)}`;
+
+const validPort = (p: number) => Number.isInteger(p) && p >= 1 && p <= 65535;
+
+/**
+ * `--web-port` as typed. `Number()` alone turns a typo into NaN, which JSON.stringify writes to
+ * foreman.json as `null` — an instance every later `loadConfig` rejects — so it is rejected here,
+ * quoting the input rather than the coerced value.
+ */
+export function parseWebPort(input: string): number {
+  const p = Number(input);
+  if (!validPort(p)) throw new Error(portError(input));
+  return p;
+}
+
 /** The instance's configured web port; null when its foreman.json cannot be read at all. */
 function portOf(i: Instance): number | null {
   try {
@@ -33,8 +49,12 @@ export function addInstance(o: {
   if (webPort === undefined) {
     webPort = FIRST_PORT;
     while (taken.has(webPort)) webPort++;
-  } else if (taken.has(webPort))
-    throw new Error(`web port ${webPort} is used by instance "${taken.get(webPort)}"`);
+  } else {
+    // NaN would defeat the duplicate check below as well as the config it writes, so it stops here.
+    if (!validPort(webPort)) throw new Error(portError(webPort));
+    if (taken.has(webPort))
+      throw new Error(`web port ${webPort} is used by instance "${taken.get(webPort)}"`);
+  }
   const host =
     o.host ??
     hostname()
