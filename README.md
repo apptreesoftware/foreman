@@ -1,29 +1,232 @@
-# The foreman
+# foreman
 
-`tools/foreman` is a small TypeScript daemon that runs the Tone & Tonic issue pipeline unattended. It shells out to the `claude` CLI (`claude -p`) to run builder, reviewer, validator, phase-closer, and planner sessions against GitHub issues, and does deterministic bookkeeping — labels, project board status, PR merges — in between. All judgment happens inside the `claude -p` sessions; the foreman itself never decides anything more interesting than "whose turn is it" and "did CI pass."
+[![npm](https://img.shields.io/npm/v/@apptreesoftware/foreman)](https://www.npmjs.com/package/@apptreesoftware/foreman)
 
-Design: `docs/superpowers/specs/2026-09-03-autonomous-foreman-design.md`. Build history: `docs/superpowers/plans/2026-09-03-phase-0.5-foreman.md`.
+```bash
+npm i -g @apptreesoftware/foreman
+```
 
-## 1. What it does
+## 1. What it is
 
-Every `pollSeconds` (config, default 300s), the foreman wakes up and runs one iteration:
+The foreman is a small TypeScript daemon that runs a GitHub issue pipeline unattended. It shells
+out to the `claude` CLI (`claude -p`) to run planner, builder, reviewer, validator and
+phase-closer sessions against issues on a GitHub Projects v2 board, and does the deterministic
+bookkeeping — labels, board status, claims, PR merges — in between. All judgment happens inside
+the `claude -p` sessions; the foreman itself never decides anything more interesting than "whose
+turn is it" and "did CI pass".
 
-1. **Preflight.** Refuses to run if `ANTHROPIC_API_KEY` (or any other API-billing env var) is set, `~/.tone_tonic/STOP` exists, `claude auth status` isn't a `claude.ai` subscription login, `gh auth status` fails, Docker isn't responding, or the day's session count is at `maxSessionsPerDay`. See `src/preflight.ts`.
-2. **Resume check.** If an issue on the board is In Progress and claimed by this host, the foreman resumes that session instead of picking anything new.
-3. **Merge sweep.** For every open, non-draft PR whose issue is In Review: if CI is green, the PR carries `reviewer:approved`, and it carries `validator:passed` or `validator:skipped`, the foreman squash-merges, closes the issue, sets Status Done, and comments `merged by foreman@<host>`.
-4. **CI rerun.** For every in-review PR whose checks are `failure`, with no open claim, no `blocked` label and no paused epic, the foreman reruns the failed jobs of the newest workflow run for the PR's head commit (`gh api .../actions/runs/<id>/rerun-failed-jobs`) and comments `ci rerun by foreman@<host> for <sha>` on the issue. `MAX_CI_RERUNS` (1) per head sha, counted from that ledger comment, so a push starts the budget over and a daemon restart does not forget. This is the cheap half of the red-CI recovery: most failures are flakes, and a rerun costs runner time and no model tokens. The expensive half is in the pick — a red PR whose rerun is spent gets a builder **fix** round, ahead of review and validation, bounded by `MAX_FIX_ROUNDS` like any other, and `blocked` after that. Before this (#362) a red check produced no action at all: `mergeDecision` refused the merge on `checks failure` and the picker had no branch for an already-approved, already-validated PR, so the tick logged `idle(nothing eligible)` every five minutes for ever, and nothing reached the Needs you card. #344 stalled that way for over an hour on a flaky Playwright spec.
-5. **Adopt.** Every tick re-reads the project board (the board cache is dropped at the start of the tick's one issue read, so a Status set by hand or an item added in the UI is seen by the next tick, not after the foreman's own next write or a restart — #249). An open, non-epic issue labelled `agent-ready` with no project item is added to the board, set to Status `Ready`, and told so on the issue: `adopted onto board by foreman@<host>`, with an `adopted onto board` log line. Without this an issue created in an interactive session and never added to the board is invisible to the picker, and everything that depends on it stalls while the log reads `idle(nothing eligible)` (#220 held all of Phase 1 that way).
-6. **Pick.** Candidates are issues with Status Ready, label `agent-ready`, no open claim, every "Depends on" issue closed, and whose phase epic isn't `foreman:pause`d. Open PRs needing review or validation are also candidates, and so is an approved PR whose branch GitHub reports as `CONFLICTING`: that gets a **rebase** round — a builder session that only merges `origin/main`, runs the checks and pushes — at the current fix-round number, so it never counts toward `MAX_FIX_ROUNDS` (#237). Priority: lowest phase number, then rebase, review and validate jobs before fix rounds, then new builds; among builds, one whose **Touches** section overlaps an issue that already has an open PR sorts after one that does not, then `size:S` before `M` before `L`. A phase with `MAX_BLOCKED_PER_PHASE` (2) or more open `blocked` tasks starts **no new builds** until the owner unblocks one — review, fix, validate and rebase jobs still run there — because every blocked task is owner work and stacking more branches on the same files only breeds conflicts; `ctl status` says `phase N held: 2 blocked tasks need you before any new build starts`.
-7. **Claim.** The foreman comments `claimed by <host> at <iso> role=<role> round=<n>`, assigns itself, and (for a first-round build) sets Status In Progress. If another host's claim comment landed in the same window, the alphabetically first host keeps it; the others comment `released by <host>: conflict` and unassign. The ledger (issue comments), not the GitHub assignee, is authoritative — two Macs can share one GitHub login.
-8. **Dispatch.** Creates or reuses a git worktree at `<workDir>/<issue>` — by default `<repoDir>/.worktrees/<issue>`, so worktrees stay inside the clone — on branch `feat/<issue>-<slug>`, runs `pnpm install`, and invokes `claude -p` with the role's prompt file, the issue/PR/worktree/branch context, `--max-turns <maxTurns>`, `--model <model>`, and a `wallClockMinutes` timeout. Posts `session <id> on <host> role=<role> attempt=<n>` before each attempt. Records the session in `~/.tone_tonic/state.json` (`current`) until it ends. Before a builder, a reviewer or a validator — the sessions that run `pnpm db:reset` or serve the app, whatever the issue is labelled — it points the worktree's `packages/db/supabase/config.toml` at the isolated `tone_tonic_val` stack (`packages/db/scripts/role-config.sh`, 556xx) and passes `TONE_WEB_PORT=8182`, `TONE_API_PORT=3105`, `SUPABASE_API_URL=http://127.0.0.1:55621`. It marks the rewritten file `skip-worktree` so the session's own `git add -A` cannot stage it, and restores it (`--no-skip-worktree`, then `git checkout --`) before every session and again afterwards, whatever the role, so neither this session's rewrite nor one a crashed session left behind ever reaches a commit (#228).
-9. **Outcome.** Parses the session's structured JSON outcome. On a validator `passed`/`failed`, first copies `<worktree>/.validation-artifacts/<pr>/` — where the validator leaves its screenshots, because a headless session cannot write outside its worktree — to `~/.tone_tonic/artifacts/<pr>/` and logs the destination, so the artifacts survive the worktree being removed at merge. Then applies labels/Status (table below). A session that ends without a valid outcome is retried up to 3 attempts total (`dispatchWithRetry` in `src/dispatch.ts`); if all 3 fail, the issue is labeled `blocked` with a log excerpt and unassigned.
-9. **Phase check.** If every task under a phase epic is closed, dispatches the phase-closer. Then the planner, which is gated three ways (`src/phase.ts`): the epic must carry **`agent-ready`** (the owner's go-ahead — without it the foreman never plans anything), no approved phase may still be building, and no other epic's drafted plan may be waiting on the owner. When it dispatches, the epic is assigned and set In Progress so the hour-long session is visible on the board; `plan_drafted` then sets the epic In Review, adds `needs-owner`, removes `agent-ready` and unassigns. Labeling the epic `plan-approved` applies the plan, clears `needs-owner`, and puts the epic back In Progress. Re-adding `agent-ready` asks for a re-plan. Applying a plan fetches `origin` and reads `docs/superpowers/plans/<date>-phase-NN-plan.issues.json` from `origin/main`, so merging the plan PR is enough — the clone at `repoDir` never has to be pulled by hand. If the file is not on `origin/main` yet, the foreman logs and retries on the next tick rather than recording the plan as applied.
+One daemon runs one repository. Several daemons run on one Mac, one per repository, each with its
+own state directory, its own daily budget and its own web page. Everything the daemon needs to
+know about a repository — how to install it, what the checks are, what a validator boots, what a
+reviewer must check — is committed in that repository under `.foreman/`, so the tool itself stays
+generic and a change to the process ships as a pull request like anything else.
 
-`src/state.ts`'s `plan()` runs these in order and stops after the first action that would start a `claude -p` session, so at most one session runs per iteration per Mac.
+The pipeline is fixed and always on: **epic → planner → tasks → builder → reviewer → validator →
+merge → phase-closer**. The five roles are hardcoded, the label names and board statuses are
+hardcoded, and the foreman only works tasks that its own planner created. Section 4 is the whole
+process; section 5 is everything a repository gets to change about it.
 
-An iteration that did work does **not** then sleep `pollSeconds`. Work is any action that changed the board: a session started (it has already spent its minutes inside step 8), a PR merged (its dependents are now unblocked), a plan applied, a claim released, an issue blocked. A CI rerun is deliberately **not** work: its checks stay pending for minutes, so an immediate re-tick would only re-read an unchanged board. The next tick runs immediately — `state.json`'s `nextTickAt` says so, and the log line is `ticking again immediately` with the last `action` that earned it (a tick that merged and then dispatched a session names the session). An iteration that found nothing eligible still sleeps the full interval, as does one whose only action was an `apply_plan` still waiting for its plan file to reach `origin/main`; a failed iteration still backs off (doubling per consecutive failure, capped at `MAX_BACKOFF_SECONDS`, 900s). A `--dry-run` loop never shortens the wait, because in dry-run nothing is actually done.
+Design: [`docs/2026-09-18-foreman-extraction-design.md`](docs/2026-09-18-foreman-extraction-design.md).
 
-Applying a plan is idempotent: a task without a `number` is created only if no open issue already carries its title and a `Parent epic: #<epic>` line. A tick that failed after creating some tasks therefore finishes the plan on retry instead of creating duplicates. A reused issue is also added to the epic's sub-issues if the failed attempt never got that far — a task the epic does not own is invisible to `phaseComplete`, which would close the phase around it.
+## 2. Install
+
+On a Mac, with [Homebrew](https://brew.sh):
+
+```bash
+brew install gh node@22
+npm i -g @apptreesoftware/foreman
+foreman help
+```
+
+Node 22 is required (`"engines": { "node": ">=22.18 <23" }`). `launchd` is macOS-only; `foreman
+run` works anywhere Node does.
+
+Authenticate `gh` with the scopes the board needs:
+
+```bash
+gh auth login
+gh auth refresh -s project,read:project
+gh auth status          # must list 'project' under "Token scopes"
+```
+
+Install the `claude` CLI and log it in **once, interactively**, so that sessions run against a
+Claude subscription rather than API billing:
+
+```bash
+claude                  # accept the trust dialog, then quit
+claude auth status      # must show "authMethod":"claude.ai"
+```
+
+The daemon refuses to start a session if `claude auth status` is anything else, or if
+`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`,
+`ANTHROPIC_FOUNDRY_API_KEY` or `ANTHROPIC_AWS_API_KEY` is set in its environment. Check with:
+
+```bash
+env | grep -i -E 'anthropic|claude_code_use'    # must print nothing
+```
+
+Verify the billing once per Mac before you leave a daemon running unattended: run one session,
+then confirm <https://platform.claude.com/settings/usage> shows **no** new API usage and
+<https://claude.ai/settings/usage> shows the session that just ran.
+
+## 3. Set up a repository
+
+Four commands take a repository from nothing to a daemon working its first phase.
+
+```bash
+git clone git@github.com:acme/widgets.git ~/Projects/widgets
+foreman add widgets --repo acme/widgets --repo-dir ~/Projects/widgets
+foreman -p widgets init
+```
+
+`add` writes `~/.foreman/widgets/foreman.json` and picks the first free web port from 8090. `host`
+defaults to this Mac's short hostname, lowercased — it is how ledger comments tell Macs apart, so
+override it with `--host` if two Macs would collide. `--web-port` pins the port; `add` refuses one
+another instance already holds.
+
+`init` is idempotent and does four things, in order:
+
+1. Checks the `gh` token has the `project` scope, and stops with the `gh auth refresh` line if not.
+2. Creates any missing label: `epic`, `agent-ready`, `blocked`, `needs-owner`, `decision`,
+   `plan-approved`, `signed-off`, `foreman:pause`, `sandbox`, `reviewer:approved`,
+   `reviewer:changes`, `validator:passed`, `validator:failed`, `validator:skipped`, `size:S`,
+   `size:M`, `size:L`, and `model:<m>` for each entry in `.foreman/config.json`'s `models`.
+   `phase:N` and `area:*` labels are created later, by `epic new` and by the planner.
+3. Creates a Projects v2 board, links it to the repository, sets the `Status` single-select
+   options to exactly **Backlog, Ready, In Progress, In Review, Done**, and writes the project
+   number back into `foreman.json`. If `project` is already set it verifies the field and reports
+   drift instead of editing.
+4. Scaffolds `.foreman/` in the clone if it is absent: `config.json` with the defaults,
+   an empty `rules.md`, `settings.json` with empty `allow`/`deny`, and an empty `hooks/`.
+
+Nothing in step 4 is committed. Review it, fill in `rules.md`, and commit it — the daemon reads
+`.foreman/` **from the worktree at dispatch time**, so a PR that changes it applies to the
+sessions that run on that branch:
+
+```bash
+cd ~/Projects/widgets
+$EDITOR .foreman/config.json .foreman/rules.md
+git add .foreman && git commit -m "chore: foreman config" && git push
+```
+
+Open the phase epic — the one human-made issue per phase, and the only entry point:
+
+```bash
+foreman -p widgets epic new --title "Phase 1: accounts" --phase 1 --spec docs/specs/accounts.md --agent-ready
+```
+
+The spec path must exist on the default branch and match `plans.specGlob`. The issue is created
+with labels `epic`, `phase:1` and (with `--agent-ready`) `agent-ready`, body `## Spec\n<path>`, and
+added to the board at **Backlog**. Without `--agent-ready` the planner will not touch it until you
+add the label by hand — that is the go-ahead.
+
+Dry-run one iteration, which reads GitHub and writes nothing:
+
+```bash
+foreman -p widgets run --once --dry-run
+```
+
+Expect a `preflight ok` line and a `plan` line. Then run it for real:
+
+```bash
+foreman -p widgets run --once      # one iteration in the foreground
+foreman -p widgets start           # detach, log to ~/.foreman/widgets/logs/foreman.log
+foreman -p widgets status --watch
+foreman -p widgets page            # opens http://127.0.0.1:8090
+```
+
+Once you trust it, hand it to `launchd` so it starts at login and comes back after a crash:
+
+```bash
+foreman -p widgets launchd install
+foreman -p widgets launchd status
+foreman -p widgets launchd uninstall
+```
+
+`launchd install` writes `~/Library/LaunchAgents/com.apptreesoftware.foreman.widgets.plist` with
+concrete paths and bootstraps it. The plist sets `KeepAlive`, `RunAtLoad` and `ThrottleInterval`
+60 s, and unsets the API-billing environment variables.
+
+## 4. The process
+
+Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
+
+1. **Preflight.** Refuses to run if an API-billing environment variable is set, if
+   `~/.foreman/<name>/STOP` exists, if `claude auth status` is not a `claude.ai` login, if `gh auth
+   status` fails or its token lacks the `project` scope, if GitHub reports fewer than
+   `minGraphqlPoints` GraphQL points left, or if today's session count has reached
+   `maxSessionsPerDay`. Then it runs the repository's `preflight` hook (§5).
+2. **Resume check.** If an issue on the board is In Progress and claimed by this host, that
+   session is resumed instead of anything new being picked.
+3. **Merge sweep.** For every open, non-draft PR whose issue is In Review: if CI is green, the PR
+   carries `reviewer:approved`, and it carries `validator:passed` or `validator:skipped`, the
+   foreman squash-merges, closes the issue, sets Status Done and comments `merged by
+   foreman@<host>`.
+4. **CI rerun.** For every in-review PR whose checks are `failure`, with no open claim, no
+   `blocked` label and no paused epic, the foreman reruns the failed jobs of the newest workflow
+   run for the PR's head commit and comments `ci rerun by foreman@<host> for <sha>` on the issue.
+   `limits.ciReruns` (1) per head sha, counted from that ledger comment, so a push starts the
+   budget over and a daemon restart does not forget. This is the cheap half of red-CI recovery:
+   most failures are flakes, and a rerun costs runner time and no model tokens. The expensive half
+   is in the pick — a red PR whose rerun is spent gets a builder **fix** round, ahead of review and
+   validation, bounded by `limits.fixRounds` like any other, and `blocked` after that.
+5. **Pick.** Candidates are issues with Status Ready, label `agent-ready`, a `Parent epic: #N`
+   line in the body, no open claim, every "Depends on" issue closed, and a phase epic that is not
+   `foreman:pause`d. Open PRs needing review or validation are candidates too, and so is an
+   approved PR whose branch GitHub reports as `CONFLICTING`: that gets a **rebase** round — a
+   builder session that only merges the default branch, runs the checks and pushes — at the
+   current fix-round number, so it never counts toward `limits.fixRounds`. Priority: lowest phase
+   number, then rebase, review and validate jobs before fix rounds, then new builds; among builds,
+   one whose **Touches** section overlaps an issue that already has an open PR sorts after one
+   that does not, then `size:S` before `M` before `L`. A phase with `limits.blockedPerPhase` (2)
+   or more open `blocked` tasks starts **no new builds** until the owner unblocks one — review,
+   fix, validate and rebase jobs still run there — because every blocked task is owner work and
+   stacking more branches on the same files only breeds conflicts.
+6. **Claim.** The foreman comments `claimed by <host> at <iso> role=<role> round=<n>`, assigns
+   itself, and (for a first-round build) sets Status In Progress. If another host's claim comment
+   landed in the same window, the alphabetically first host keeps it; the others comment `released
+   by <host>: conflict` and unassign. The ledger — issue comments, not the GitHub assignee — is
+   authoritative, so two Macs can share one GitHub login.
+7. **Dispatch.** Creates or reuses a git worktree at `<workDir>/<issue>` — by default
+   `<repoDir>/.worktrees/<issue>`, so worktrees stay inside the clone — on branch
+   `feat/<issue>-<slug>`, runs the repository's `setup` command, composes the role prompt and the
+   headless settings from the worktree's `.foreman/` (§5), runs the `session-env` and
+   `before-session` hooks, and invokes `claude -p` with the role prompt, the issue/PR/worktree/
+   branch context, `--max-turns <maxTurns>`, `--model <model>` and a `wallClockMinutes` timeout.
+   It posts `session <id> on <host> role=<role> attempt=<n>` before each attempt and runs
+   `after-session` when the child ends, however it ends.
+8. **Outcome.** Parses the session's structured JSON outcome —
+   `{"outcome": ..., "pr": <number|null>, "notes": "..."}` — and applies the labels and Status in
+   the table below. On a validator `passed`/`failed` it first copies
+   `<worktree>/.validation-artifacts/<pr>/` to `~/.foreman/<name>/artifacts/<pr>/`, because a
+   headless session cannot write outside its worktree and the worktree is removed at merge. A
+   session that ends without a valid outcome is retried up to `limits.attempts` (3) times; if all
+   fail, the issue is labelled `blocked` with a log excerpt and unassigned.
+9. **Phase check.** If every task under a phase epic is closed, the phase-closer is dispatched.
+   Then the planner, which is gated three ways: the epic must carry **`agent-ready`** (the owner's
+   go-ahead — without it the foreman never plans anything), no approved phase may still be
+   building, and no other epic's drafted plan may be waiting on the owner. When it dispatches, the
+   epic is assigned and set In Progress so the hour-long session is visible on the board;
+   `plan_drafted` then sets the epic In Review, adds `needs-owner`, removes `agent-ready` and
+   unassigns. Labelling the epic `plan-approved` applies the plan, clears `needs-owner` and puts
+   the epic back In Progress. Re-adding `agent-ready` asks for a re-plan. Applying a plan reads
+   `<plans.dir>/<date>-phase-NN-plan.issues.json` from the default branch on `origin`, so merging
+   the plan PR is enough — the clone never has to be pulled by hand. If the file is not there yet,
+   the foreman logs and retries next tick rather than recording the plan as applied.
+
+These run in order and stop after the first action that would start a `claude -p` session, so at
+most one session runs per iteration per Mac.
+
+An iteration that did work does **not** then sleep `pollSeconds`. Work is anything that changed
+the board: a session started, a PR merged, a plan applied, a claim released, an issue blocked. A
+CI rerun is deliberately **not** work — its checks stay pending for minutes. The next tick runs
+immediately and the log says `ticking again immediately` with the action that earned it. An
+iteration that found nothing eligible sleeps the full interval; a failed one backs off, doubling
+per consecutive failure up to 15 minutes.
+
+Applying a plan is idempotent: a task without a `number` is created only if no open issue already
+carries its title and a `Parent epic: #<epic>` line, so a tick that failed halfway finishes the
+plan on retry instead of duplicating it.
 
 ### Outcome → labels / status
 
@@ -33,153 +236,430 @@ Applying a plan is idempotent: a task without a `number` is created only if no o
 | builder `blocked` | issue `blocked`, unassigned |
 | reviewer `approved` / `changes_requested` | PR `reviewer:approved` / `reviewer:changes` |
 | validator `passed` / `failed` | PR `validator:passed` / `validator:failed` |
-| (foreman) infra/db/shared-only | PR `validator:skipped` |
+| (foreman) issue carries a `validator.skipLabels` label | PR `validator:skipped` |
 | (foreman) green CI + approved + validated | squash merge, issue closed → Done, `merged by foreman@<host>` |
 | third change request | issue `blocked` |
-| (foreman) approved PR `CONFLICTING` on GitHub | builder rebase round (merges `origin/main`, no fix-round bump) |
+| (foreman) approved PR `CONFLICTING` on GitHub | builder rebase round (merges the default branch, no fix-round bump) |
 | (foreman) red CI, rerun budget unspent | rerun the failed jobs, `ci rerun by foreman@<host> for <sha>` (no session) |
-| (foreman) red CI, rerun spent | builder fix round; `blocked` once `MAX_FIX_ROUNDS` are gone |
+| (foreman) red CI, rerun spent | builder fix round; `blocked` once `limits.fixRounds` are gone |
 | phase-closer `phase_closed` | epic → In Review, `needs-owner` |
 | planner `plan_drafted` | epic → In Review, `needs-owner`, `agent-ready` removed, unassigned; nothing else until `plan-approved`, which applies the plan (tasks `agent-ready` + Ready), clears `needs-owner` and returns the epic to In Progress |
 
-## 2. Install on a Mac
+### Labels
 
-1. **Prereqs.** Xcode Command Line Tools, Homebrew, then:
-   ```bash
-   brew install gh node@22 pnpm supabase/tap/supabase
-   ```
-   OrbStack or Docker Desktop (running). The `claude` CLI, version 2.1.259 or newer (`claude --version`).
-2. **Clone and install.**
-   ```bash
-   git clone git@github.com:matthewtsmith/tone_tonic.git ~/Projects/tone_tonic
-   cd ~/Projects/tone_tonic && pnpm install
-   ```
-3. **`gh` auth**, with the project scopes the foreman needs to read/write the board:
-   ```bash
-   gh auth login
-   gh auth refresh -s project,read:project
-   ```
-4. **Connect Claude and Slack.** Run `claude` once interactively in the repo, accept the trust dialog, then `/mcp` and connect **claude.ai Slack**. Quit. Confirm:
-   ```bash
-   claude mcp list      # "claude.ai Slack … Connected"
-   claude auth status   # "authMethod":"claude.ai"
-   ```
-   Each Mac needs this connector step done separately — see Troubleshooting if a role later reports `notify-failed`.
-5. **Playwright chromium** (needed by the validator role):
-   ```bash
-   npx playwright@1.62.1 install chromium
-   ```
-   If this stalls or the validator later can't find the browser, see Troubleshooting §8.
-6. **Start both Supabase stacks** — the dev one, and the isolated one role sessions run against (#228). This also pulls the images once, so the first real run doesn't stall on a Docker pull:
-   ```bash
-   pnpm db:start                                          # project tone_tonic, 553xx — yours
-   pnpm --filter @tone/foreman start --once --dry-run     # preflight brings up tone_tonic_val on 556xx
-   ```
-   The second command is preflight only — `--dry-run` plans without dispatching a session. Preflight starts `tone_tonic_val` on any tick where it is down, from a copy of `packages/db/supabase` under `~/.tone_tonic/val-stack/` with `packages/db/scripts/role-config.sh` applied, so the clone is never rewritten. Both stacks stay up between sessions; the daemon never stops them, and `supabase stop` stays denied to role sessions. To stop the role stack by hand: `supabase stop --project-id tone_tonic_val`.
-7. **Config.**
-   ```bash
-   mkdir -p ~/.tone_tonic
-   cp tools/foreman/foreman.example.json ~/.tone_tonic/foreman.json
-   ```
-   Edit `~/.tone_tonic/foreman.json`: set `host` to something unique to this Mac (lowercase, no spaces — it's how ledger comments tell Macs apart), `repoDir` to the clone path from step 2, and `slackUser` to the Slack handle that should get DMs. The schema (`src/config.ts`) is `repo`, `project`, `host`, `repoDir`, `slackUser`, and the optional `workDir`, `model`, `pollSeconds`, `maxSessionsPerDay`, `maxTurns`, `wallClockMinutes`, `stallMinutes`, `webPort`, `minGraphqlPoints`, `notify`.
+Fixed names; `foreman init` creates them all.
 
-   Two of those defaults matter:
+| Label | Meaning |
+|---|---|
+| `epic` | A phase's parent issue. |
+| `agent-ready` | On an epic: plan it. On a task: the foreman may claim it. Only the planner's own tasks are ever claimed. |
+| `phase:N` | Which phase an epic or task belongs to. Created by `epic new` and by the planner. |
+| `area:*`, `size:S|M|L` | Set by the planner; `size` orders the pick, `area` can skip validation. |
+| `blocked` | Cannot proceed; the reason is a comment. Owner work. |
+| `needs-owner` | Waiting on the owner. |
+| `decision` | A question a role session could not answer. |
+| `plan-approved` | The owner approved the drafted plan; the next tick applies it. |
+| `signed-off` | The owner signed the phase off. |
+| `foreman:pause` | On an epic: no new claims under that phase, on any Mac. |
+| `reviewer:approved` / `reviewer:changes` | The reviewer's verdict, on the PR. |
+| `validator:passed` / `validator:failed` / `validator:skipped` | The validator's verdict, on the PR. |
+| `model:<name>` | Pins every session on that issue to one model, outranking the live override and `foreman.json`. |
+| `sandbox` | A throwaway issue for exercising the pipeline. |
 
-   - **`workDir`** — where role worktrees go. Absent means `<repoDir>/.worktrees/<issue>`, so a checkout is self-contained; `.worktrees/` is in the repo's `.gitignore`, and Biome reads that file, so nothing walks into them. Set it only if this Mac needs them somewhere else.
-   - **`model`** — the model every `claude -p` session runs as. Defaults to `opus`. It is always passed as `--model`, so a foreman session never inherits whatever the interactive `claude` default happens to be on this Mac.
+### Board statuses
 
-   **Migrating from `workDir: "~/tone_tonic-work"`:** drop the key from `foreman.json`, then for each existing worktree either move it — `git -C <repoDir> worktree move ~/tone_tonic-work/<n> <repoDir>/.worktrees/<n>` — or prune it and let the foreman recreate it on the next claim: `git -C <repoDir> worktree remove --force ~/tone_tonic-work/<n>`. Do this with the daemon stopped, and only for worktrees with no unpushed work (`git -C ~/tone_tonic-work/<n> status`).
-8. **Preflight run** — a single dry-run iteration that touches nothing:
-   ```bash
-   pnpm --filter @tone/foreman start --once --dry-run
-   ```
-   Expect a `preflight ok` log line followed by a `plan` line. Do **not** write `pnpm --filter @tone/foreman start -- --once --dry-run` — with the pnpm version pinned in this repo (pnpm 11) the leading `--` is rejected; pass the flags directly after `start` everywhere.
+Exactly five, in this order: **Backlog** (an epic before planning) → **Ready** (a task the picker
+may claim) → **In Progress** (claimed, a session running) → **In Review** (a PR is open, or an
+epic is waiting on the owner) → **Done** (merged and closed).
 
-## 3. Billing verification (do this before enabling launchd on a new Mac)
+### Issue body sections
 
-The foreman only ever runs `claude -p` against a subscription login; if that ever silently draws from API billing instead, the safeguard to catch it is a manual check, not automation, per spec §2's billing note.
+The planner writes every task issue in this shape, and the picker depends on it:
 
-```bash
-env | grep -i -E 'anthropic|claude_code_use'    # must print nothing
-pnpm --filter @tone/foreman start --once        # against a `sandbox`-labeled issue
+```markdown
+## Goal
+One paragraph.
+## Acceptance criteria
+- [ ] Each one is something a validator can observe.
+## Touches
+src/thing.ts, docs/specs/accounts.md
+## Depends on
+#12, #13   (or None)
+## Spec
+docs/specs/accounts.md § 3
+
+Parent epic: #7
 ```
 
-Then open both usage dashboards:
+`Depends on` gates the pick until those issues are closed. `Touches` orders the pick away from
+conflicts. **`Parent epic: #N` is required** — an `agent-ready` issue without it is never claimed,
+and `foreman status` reports it as waiting on a human. A hand-made issue is not a way into the
+pipeline; `foreman epic new` is.
 
-- https://platform.claude.com/settings/usage (API usage) — must show **no** new usage.
-- https://claude.ai/settings/usage — must show the session that just ran.
+### Ledger comment grammar
 
-Record the result (with a screenshot or the two numbers) as a comment on the phase epic before enabling launchd on that Mac.
+Issue comments are the source of truth for who is doing what, so two Macs sharing one GitHub login
+never collide and a restarted daemon picks up where it left off.
 
-## 4. Enable launchd
-
-launchd needs concrete paths, not the `__REPO__`/`__HOME__` placeholders committed in the plist and wrapper script. Two ways to install; prefer the copy variant so `git status` in the repo clone stays clean.
-
-**Copy to `~/.tone_tonic` (preferred):**
-
-```bash
-REPO=$(pwd)
-mkdir -p ~/.tone_tonic
-sed -e "s#__REPO__#$REPO#g" tools/foreman/launchd/foreman.sh > ~/.tone_tonic/foreman.sh
-chmod +x ~/.tone_tonic/foreman.sh
-sed -e "s#__REPO__#$REPO#g" -e "s#__HOME__#$HOME#g" tools/foreman/launchd/com.tonetonic.foreman.plist \
-  | sed "s#$REPO/tools/foreman/launchd/foreman.sh#$HOME/.tone_tonic/foreman.sh#" \
-  > ~/Library/LaunchAgents/com.tonetonic.foreman.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tonetonic.foreman.plist
+```
+claimed by <host> at <iso> role=<role> round=<n>
+session <id> on <host> role=<role> attempt=<n>
+session <id> finished on <host>: outcome=<o> turns=<n> cost=$<n> duration=<n>m
+session <id> interrupted on <host>: stopped by operator after <n>m
+released by <host>: <reason>
+released by <host>: aborted by operator
+reclaimed from <host> by <host> at <iso>
+merged by foreman@<host>
+ci rerun by foreman@<host> for <sha>
+unblocked by owner via foreman@<host>
 ```
 
-**In-repo (simpler, leaves the repo clone with two modified-in-place files):**
+`session … finished`, `released by`, `reclaimed from` and `merged by` are terminal: they close an
+open claim.
 
-```bash
-REPO=$(pwd)
-sed -e "s#__REPO__#$REPO#g" -e "s#__HOME__#$HOME#g" tools/foreman/launchd/com.tonetonic.foreman.plist > ~/Library/LaunchAgents/com.tonetonic.foreman.plist
-sed -i '' "s#__REPO__#$REPO#g" tools/foreman/launchd/foreman.sh
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tonetonic.foreman.plist
+## 5. `.foreman/`
+
+Committed in the repository the foreman works on, and read from the worktree at dispatch, so a
+pull request can change the process for the sessions that run on its own branch.
+
+```
+.foreman/
+  config.json      process knobs
+  rules.md         appended to every role prompt as "House rules"
+  roles/<role>.md  optional, appended after rules.md for that role only
+  settings.json    { "allow": [...], "deny": [...] } merged into the headless settings
+  hooks/           preflight, session-env, before-session, after-session
 ```
 
-Either way, check it came up and watch the log:
+### `config.json`
 
-```bash
-launchctl print gui/$(id -u)/com.tonetonic.foreman | head
-tail -f ~/.tone_tonic/logs/foreman.out.log
+Every key is optional; the file may be `{}`. These are the defaults:
+
+```json
+{
+  "setup": "pnpm install",
+  "checks": ["pnpm lint", "pnpm typecheck", "pnpm test"],
+  "plans": { "dir": "docs/superpowers/plans", "specGlob": "docs/**/*.md" },
+  "validator": { "skipLabels": [] },
+  "limits": { "fixRounds": 2, "ciReruns": 1, "blockedPerPhase": 2, "staleHours": 2, "attempts": 3 },
+  "models": ["opus", "sonnet", "haiku", "fable"]
+}
 ```
 
-The plist sets `KeepAlive` and `RunAtLoad`, so launchd restarts the foreman if it exits and starts it at login; `ThrottleInterval` (60s) stops a crash loop from spinning.
+| Key | Default | What it does |
+|---|---|---|
+| `setup` | `"pnpm install"` | Run once when a worktree is created. `null` skips it. |
+| `checks` | `pnpm lint/typecheck/test` | What a rebase round runs, and what every role prompt means by "the checks". |
+| `plans.dir` | `docs/superpowers/plans` | Where the planner writes `<date>-phase-NN-plan.md` and `.issues.json`, and where `apply_plan` looks on the default branch. |
+| `plans.specGlob` | `docs/**/*.md` | What a `## Spec` path must match. `**` spans path segments, `*` stays inside one. |
+| `validator.skipLabels` | `[]` | A PR whose issue carries one of these gets `validator:skipped` instead of a validator session. Use it for work with nothing to drive — infrastructure, schema, docs. |
+| `limits.fixRounds` | 2 | Change requests before the issue is `blocked`. |
+| `limits.ciReruns` | 1 | Failed-job reruns per head sha before a fix round. |
+| `limits.blockedPerPhase` | 2 | Open `blocked` tasks in a phase before new builds stop. |
+| `limits.staleHours` | 2 | Silence on an In Progress claim before another Mac may reclaim it. |
+| `limits.attempts` | 3 | Dispatch attempts for one session before the issue is `blocked`. |
+| `models` | opus, sonnet, haiku, fable | The page's model buttons, the `model:<name>` labels `init` creates, and the names `foreman model` accepts. |
 
-## 5. Kill switches
+A strict schema: an unknown key is an error, not a warning, so a typo fails loudly at the next
+dispatch.
 
-All of these work from any terminal on the Mac. Install the wrapper once and the commands are `foreman <cmd>`:
+A repository with no application to install or run, for instance a docs repository:
 
-```bash
-tools/foreman/bin/foreman install    # symlinks itself into ~/.local/bin
-foreman help
+```json
+{ "setup": null, "checks": ["true"], "validator": { "skipLabels": ["area:docs"] } }
 ```
 
-The wrapper reads `repoDir` and `webPort` from `~/.tone_tonic/foreman.json`, so it drives the configured clone no matter which directory (or worktree) you run it from, and it stays current because the symlink points into the clone. It adds `start`, `restart`, `update` (pull + install), `logs [-f]` and `page` to the `ctl` commands below. Without it, every command here is `pnpm --filter @tone/foreman ctl <cmd>` run inside the clone. A daemon started before this version has no state.json and no page; stop it once by pid and start it again to get any of this.
+### `rules.md`
 
-- **See what it is doing:** `ctl status` (add `--watch` for a live view, `--json` for the raw report). Reads `~/.tone_tonic/state.json`, which the daemon writes every tick, whenever a `claude -p` child starts or ends, and (throttled to every 2 s) as the child's stream-json output arrives: the `doing` line shows the last tool call and how long ago, turn and token counts, and the last thing the session said; `STALLED` appears after `stallMinutes` (config, default 5) without output. A long tool call (a full `pnpm test`, a Playwright wait) also counts as silence, so STALLED can appear briefly on a healthy session. With no session running the `now` line distinguishes four things: `parked · <reason>` (preflight fails every tick, so the daemon does nothing until the condition clears — the daily cap, `STOP`, Docker, the GraphQL budget), `between ticks · next <time>` (asleep on a schedule with work still planned), `ticking` (the next tick is due, so an iteration is in flight), and `idle` — reserved for a tick that found nothing eligible. The `waiting` line lists what blocks a new claim — CI on a PR, a human label (`plan-approved`, `needs-owner`, `blocked`), a `Depends on` issue, another Mac's claim, the `STOP` file, or the daily cap — ranked so a live blocker comes first and the background `phase_gate` item (a phase that has not started yet) comes last, since it never explains why the work in flight is stuck. `ctl next` asks GitHub what the next tick would do and why each open PR is or is not mergeable; it ignores the `STOP` file. The `phase` line answers "how far has this phase come, and what has it cost": one line per open epic labelled `plan-approved`, with tasks done of total, the spend and session count against those tasks, and the median claim→merge time of the ones that have merged (`phase  #10 phase 1 …  7/12 tasks  $42.50 over 23 sessions  median 1h35m claim→merge (7 merged)`; `phase  no approved phase in flight` when nothing is approved). The same view, plus a pipeline table (build → review → validate → CI → merge per in-flight issue), a **Phase** card with a progress bar per phase, and a live event feed per session, is served at http://127.0.0.1:8090 while the daemon is running (port `webPort` in `foreman.json`). Feeds are kept under `~/.tone_tonic/activity/<sessionId>.jsonl`; they hold tool names and one-line summaries only, never tool inputs or thinking. A daemon started before this version shows no live activity until it is restarted.
-- **Show the board as it is now:** the page's **Refresh project** button (`POST /api/refresh`). It drops the cached project board and wakes the loop, so a Status you set in the GitHub UI, an issue you added to the board, or a label you edited by hand shows up in the cards within a tick instead of at the end of the poll interval. It reads GitHub and starts a tick; it writes nothing itself. `ctl go` does the waking half only (#249).
-- **Stop now, resume later:** `ctl stop`. Touches `STOP`, then `SIGTERM`s the daemon. The daemon kills the running `claude -p` child, posts `session <id> interrupted on <host>: stopped by operator`, and exits. The claim stays open, so the next start resumes that session with `--resume`. `launchctl bootout` and Ctrl-C do the same thing.
-- **Stop now and discard the session:** `ctl abort`. Same, via `SIGUSR1`, but the daemon posts `released by <host>: aborted by operator`, unassigns itself, and moves a round-1 builder issue back to Ready. The worktree is left for reuse. If the daemon is already dead and `state.json` shows an unfinished claim, `ctl abort` posts the release itself.
-- **Start again:** `ctl go`. Removes `STOP`, then wakes the daemon (`SIGUSR2`), or `launchctl kickstart`s it, or prints the start command.
-- **Raise the daily cap:** `foreman cap` prints the cap the next tick will enforce and where it came from; `foreman cap 50` raises it, `foreman cap default` hands control back to `foreman.json`. The **Tick** card offers the same next to today's session count, confirm-first. The cap is read per tick, so raising it un-parks a capped daemon on the very next tick — and a change from the page wakes the loop, so it happens immediately rather than after the poll interval. No restart, and no hand-editing `foreman.json` while the daemon is parked on it. Accepted values are 1–500; the buttons are just the common ones. The override survives a restart.
-- **Change the model:** `foreman model` prints what the next session will run as and where that came from; `foreman model sonnet` changes it. With the daemon running the change goes through the page's `/api/model`, which owns `state.json`, and applies at the next dispatch — the session running now keeps the model it started with, and no restart is needed. With the daemon stopped it is written to `state.json` directly and applies at the next start. The **Tick** card on the page shows the same thing with one-click buttons (`opus`, `sonnet`, `haiku`, `fable`), each confirming first. An override survives a restart and outranks `model` in `foreman.json`; `ctl status` says `model sonnet (override; foreman.json says opus)` when one is set. `foreman model default` clears the override and hands control back to `foreman.json` (the page shows the same as a `default (opus)` button whenever one is set). Any model name is accepted, including a dated id like `claude-haiku-4-5-20251001`; the buttons are just the common ones.
-- **Pin one task to a model:** a `model:<name>` label on a task issue (`model:opus`, `model:sonnet`, `model:haiku`, `model:fable`) runs every foreman session on that issue — builder, reviewer, validator, fix rounds — as that model, outranking both the live override and `foreman.json` (#259). On the page, expand a phase on the **Phase** card (`▸ tasks`) to see its tasks with the current pin and one-click buttons; `default` removes the label. Each click confirms first, swaps the label through `POST /api/task-model`, and shows on the page at once. **Pipeline** rows show the pin as a tag. `foreman model` lists the pinned tasks under the global line. The label is the source of truth, so it is visible on GitHub, shared across Macs, and `gh issue edit <n> --add-label model:sonnet` does the same thing by hand (only names that pass `ModelSchema` count; the page offers only the four whose labels exist in the repo). The planner never sets it.
-- **This Mac, next poll only:** `touch ~/.tone_tonic/STOP`. Preflight fails on the next iteration and the foreman sleeps until the file is removed.
-- **This phase, every Mac:** `gh issue edit <epic> --add-label foreman:pause`. No new claims are picked for issues under that phase on any Mac; in-flight sessions finish normally.
-- **The planning backstop, every Mac:** the planner never runs on an epic that is not labeled `agent-ready`, and never on a second epic while a drafted plan is still waiting on the owner. Starting a phase is therefore always an explicit `gh issue edit <epic> --add-label agent-ready`; leaving every epic unlabeled leaves the foreman idle. `ctl status` says `epic #N awaits agent-ready before the planner runs` when this is what is holding it.
-- **Owner gates, from the page:** the **Owner** card lists every open epic with the label gates only a human can open — **Sign off** (adds `signed-off`, drops `needs-owner`, closes the epic), **Approve plan** (`plan-approved`), **Start planning** (`agent-ready`), **Pause** / **Resume** (`foreman:pause`). Each button confirms the exact label change first, and the daemon wakes straight after so the next tick acts on it. The same gates are still just labels, so `gh issue edit <epic> --add-label <label>` works identically.
-- **Get told instead of looking:** the page is localhost-only, so add `notify` to `~/.tone_tonic/foreman.json` to have the foreman push a one-line notification on the events that change what you have to do — see below.
-- **Issues waiting on you, from the page:** the **Needs you** card lists every open *non-epic* issue labelled `needs-owner`, `decision` or `blocked` — the ones that have no epic card to sit on and used to be invisible everywhere. Oldest first, each linked to GitHub with how long it has waited; `ctl status` prints the same list on a `needs you` line (`nothing` when there is none), and each one is also a `human` item on the `waiting` line. A `blocked` row carries an **Unblock** button: it confirms, then removes `blocked`, sets Status **Ready**, and comments `unblocked by owner via foreman@<host>` — the two GitHub edits that otherwise have to be made by hand before the picker will consider the issue again. The daemon wakes straight after, so the next tick can claim it; fix whatever caused the block first, because nothing else about the issue is changed. The server only accepts an issue the page is currently offering, the same allowlist rule as the Owner buttons.
-- **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.tonetonic.foreman` (a clean stop, as above).
+Appended to every role prompt under a `## House rules` heading, after the base prompt and before
+any per-role section. The base prompts carry the pipeline's own contract — never `cd` out of the
+worktree, never touch the default branch, never merge, idempotent GitHub writes, the ledger and
+Progress comment formats, the fix-round rules, the PR body template, the outcome JSON. `rules.md`
+carries what is true of *this* repository and nothing else:
 
-`foreman start` refuses when the daemon recorded in `state.json` is still alive, and `foreman status` warns when the web port is held by a different process — the symptom of a stale daemon serving a frozen page while a newer one does the work.
+```markdown
+Run `pnpm install` once per worktree. The checks are `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 
-A killed daemon (`kill -9`) does no bookkeeping: `ctl status` then shows `CRASHED` and, if the child is still alive, `ORPHAN child <pid>`; `ctl stop` or `ctl abort` kills it.
+Bring the app up with `pnpm --filter @acme/serve start`; it serves http://localhost:8182 and the
+API on http://localhost:3105. Seeded logins are in `docs/seed.md`. Stop it with `serve stop`
+before you return, even on a failure.
 
-### Push notifications
+Never run `docker stop` or touch a container this repository did not start.
+```
 
-Optional, off by default: `foreman.example.json` carries no `notify` block, so a config copied from it notifies nothing until you add one. Both channels are independent; set either, both, or neither.
+Sessions also read the repository's `CLAUDE.md` as any Claude Code session does, so `rules.md` is
+for what the *roles* need beyond that.
+
+### `roles/<role>.md`
+
+Optional, one per role (`builder`, `reviewer`, `validator`, `planner`, `phase-closer`), appended
+after `rules.md` under `## <role> rules`. A repository appends; it never replaces a base prompt.
+Use it for a reviewer checklist that is specific to the stack, or the exact boot sequence a
+validator follows.
+
+### `settings.json`
+
+Merged into the base Claude Code headless settings that ship with the package:
+
+```json
+{
+  "allow": ["Bash(pnpm *)", "Bash(docker *)", "Bash(npx playwright *)", "mcp__playwright__*"],
+  "deny": ["Bash(docker stop*)", "Bash(orb *)"]
+}
+```
+
+Base and repository `allow` lists are concatenated and deduplicated, and so are the `deny` lists;
+then anything on the combined deny list is removed from the allow list. **A repository rule can
+add to either list but can never remove a base deny.** The base file denies `gh pr merge`, `gh pr
+close`, `gh api`, pushes to the default branch, force pushes, `git worktree remove`, `sudo`, `rm
+-rf` of home, and reads of `~/.ssh`, `~/.aws` and `~/.claude*`. Anything stack-specific — `pnpm`,
+`docker`, a browser MCP — is not in the base file; add it here.
+
+### Hooks
+
+Four optional executables in `.foreman/hooks/`, any language, no rebuild. A missing hook is a
+no-op; one that exists but is not executable is a logged no-op (`chmod +x` it). Each gets a
+10-minute timeout, and its stdout and stderr are appended to
+`~/.foreman/<name>/logs/hooks.log` — except `session-env`'s stdout, which is the secrets it exists
+to inject and is never logged.
+
+| Variable | Set for |
+|---|---|
+| `FOREMAN_INSTANCE`, `FOREMAN_STATE_DIR`, `FOREMAN_REPO_DIR` | all hooks |
+| `FOREMAN_ROLE`, `FOREMAN_ISSUE`, `FOREMAN_PR`, `FOREMAN_WORKTREE`, `FOREMAN_ROUND` | session hooks (`FOREMAN_PR` is empty when there is none) |
+
+| Hook | Runs | Contract |
+|---|---|---|
+| `preflight` | every tick, from `repoDir`, after the built-in checks | Exit 0: ok. Non-zero: the daemon parks and the last non-empty stderr line is the reason. Stdout lines starting `warn:` become preflight warnings. |
+| `session-env` | before each `claude -p`, from the worktree | Stdout `KEY=VALUE` lines enter the child's environment. Stdout lines starting `prompt:` are appended, in order, to the session prompt. A non-zero exit fails the attempt. |
+| `before-session` | after `session-env`, from the worktree | A non-zero exit fails the attempt and counts toward `limits.attempts`. |
+| `after-session` | always, from the worktree: after the child exits, is killed, or the daemon is interrupted; and again before the next session on the same worktree | The exit code is logged and never fatal. |
+
+Debug one by hand against the instance's `repoDir`:
+
+```bash
+foreman -p widgets hooks run preflight
+```
+
+#### A worked example of each
+
+`.foreman/hooks/preflight` — park the daemon when the database it needs is down, and warn (but
+carry on) when the browser the validator wants is missing:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker is not responding; start OrbStack" >&2
+  exit 1
+fi
+
+if ! docker compose -f "$FOREMAN_REPO_DIR/docker-compose.yml" up -d db >/dev/null 2>&1; then
+  echo "could not start the db container" >&2
+  exit 1
+fi
+
+if [ ! -d "$HOME/Library/Caches/ms-playwright" ]; then
+  echo "warn: no Playwright browser installed; validator sessions will fail"
+fi
+```
+
+`.foreman/hooks/session-env` — give the three roles that run the app their own ports, and tell the
+session where to find it. Everything on stdout that is not a `prompt:` line must be `KEY=VALUE`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${FOREMAN_ROLE:-}" in
+  builder|reviewer|validator) ;;
+  *) exit 0 ;;
+esac
+
+echo "WEB_PORT=8182"
+echo "API_PORT=3105"
+echo "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55621/postgres"
+echo "prompt: This session runs against an isolated stack: web http://localhost:8182, api http://localhost:3105."
+echo "prompt: Never start the developer stack on 8082/3005; the owner is using it."
+```
+
+`.foreman/hooks/before-session` — rewrite a config file the session must not commit, and hide it
+from `git add -A`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+[ "${FOREMAN_ROLE:-}" = "validator" ] || exit 0
+
+"$FOREMAN_WORKTREE/scripts/isolate-ports.sh" "$FOREMAN_WORKTREE/config/app.toml"
+git -C "$FOREMAN_WORKTREE" update-index --skip-worktree config/app.toml
+```
+
+`.foreman/hooks/after-session` — undo it, whatever happened to the child. This one must be
+idempotent and must not fail the tick, hence the `|| true`:
+
+```bash
+#!/usr/bin/env bash
+set -uo pipefail
+[ -n "${FOREMAN_WORKTREE:-}" ] || exit 0
+
+git -C "$FOREMAN_WORKTREE" update-index --no-skip-worktree config/app.toml 2>/dev/null || true
+git -C "$FOREMAN_WORKTREE" checkout -- config/app.toml 2>/dev/null || true
+```
+
+## 6. Instances
+
+An instance is a name. Its machine config and all of its state live under `~/.foreman/<name>/`:
+
+```
+~/.foreman/widgets/
+  foreman.json        machine config (below)
+  state.json          daemon state: the pid, the current session, the next tick
+  sessions.log        one JSON line per finished session
+  merges.log          one JSON line per merge
+  notify.json         notification bookkeeping
+  STOP                kill switch, present or absent
+  logs/               foreman.log, hooks.log
+  activity/           <sessionId>.jsonl live feeds
+  artifacts/<pr>/     validator screenshots copied out of the worktree
+  settings.json       generated per dispatch: base headless settings + .foreman/settings.json
+  roles/<role>.md     generated per dispatch: base prompt + rules.md + roles/<role>.md
+```
+
+`foreman.json`, written by `add` and completed by `init`:
+
+| Key | Required | Default |
+|---|---|---|
+| `repo` | yes | — (`owner/name`) |
+| `project` | written by `init` | — |
+| `host` | yes | this Mac's short hostname |
+| `repoDir` | yes | — |
+| `workDir` | no | `<repoDir>/.worktrees` |
+| `model` | no | `opus` |
+| `pollSeconds` | no | 300 |
+| `maxSessionsPerDay` | no | 20 |
+| `maxTurns` | no | 200 |
+| `wallClockMinutes` | no | 90 |
+| `stallMinutes` | no | 5 |
+| `webPort` | no | first free port from 8090, chosen by `add` |
+| `minGraphqlPoints` | no | 500 |
+| `notify` | no | none (§7) |
+
+`workDir` absent means worktrees live at `<repoDir>/.worktrees/<issue>`, so a checkout is
+self-contained; add `.worktrees/` to the repository's `.gitignore`. `model` is always passed as
+`--model`, so a session never inherits whatever the interactive `claude` default happens to be.
+
+### Which instance a command means
+
+Every command that needs an instance resolves it in this order and stops at the first hit:
+
+1. `-p <name>` / `--instance <name>`.
+2. `$FOREMAN_INSTANCE`.
+3. The current directory is inside a configured `repoDir` (or one of its worktrees) — so inside
+   `~/Projects/widgets` you can just type `foreman status`.
+4. Exactly one instance exists under `~/.foreman/`.
+5. Otherwise it errors and lists the instances it found.
+
+`$FOREMAN_CONFIG` is an escape hatch that points straight at a `foreman.json` outside the layout.
+
+```bash
+foreman list
+# widgets          acme/widgets                     running  :8090
+# sprockets        acme/sprockets                   stopped  :8091
+```
+
+### Several daemons on one Mac
+
+Nothing is shared between instances: not `STOP`, not the daily cap, not `state.json`, not the
+board cache. Two daemons against two repositories run side by side as long as their `webPort`s
+differ — `add` picks the next free port from 8090 and refuses a port another instance already
+holds. Give each one its own `launchd` agent (`foreman -p <name> launchd install`); the labels are
+`com.apptreesoftware.foreman.<name>`, so they do not collide either.
+
+They do share the Claude subscription and the GitHub GraphQL budget, so halve `maxSessionsPerDay`
+and raise `pollSeconds` if you run several.
+
+## 7. Kill switches and control
+
+All of these work from any terminal on the Mac. Inside a configured `repoDir` you can drop `-p`.
+
+- **See what it is doing:** `foreman -p widgets status` (add `--watch` for a live view, `--json`
+  for the raw report). It reads `state.json`, which the daemon writes every tick, whenever a
+  `claude -p` child starts or ends, and (throttled to every 2 s) as the child's stream-json output
+  arrives: the `doing` line shows the last tool call and how long ago, turn and token counts, and
+  the last thing the session said. `STALLED` appears after `stallMinutes` (default 5) without
+  output — a long tool call counts as silence, so it can appear briefly on a healthy session. With
+  no session running, the `now` line distinguishes four things: `parked · <reason>` (preflight
+  fails every tick, so nothing happens until the condition clears), `between ticks · next <time>`,
+  `ticking`, and `idle` — reserved for a tick that found nothing eligible. The `waiting` line
+  lists what blocks a new claim — CI on a PR, a human label, a `Depends on` issue, another Mac's
+  claim, the `STOP` file, the daily cap — ranked so a live blocker comes first. The `phase` line
+  gives one line per open approved epic: tasks done of total, the spend and session count, and the
+  median claim→merge time of the ones that merged.
+- **Ask what the next tick would do:** `foreman -p widgets next`. The only subcommand that calls
+  GitHub; it explains why each open PR is or is not mergeable, and it ignores the `STOP` file.
+- **The page:** `foreman -p widgets page` opens `http://127.0.0.1:<webPort>`, served by the daemon
+  while it runs and bound to localhost only. It carries the same view plus a pipeline table
+  (build → review → validate → CI → merge per in-flight issue), a **Phase** card with a progress
+  bar, a **Needs you** card, an **Owner** card of label gates, and a live event feed per session.
+  Feeds live in `~/.foreman/<name>/activity/<sessionId>.jsonl` and hold tool names and one-line
+  summaries only, never tool inputs or thinking.
+- **Show the board as it is now:** the page's **Refresh project** button. It drops the cached
+  board and wakes the loop, so a Status you set in the GitHub UI shows up within a tick rather
+  than at the end of the poll interval. `foreman go` does the waking half only.
+- **Stop now, resume later:** `foreman -p widgets stop`. Touches `STOP`, then `SIGTERM`s the
+  daemon, which kills the `claude -p` child, posts `session <id> interrupted on <host>: stopped by
+  operator` and exits. The claim stays open, so the next start resumes that session with
+  `--resume`. `launchctl bootout` and Ctrl-C do the same.
+- **Stop now and discard the session:** `foreman -p widgets abort`. The daemon posts `released by
+  <host>: aborted by operator`, unassigns itself and moves a round-1 builder issue back to Ready.
+  The worktree is left for reuse. If the daemon is already dead and `state.json` shows an
+  unfinished claim, `abort` posts the release itself.
+- **Start again:** `foreman -p widgets go` removes `STOP` and wakes the daemon, or `launchctl
+  kickstart`s it, or prints the start command. `foreman -p widgets restart` stops and starts,
+  clearing the `STOP` that `stop` left.
+- **This Mac, next poll only:** `touch ~/.foreman/widgets/STOP`. Preflight fails on the next
+  iteration and the daemon parks until the file is gone.
+- **This phase, every Mac:** `gh issue edit <epic> --add-label foreman:pause`. No new claims are
+  picked under that phase anywhere; in-flight sessions finish normally.
+- **The planning backstop, every Mac:** the planner never runs on an epic without `agent-ready`,
+  and never on a second epic while a drafted plan is waiting on the owner. Starting a phase is
+  therefore always an explicit `gh issue edit <epic> --add-label agent-ready`.
+- **Raise the daily cap:** `foreman -p widgets cap` prints the cap the next tick will enforce and
+  where it came from; `foreman -p widgets cap 50` raises it; `cap default` hands control back to
+  `foreman.json`. The cap is read per tick, so raising it un-parks a capped daemon immediately.
+  The override survives a restart. The **Tick** card offers the same, confirm-first.
+- **Change the model:** `foreman -p widgets model` prints what the next session will run as;
+  `foreman -p widgets model sonnet` changes it. With the daemon running the change goes through
+  the page, which owns `state.json`, and applies at the next dispatch — the session running now
+  keeps its model, and no restart is needed. `model default` clears the override. Any model name
+  is accepted, including a dated id; `models` in `config.json` is just the buttons.
+- **Pin one task to a model:** a `model:<name>` label on the issue runs every session on it —
+  builder, reviewer, validator, fix rounds — as that model, outranking both the live override and
+  `foreman.json`. The label is the source of truth, so it works from `gh issue edit` too.
+- **Owner gates, from the page:** the **Owner** card lists every open epic with the label gates
+  only a human can open — **Sign off**, **Approve plan**, **Start planning**, **Pause**/**Resume**.
+  Each button confirms the exact label change and wakes the daemon. The same gates are just
+  labels, so `gh issue edit <epic> --add-label <label>` is identical.
+- **Issues waiting on you:** the **Needs you** card lists every open non-epic issue labelled
+  `needs-owner`, `decision` or `blocked`, oldest first. `foreman status` prints the same list.
+  A `blocked` row has an **Unblock** button: it removes `blocked`, sets Status **Ready** and
+  comments `unblocked by owner via foreman@<host>` — fix whatever caused the block first, because
+  nothing else about the issue changes.
+- **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.apptreesoftware.foreman.widgets`,
+  or `foreman -p widgets launchd uninstall`.
+
+`foreman start` refuses when the daemon recorded in `state.json` is still alive, and `status` warns
+when the web port is held by a different process — the symptom of a stale daemon serving a frozen
+page while a newer one does the work. A killed daemon (`kill -9`) does no bookkeeping: `status`
+then shows `CRASHED` and, if the child is still alive, `ORPHAN child <pid>`; `stop` or `abort`
+kills it.
+
+### Notifications
+
+Optional and off by default. Add a `notify` block to `~/.foreman/<name>/foreman.json`; both
+channels are independent, so set either, both or neither.
 
 ```json
 {
@@ -190,8 +670,14 @@ Optional, off by default: `foreman.example.json` carries no `notify` block, so a
 }
 ```
 
-- `slackWebhookUrl` — a Slack **incoming webhook**. Create one at <https://api.slack.com/apps> → your app (or **Create New App** → *From scratch*, pick the workspace) → **Incoming Webhooks** → toggle on → **Add New Webhook to Workspace** → choose the channel or your own DM. Copy the `https://hooks.slack.com/services/…` URL into `foreman.json`. That URL is a credential: `foreman.json` lives in `~/.tone_tonic/`, outside the repo, and the foreman never logs it, never puts it in a role session's prompt, and never serves it on the page. Rotate it from the same Slack page if it leaks.
-- `macos` — `true` shows a Notification Center banner via `osascript`. It appears on whichever Mac the daemon runs on, so it is the fallback when you are at the machine rather than away from it. The first banner may need Notification Center permission for whatever runs the daemon (Terminal, or `launchd` → **System Settings → Notifications → Script Editor**).
+- `slackWebhookUrl` — a Slack **incoming webhook**. Create one at <https://api.slack.com/apps> →
+  your app (or **Create New App** → *From scratch*) → **Incoming Webhooks** → toggle on → **Add
+  New Webhook to Workspace** → choose the channel or your own DM. That URL is a credential:
+  `foreman.json` lives outside the repository, and the foreman never logs it, never puts it in a
+  role prompt and never serves it on the page. Rotate it from the same Slack page if it leaks.
+- `macos` — `true` shows a Notification Center banner via `osascript`, on whichever Mac the daemon
+  runs on. The first banner may need permission for whatever runs the daemon (Terminal, or
+  **System Settings → Notifications → Script Editor** for `launchd`).
 
 Seven events, one line each, with the GitHub link:
 
@@ -201,77 +687,239 @@ Seven events, one line each, with the GitHub link:
 | Issue blocked | `blocked #<issue> <title> — <first line of the reason>` |
 | Decision issue opened | `decision needed #<issue>: <title>` |
 | Phase closed | `phase <epic> closed: <title> — review #<n>` |
-| Plan drafted | `plan drafted for #<epic>: <title>` (links the plan PR) |
+| Plan drafted | `plan drafted for #<epic>: <title>` |
 | Daemon parked | `foreman parked on <host>: <reason>` |
 | Daemon resumed | `foreman resumed on <host> (was: <reason>)` |
 
-A notification carries issue and PR numbers, titles, and the foreman's own reason strings — never tool inputs, session transcripts, or the stderr excerpt that goes into the `blocked by foreman@…` GitHub comment. Reasons are cut to one line.
+A notification carries issue and PR numbers, titles and the foreman's own reason strings — never
+tool inputs, session transcripts or the stderr excerpt that goes into a `blocked by foreman@…`
+comment. Parked fires once per parked spell, not once per tick; decision issues are announced once
+each, and enabling notifications on a repository that already has open ones seeds them silently
+rather than replaying the backlog. That bookkeeping is `~/.foreman/<name>/notify.json` — delete it
+to re-announce everything. A send that fails logs a `warn` line and is dropped; it never fails a
+tick and is never retried. `--dry-run` notifies nothing.
 
-Parked fires once per parked spell, not once per tick, and resumed once when preflight passes again; if the reason changes mid-spell (the daily cap clears but Docker is down) the daemon stays quiet and the resume line names the latest reason. Decision issues are announced once each; enabling notifications on a repo that already has open decision issues seeds them silently rather than replaying the backlog. That bookkeeping lives in `~/.tone_tonic/notify.json` — delete it to re-announce everything.
+## 8. Budget
 
-A send that fails (webhook down, no network, `osascript` denied) logs a `warn` line and is dropped; it never fails a tick and is never retried. Sends have a 5 s timeout. `--dry-run` notifies nothing.
+Knobs in `~/.foreman/<name>/foreman.json`:
 
-## 6. Budget
+- `maxSessionsPerDay` — preflight refuses a new session once today's count, read from
+  `sessions.log`, reaches this. "Today" is the **local** date, so the count clears at local
+  midnight, and interrupted or aborted sessions still count. When the cap is what is holding the
+  Mac, `status` and the page say `parked · daily session cap reached (N/N)` and the cap is
+  changeable from there (§7).
+- `maxTurns` — passed to `claude -p --max-turns`; a session that hits it without returning an
+  outcome counts as a failed attempt and is retried, up to `limits.attempts`.
+- `wallClockMinutes` — the dispatcher kills the child (`SIGTERM`, then `SIGKILL` after 30 s) if it
+  runs longer than this.
+- `stallMinutes` — minutes without a stream-json event before the page and `status` flag the
+  session as stalled. Visibility only; nothing is killed.
+- `minGraphqlPoints` — preflight refuses to start a tick when GitHub reports fewer GraphQL points
+  left than this (default 500).
 
-Three knobs in `~/.tone_tonic/foreman.json`:
+There is a second budget besides money: GitHub gives 5000 GraphQL points an hour, and `gh issue
+list`, `gh pr list` and `gh project item-list` all spend it. The foreman stays inside it by reading
+one issue at a time (`gh issue view`) instead of re-listing the repository, caching the board for
+the length of a tick, reusing the tick's snapshot, and polling every `pollSeconds`. If it still
+runs out, preflight parks the daemon with `GitHub GraphQL budget low: <n> points left, resets
+<time>` until the window rolls over. Each tick samples the budget three times — the `rateLimit`
+query is free — and breaks the spend down three ways: **reads** is the loop's own snapshot,
+**session** is what the `claude -p` session it dispatched spent, and **elsewhere** is what was gone
+before the tick started (another Mac, a second daemon, or a human at a terminal). Attribute before
+optimising.
 
-- `maxSessionsPerDay` — preflight refuses to start a new session once today's count (from `~/.tone_tonic/sessions.log`) reaches this. "Today" is the **local** date, so the count clears at local midnight, and interrupted or aborted sessions still count. When the cap is what is holding the Mac, `ctl status` and the page say `parked · daily session cap reached (N/N)` rather than "idle", and the cap is changeable from there — see §5.
-- `maxTurns` — passed to `claude -p --max-turns`; a session that hits this without returning an outcome counts as a failed attempt and is retried (up to 3 attempts total).
-- `wallClockMinutes` — the dispatcher kills the `claude -p` child (`SIGTERM`, then `SIGKILL` after 30s) if it runs longer than this.
-- `stallMinutes` — minutes without a stream-json event before the page and `ctl status` flag the session as stalled (visibility only; nothing is killed).
-- `minGraphqlPoints` — preflight refuses to start a tick when GitHub reports fewer GraphQL points left than this (default 500).
+Per-session cost is posted in the `session … finished` issue comment and appended as one JSON line
+per session to `~/.foreman/<name>/sessions.log`, which is also what the daily cap reads. Each line
+carries `t`, `host`, `role`, `issue`, `sessionId`, `attempt`, `costUsd`, `outcome`, `model`,
+`turns`, `durationMinutes`, `denials` and `subtype`, so models can be compared on cost, turns and
+wall-clock rather than on cost alone:
 
-Each tick samples the budget three times (the `rateLimit` query is free) and `ctl status`, the page's Tick card and the log line `graphql budget` break the spend down three ways: **reads** is what the loop's own snapshot cost, **session** is what the `claude -p` session it dispatched spent, and **elsewhere** is what was gone before the tick started — a role session on another Mac, a second daemon, or a human at a terminal. Attribute before optimising.
-
-There is a second budget besides money: GitHub gives 5000 GraphQL points an hour, and `gh issue list`, `gh pr list` and `gh project item-list` all spend it. The foreman keeps inside it by reading one issue at a time (`gh issue view`) instead of re-listing the repo, caching the project board for the length of a tick, reusing the tick's snapshot instead of re-fetching issues it already has, and polling every `pollSeconds` (default 300). If it still runs out, preflight parks the daemon with `GitHub GraphQL budget low: <n> points left, resets <time>` until the window rolls over.
-
-Per-session cost (from the session's JSON result) is posted in the `session … finished` issue comment and appended as one JSON line per session to `~/.tone_tonic/sessions.log`, which is also what `countSessionsToday` reads for the daily cap. Each line carries `t`, `host`, `role`, `issue`, `sessionId`, `attempt`, `costUsd`, `outcome`, and — since #226 — `model` (the id the CLI reported at init, e.g. `claude-opus-5`, falling back to the dispatched name), `turns`, `durationMinutes`, `denials` and `subtype`, so opus and sonnet can be compared on cost, turns and wall-clock rather than on cost alone. The **Recent** card and `jq` over the log both read them; lines written before #226 have none of these fields and still parse, reading as `""`/`0`.
-
-A merge also appends one line to `~/.tone_tonic/merges.log` (`issue`, `pr`, `host`, `claimedAt`, `mergedAt`). The merged issue closes and drops out of every later snapshot, so this is what keeps the phase card's cycle time computable; it is a local cache like `sessions.log`, and losing it only empties that number.
-
-The Phase card and the `phase` line are computed inside the tick from the snapshot it already fetched plus these two logs — no extra GitHub reads. A phase's task list is the epic's sub-issues plus any issue whose body says `Parent epic: #<epic>`; a task the snapshot no longer lists is closed, i.e. done.
-
-## 7. Resume and multi-Mac
-
-All durable state lives in GitHub; local disk (the worktree, the transcript, `sessions.log`) is a cache the foreman can lose without losing work, because every role checkpoints by pushing the branch.
-
-- **Same Mac, same session:** the foreman finds its own open claim (an issue it claimed that's still In Progress) and, if the local Claude Code transcript for that session id still exists, resumes with `--resume <id>` and a note to continue from the last Progress comment.
-- **Same Mac, transcript gone** (e.g. `~/.claude/projects/...` was cleared): a fresh session id is used instead, with a note to read the issue's Progress comments and `git log origin/main..HEAD` before continuing.
-- **Different Mac / after a crash:** an In Progress issue with no comment and no branch commit for 2 hours (`STALE_HOURS` in `src/claim.ts`) may be reclaimed by any other foreman — it comments `reclaimed from <host> by <host> at <iso>` and starts a fresh builder session with the same "read Progress comments, continue" instruction.
-- **Two Macs claim the same issue in the same window:** both post a `claimed by …` comment before either sees the other's. Once both are visible, `resolveConflict` (`src/claim.ts`) keeps the alphabetically first host and the other(s) comment `released by <host>: conflict` and unassign — so pick a `host` value with this in mind if it matters which Mac "wins" a race (it shouldn't matter in practice; work isn't lost, just not duplicated).
-- Reviewer/validator "changes requested" cycles a builder back for a fix round; after `MAX_FIX_ROUNDS` (2) failed rounds — i.e. a third change request — the issue is labeled `blocked` instead of retried again. Two things keep that cap from being hit for the wrong reasons (#237): a fix round is scoped — `.claude/roles/reviewer.md` lets round 2+ block only on prior findings still open, regressions in the delta, or a real safety issue, and sends anything else to a follow-up issue — and a merge conflict is never a change request: the builder merges `origin/main` before opening a PR and at the start of every fix round, and an approved PR that still conflicts gets a rebase round that does not count.
-- To unblock a task by hand: fix or rebase the branch yourself, push, remove `reviewer:changes` from the PR and `blocked` from the issue. The fix-round counter stays where it was, so the next reviewer verdict must be an approval or the task is blocked again.
-
-## 8. Troubleshooting
-
-- **`"Ignoring N permissions.allow entries"` in a session log.** The worktree wasn't marked trusted in `~/.claude.json`. The foreman does this itself (`trustWorktree` in `src/dispatch.ts`) after `ensureWorktree` runs, so this usually means the worktree was created or moved outside the foreman's normal flow — check `~/.claude.json`'s `projects` map has an entry for the worktree path with `"hasTrustDialogAccepted": true`.
-- **`error_max_turns` as the session subtype.** The role hit `--max-turns` before returning an outcome. Raise `maxTurns` in `~/.tone_tonic/foreman.json` if the role's work is legitimately long, or check whether it's looping.
-- **Validator fails at `serve start`.** Check `~/.tone_tonic/logs/serve-api.log` and `~/.tone_tonic/logs/serve-web.log` (written by `pnpm --filter @tone/foreman serve start`) for why the web or api process didn't come up on its port.
-- **`notify-failed` label appears on an epic.** The Slack connector was unreachable from that Mac's headless session (message content lands as a GitHub comment on the epic instead, so nothing is lost). Re-run `claude` → `/mcp` on that Mac and confirm `claude mcp list` shows the Slack connector Connected (see Install step 4).
-- **Playwright chromium not found by the MCP server, or the MCP's own installer stalls.** On Apple Silicon Macs, `@playwright/mcp@0.0.80` bundles its own `playwright-core`, and a plain `npx playwright@1.62.1 install chromium` can put the browser where that bundled core doesn't look — the MCP's own downloader can then stall trying to fetch it again. Workaround:
-  1. Try the MCP's own bundled installer once: `npx -y -p @playwright/mcp@0.0.80 -c 'playwright install chromium'`.
-  2. If that stalls, install with `npx playwright@1.62.1 install chromium`, then look at `ls ~/Library/Caches/ms-playwright` — a failed MCP run's error names the directory names it expects (`chromium-*`, `chromium_headless_shell-*`). Symlink or copy the directories `npx playwright@1.62.1` produced to those expected names.
-- **A validator screenshot is missing from `.playwright-mcp/`.** The screenshot tool sometimes writes the PNG to the worktree root instead of `.playwright-mcp/`; the validator sweeps both into `.validation-artifacts/<pr>/`, so check both locations before concluding a screenshot step failed.
-- **`~/.tone_tonic/artifacts/<pr>/` is empty after a validation run.** The foreman only copies what the validator left in `<worktree>/.validation-artifacts/<pr>/`, and only on a `passed`/`failed` outcome — a session that died without an outcome archives nothing. Look for the `archived validation artifacts` log line in `~/.tone_tonic/logs/foreman.out.log`; if it's absent, the worktree directory didn't exist. Role sessions cannot write to `~/.tone_tonic/artifacts/` themselves: in `--permission-mode dontAsk`, a Bash command that creates or moves a file outside the worktree is denied even though `mkdir`/`mv` are allowlisted.
-- **Branch protection isn't enforced on `main`.** This repo is private on GitHub's free plan, so branch protection rules return HTTP 403 and can't be turned on. The guards against an accidental direct push or merge are the `.claude/headless-settings.json` deny rules (`gh pr merge*`, `git push origin main*`, etc., applied to every headless session) plus the rule that only the foreman itself calls `gh pr merge` — not a GitHub-enforced branch rule.
-
-## 9. Manual operations
-
-- `foreman status|next|stop|abort|go` (or `pnpm --filter @tone/foreman ctl <cmd>` without the wrapper) — see §5. `status --watch` refreshes every 2 s from local files; `next` is the only subcommand that calls GitHub.
-- `foreman start|restart|update|logs|page` — wrapper-only conveniences: start the daemon detached with its log in `~/.tone_tonic/foreman.log`, restart it, pull the clone and install deps, tail the log, open the page.
-- `pnpm --filter @tone/foreman dev-env` — writes `apps/api/.env.local` and `apps/web/.env.local` from `supabase status -o env` run in *this* checkout's `packages/db`, so inside a role worktree it picks up the isolated `tone_tonic_val` stack rather than the dev one. Useful before running validator-style manual checks yourself.
-- `pnpm --filter @tone/foreman serve start` / `serve stop` / `serve status` — starts/stops/checks the web (`:8082`) and api (`:3005`) dev servers in the background, logging to `~/.tone_tonic/logs/serve-*.log` and tracking PIDs in `~/.tone_tonic/serve.json`. This is what the validator role uses to bring the app up before driving it with Playwright. Both commands honour `TONE_WEB_PORT`/`TONE_API_PORT`, which the foreman sets to `8182`/`3105` for a role session (#228), so a running session never takes the ports the owner needs for `pnpm dev`; `dev-env` writes the matching env files. The pidfile is shared per Mac, so anything that must not disturb a running dev stack (CI's `e2e` job) starts its own servers instead of calling `serve start`.
-- `pnpm --filter @tone/foreman start --once` — run a single loop iteration and exit, instead of polling forever. Useful for debugging one action at a time.
-- `pnpm --filter @tone/foreman start --dry-run` — log every action `execute()` would take (including the full `claim#N` / `merge#N` / `apply_plan#N` / `plan#N` plan) without calling any `gh` method or spawning `claude`. Combine with `--once` for a single readonly pass; without `--once` it dry-runs forever on the poll interval.
-- `pnpm --filter @tone/foreman start --config <path>` — use a config file other than `~/.tone_tonic/foreman.json` (or `$TONE_FOREMAN_CONFIG`). This is how a second foreman on the same Mac (for testing multi-Mac behavior) points at a different `host`/`workDir` without touching the first one's config.
-- `GET /api/feed?session=<uuid>&limit=<n>` on the page's port returns the last `n` (default 50, max 500) feed entries for that session.
-
-Example dry-run output against the real repo (one line per JSON log entry):
-
-```json
-{"msg":"preflight ok","host":"matthew-mbp","once":true,"dryRun":true,"warnings":[]}
-{"msg":"plan","actions":["claim#146","apply_plan#124","apply_plan#1","plan#10"]}
-{"msg":"action","type":"claim","issue":146,"role":"builder","pr":null,"round":1,"dryRun":true}
+```bash
+jq -r '[.t, .role, .issue, .model, .costUsd, .durationMinutes] | @tsv' ~/.foreman/widgets/sessions.log
+jq -s 'map(.costUsd) | add' ~/.foreman/widgets/sessions.log
 ```
 
-`execute()` stops after the first action that would start a `claude -p` session (here, `claim#146`), so `apply_plan#124`, `apply_plan#1`, and `plan#10` are logged as part of the plan but never run in this iteration — and dry-run never gets far enough to write anything to GitHub regardless.
+A merge appends one line to `merges.log` (`issue`, `pr`, `host`, `claimedAt`, `mergedAt`). The
+merged issue drops out of every later snapshot, so this is what keeps the phase card's cycle time
+computable. Both logs are local caches; losing them only empties those numbers.
+
+## 9. Resume and multi-Mac
+
+All durable state lives in GitHub. Local disk — the worktree, the transcript, `sessions.log` — is a
+cache the foreman can lose without losing work, because every role checkpoints by pushing its
+branch.
+
+- **Same Mac, same session:** the foreman finds its own open claim and, if the local Claude Code
+  transcript for that session id still exists, resumes with `--resume <id>` and a note to continue
+  from the last Progress comment.
+- **Same Mac, transcript gone:** a fresh session id is used instead, with a note to read the
+  issue's Progress comments and `git log origin/<default>..HEAD` before continuing.
+- **Different Mac, or after a crash:** an In Progress issue with no comment and no branch commit
+  for `limits.staleHours` (2) may be reclaimed by any other foreman. It comments `reclaimed from
+  <host> by <host> at <iso>` and starts a fresh session with the same instruction.
+- **Two Macs claim the same issue in the same window:** both post a `claimed by …` comment before
+  either sees the other's. Once both are visible the alphabetically first host keeps it and the
+  others comment `released by <host>: conflict` and unassign — so pick `host` values with that in
+  mind if it matters which Mac wins. Work is never lost, only not duplicated.
+- **Change requests:** a reviewer or validator failure cycles a builder back for a fix round; after
+  `limits.fixRounds` (2) failed rounds — a third change request — the issue is `blocked` instead of
+  retried. Two things keep that cap from being hit for the wrong reasons: a fix round is scoped
+  (round 2 and later may block only on prior findings still open, regressions in the delta, or a
+  real safety issue; anything else becomes a follow-up issue), and a merge conflict is never a
+  change request — an approved PR that conflicts gets a rebase round that does not count.
+- **To unblock a task by hand:** fix or rebase the branch, push, remove `reviewer:changes` from the
+  PR and `blocked` from the issue (or use the page's **Unblock** button). The fix-round counter
+  stays where it was, so the next reviewer verdict must be an approval or the task is blocked
+  again.
+
+## 10. Troubleshooting
+
+- **`preflight failed: gh token lacks the project scope`.** The daemon parks every tick until the
+  token can read and write the board. Fix it with `gh auth refresh -s project,read:project`, then
+  `foreman -p <name> go`. `foreman init` prints the same line rather than half-creating a board.
+- **A hook is not doing what you expect.** Run it by hand against the instance's `repoDir`:
+  `foreman -p <name> hooks run preflight`. Its stdout, its stderr and the hook's exit code are
+  printed straight to your terminal, and the command exits with the hook's own code. When the
+  daemon runs it instead, the same lines land in `~/.foreman/<name>/logs/hooks.log`. Check the
+  hook is executable — one that exists without `chmod +x` is a logged no-op, not an error.
+- **`"Ignoring N permissions.allow entries"` in a session log.** The worktree was not marked
+  trusted in `~/.claude.json`. The foreman does that itself after creating a worktree, so this
+  usually means the worktree was created or moved outside the normal flow — check `~/.claude.json`
+  has a `projects` entry for the worktree path with `"hasTrustDialogAccepted": true`.
+- **`error_max_turns` as the session subtype.** The role hit `--max-turns` before returning an
+  outcome. Raise `maxTurns` if the role's work is legitimately long, or check for a loop in the
+  session's feed on the page.
+- **The daemon is idle and nothing is claimed.** `foreman -p <name> next` says why. The common
+  causes are an epic with no `agent-ready`, a drafted plan with no `plan-approved`, a task whose
+  body has no `Parent epic: #N` line (a hand-made issue is never claimed — use `foreman epic new`),
+  a `Depends on` issue still open, or a phase held by `limits.blockedPerPhase`.
+- **`~/.foreman/<name>/artifacts/<pr>/` is empty after a validation run.** The foreman only copies
+  what the validator left in `<worktree>/.validation-artifacts/<pr>/`, and only on a
+  `passed`/`failed` outcome — a session that died without an outcome archives nothing. Look for the
+  `archived validation artifacts` line in `logs/foreman.log`. Role sessions cannot write to the
+  artifacts directory themselves: in `--permission-mode dontAsk` a Bash command that creates a file
+  outside the worktree is denied even though `mkdir` and `mv` are allowlisted.
+- **A session's `gh` write was denied.** `gh api` is denied to role sessions by the base settings,
+  as is a multi-line `--body`; the prompts tell every role to write the text to `.gh-body.md` and
+  pass `--body-file`. If a role reports a denial in its notes, that is usually why.
+- **Two daemons fighting over a port.** `foreman list` shows each instance's port and whether its
+  daemon is running; `foreman status` warns when the port is held by a different process. Pick a
+  free port with `foreman add --web-port`, or stop the stale daemon.
+- **Branch protection.** A private repository on GitHub's free plan cannot have branch protection
+  rules, so the guards against an accidental direct push are the base deny rules (`gh pr merge*`,
+  `git push origin <default>*`) applied to every headless session, plus the rule that only the
+  foreman itself calls `gh pr merge`.
+
+## 11. Release check
+
+The manual test that a release works end to end, run against a throwaway repository. It exercises
+`add`, `init`, `epic new`, the planner, approval, and one task from claim to merge.
+
+```bash
+gh repo create acme/foreman-sandbox --private --clone --add-readme
+cd foreman-sandbox
+mkdir -p docs && $EDITOR docs/sandbox.md      # two paragraphs describing something tiny
+git add -A && git commit -m "docs: sandbox spec" && git push
+
+foreman add sandbox --repo acme/foreman-sandbox --repo-dir "$PWD"
+foreman -p sandbox init
+```
+
+A repository with no application needs a `.foreman/config.json` that says so, and `rules.md` that
+tells the roles there is nothing to run, so the planner labels tasks `area:docs` and the validator
+is skipped by label:
+
+```bash
+cat > .foreman/config.json <<'JSON'
+{ "setup": null, "checks": ["true"], "validator": { "skipLabels": ["area:docs"] } }
+JSON
+cat > .foreman/rules.md <<'MD'
+This is a sandbox repository with no application. There is nothing to run or serve; a validator
+should confirm the acceptance criteria by reading the merged files. Label every task `area:docs`.
+MD
+git add .foreman && git commit -m "chore: foreman config" && git push
+```
+
+Then run the pipeline:
+
+```bash
+foreman -p sandbox epic new --title "Phase 1: sandbox" --phase 1 --spec docs/sandbox.md --agent-ready
+foreman -p sandbox status
+foreman -p sandbox run --once        # the planner claims the epic and drafts a plan PR
+```
+
+Expect `claimed by <host> … role=planner`, then a plan PR against the sandbox and the epic at
+**In Review** with `needs-owner`. Merge the plan PR, approve the plan, and let the loop apply it:
+
+```bash
+gh pr merge <plan pr> --squash --repo acme/foreman-sandbox
+gh issue edit 1 --repo acme/foreman-sandbox --add-label plan-approved
+foreman -p sandbox run --once        # applies the plan: task issues at Ready, agent-ready
+foreman -p sandbox run --once        # claims the first task for a builder
+foreman -p sandbox start
+foreman -p sandbox status --watch    # or: foreman -p sandbox logs -f
+```
+
+Watch one task go build → review (→ validate, unless skipped by label) → merge, then stop:
+
+```bash
+foreman -p sandbox stop
+jq -r '[.role, .issue, .outcome, .costUsd] | @tsv' ~/.foreman/sandbox/sessions.log
+```
+
+A pass is: the task's PR merged, its issue closed at **Done**, a `merged by foreman@<host>` comment
+on the issue, and a line in `sessions.log` per session. The whole check costs a handful of sessions
+and takes one to three hours of wall-clock; the daily cap (20) is plenty.
+
+## 12. Developing
+
+```bash
+git clone git@github.com:apptreesoftware/foreman.git
+cd foreman
+pnpm install
+pnpm link --global          # `foreman` now runs this checkout's build
+pnpm build && foreman help
+```
+
+`pnpm dev help` runs the CLI from source with `tsx`, without a build. The checks are the same ones
+CI runs:
+
+```bash
+pnpm lint            # biome check .
+pnpm typecheck       # tsc -p tsconfig.json
+pnpm test            # vitest run
+pnpm build           # tsc -p tsconfig.build.json → dist/
+```
+
+Every test is a unit test against sanitised fixtures (`acme/widgets`) and a fixture repository at
+`test/fixtures/repo/.foreman/`; nothing in the suite touches the network, GitHub or a real
+`claude`. `pnpm test -- src/hooks.test.ts` runs one file.
+
+The package ships `dist/`, `roles/` and `settings/`; `roles/` and `settings/` are read at runtime
+from one level above the running file, so they resolve the same from `src/` and from `dist/`.
+
+### Releasing
+
+A `v*` tag publishes. `.github/workflows/release.yml` installs, runs the four checks, asserts the
+tag matches `package.json`'s `version`, and runs `npm publish`:
+
+```bash
+# bump "version" in package.json, commit, push, then:
+git tag v0.1.1 && git push --tags
+gh release create v0.1.1 --title "0.1.1" --notes "…"
+```
+
+There is no `NPM_TOKEN` secret. The workflow authenticates through **npm trusted publishing**:
+`npm publish` from npm 11.5+ (which `setup-node` with Node 22 provides) exchanges the job's GitHub
+OIDC token for a short-lived publish credential, which is why the job needs `id-token: write`.
+
+Trusted publishing is configured per package on npmjs.com, and the package has to exist first, so
+`0.1.0` was published by hand from a logged-in Mac. **Owner action, once:** on
+<https://www.npmjs.com/package/@apptreesoftware/foreman/access> → **Trusted publishing** → add a
+GitHub Actions publisher with organization `apptreesoftware`, repository `foreman`, workflow
+`release.yml`, environment blank. Until that is done, the release job fails at `npm publish` with
+a 404/403 rather than publishing.
+
+## License
+
+MIT.

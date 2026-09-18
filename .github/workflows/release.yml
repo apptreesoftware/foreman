@@ -1,0 +1,27 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, registry-url: "https://registry.npmjs.org" }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: tag matches package.json version
+        run: |
+          test "v$(node -p 'require("./package.json").version')" = "${GITHUB_REF_NAME}" \
+            || { echo "tag ${GITHUB_REF_NAME} does not match package.json version"; exit 1; }
+      # No NODE_AUTH_TOKEN: npm 11.5+ exchanges this job's OIDC token for a publish credential
+      # through the trusted publisher configured for the package on npmjs.com.
+      - run: npm publish
