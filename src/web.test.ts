@@ -7,7 +7,7 @@ import type { FeedEntry } from "./feed.ts";
 import type { NextReport } from "./next.ts";
 import { CAP_CHOICES, MODEL_CHOICES } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
-import { createWebServer, isLocalHost } from "./web.ts";
+import { basicAuthorization, createWebServer, isLocalHost } from "./web.ts";
 
 const report: StatusReport = {
   host: "mac-a",
@@ -277,6 +277,112 @@ describe("web server", () => {
   it("rejects a session id that is not a uuid", async () => {
     const r = await fetch(`${base}/api/feed?session=../etc/passwd`);
     expect(r.status).toBe(400);
+  });
+});
+
+describe("web server with webAuth", () => {
+  const auth = { user: "me", password: "correct horse" };
+  const acts: string[] = [];
+  const server = createWebServer({
+    port: 0,
+    auth,
+    status: () => report,
+    next: async () => nextReport,
+    act: async (cmd) => {
+      acts.push(cmd);
+      return `did ${cmd}`;
+    },
+    feed: () => [],
+    owner: async () => "",
+    ownerItems: () => [],
+    needsYouItems: () => [],
+    unblock: async () => "",
+    setModel: async () => "",
+    setCap: async () => "",
+    refresh: async () => "",
+    phaseTasks: () => [],
+    setTaskModel: async () => "",
+    modelChoices: () => [],
+    html: "<title>Foreman</title>",
+  });
+  let base = "";
+  beforeAll(async () => {
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => server.close());
+
+  /** node:http so the Host header can be set; returns status, body and the challenge header. */
+  const raw = (path: string, headers: Record<string, string>, method = "GET") =>
+    new Promise<{ status: number; body: string; challenge: string | undefined }>((resolve) => {
+      const req = http.request(
+        { host: "127.0.0.1", port: (server.address() as AddressInfo).port, path, method, headers },
+        (res) => {
+          let body = "";
+          res.on("data", (c) => {
+            body += c;
+          });
+          res.on("end", () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              body,
+              challenge: res.headers["www-authenticate"],
+            }),
+          );
+        },
+      );
+      req.end();
+    });
+
+  it("challenges a request with no credentials, even for the page itself", async () => {
+    const page = await fetch(`${base}/`);
+    expect(page.status).toBe(401);
+    expect(page.headers.get("www-authenticate")).toBe('Basic realm="foreman"');
+    expect(await page.json()).toEqual({ ok: false, error: "unauthorized" });
+    const status = await fetch(`${base}/api/status`);
+    expect(status.status).toBe(401);
+    const post = await fetch(`${base}/api/stop`, { method: "POST" });
+    expect(post.status).toBe(401);
+    expect(acts).toEqual([]);
+  });
+  it("refuses a wrong password, a wrong user and a non-Basic scheme", async () => {
+    const wrong = Buffer.from("me:wrong password").toString("base64");
+    expect(
+      (await fetch(`${base}/api/status`, { headers: { authorization: `Basic ${wrong}` } })).status,
+    ).toBe(401);
+    const user = Buffer.from("you:correct horse").toString("base64");
+    expect(
+      (await fetch(`${base}/api/status`, { headers: { authorization: `Basic ${user}` } })).status,
+    ).toBe(401);
+    expect(
+      (await fetch(`${base}/api/status`, { headers: { authorization: "Bearer x" } })).status,
+    ).toBe(401);
+  });
+  it("accepts the right credentials from any Host, so a tunnel can reach the page", async () => {
+    const headers = { host: "abc.ngrok.app", authorization: basicAuthorization(auth) };
+    const status = await raw("/api/status", headers);
+    expect(status.status).toBe(200);
+    expect(JSON.parse(status.body)).toEqual(report);
+    const page = await raw("/", headers);
+    expect(page.status).toBe(200);
+    expect(page.body).toBe("<title>Foreman</title>");
+    const post = await raw("/api/stop", headers, "POST");
+    expect(post.status).toBe(200);
+    expect(acts).toEqual(["stop"]);
+  });
+  it("still accepts the right credentials on localhost", async () => {
+    const r = await fetch(`${base}/api/status`, {
+      headers: { authorization: basicAuthorization(auth) },
+    });
+    expect(r.status).toBe(200);
+  });
+});
+
+describe("basicAuthorization", () => {
+  it("encodes user:password the way a browser does", () => {
+    expect(basicAuthorization({ user: "me", password: "correct horse" })).toBe(
+      `Basic ${Buffer.from("me:correct horse").toString("base64")}`,
+    );
   });
 });
 
