@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { epic, issue, pr, snapshot } from "../test/helpers.ts";
 import { describeNext, formatNext } from "./next.ts";
+import { defaultRepoConfig } from "./repo-config.ts";
 
 describe("describeNext", () => {
   it("explains a planner dispatch and an ineligible PR", () => {
@@ -62,6 +63,20 @@ describe("describeNext", () => {
     expect(r.stopAt).toBe(1);
     expect(r.prs[0]?.reason).toBe("eligible to merge");
     expect(r.explain[1]).toContain("builder on #2");
+  });
+  it("a validator skip is explained by the labels it matched, not a fixed list", () => {
+    const s = snapshot({
+      issues: [issue({ number: 1, status: "In Review", labels: ["phase:1", "area:db", "size:S"] })],
+      prs: [pr({ number: 9, issue: 1, labels: ["reviewer:approved"] })],
+    });
+    const r = describeNext(s, {
+      ...defaultRepoConfig(),
+      validator: { skipLabels: ["area:db", "area:infra"] },
+    });
+    expect(r.actions).toEqual(["skip_validator#1"]);
+    expect(r.explain[0]).toBe(
+      "skip_validator#1: label PR #9 validator:skipped (issue carries only area:db)",
+    );
   });
   it("idle", () => {
     const r = describeNext(snapshot({ epics: [] }));

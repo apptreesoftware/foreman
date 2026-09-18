@@ -10,7 +10,7 @@ import type { Instance } from "../instance.ts";
 import { listInstances, resolveInstance } from "../instance.ts";
 import { launchdInstalled } from "../launchd-status.ts";
 import { readState } from "../state-file.ts";
-import { parseCli, USAGE } from "./args.ts";
+import { parseCli, parsePhase, USAGE } from "./args.ts";
 import { runCtl } from "./ctl.ts";
 import { runDaemon } from "./daemon.ts";
 import { runHookCommand } from "./hooks.ts";
@@ -120,7 +120,7 @@ async function main(): Promise<number> {
       if (!title || !phase || !spec) throw new Error("--title, --phase and --spec are required");
       return runEpicNew(
         instance,
-        { title, phase: Number(phase), spec, agentReady: b("agent-ready") },
+        { title, phase: parsePhase(phase), spec, agentReady: b("agent-ready") },
         out,
       );
     }

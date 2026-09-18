@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { realExec } from "../exec.ts";
 import type { Instance } from "../instance.ts";
 import { launchdInstalled, launchdUid } from "../launchd-status.ts";
@@ -14,6 +14,25 @@ export function plistPath(label: string, home = homedir()): string {
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+/**
+ * The plist's `PATH`. launchd starts from a clean environment, so this is the whole of it: the
+ * standard locations, plus the directory of the `node` that ran `launchd install`. Without that
+ * last entry an `nvm`-only Mac has no `node` or `npx` on any of the others, and every role session
+ * the daemon spawns would fail to find them even though the daemon itself is running.
+ */
+export function plistEnvPath(home = homedir(), execPath = process.execPath): string {
+  const dirs = [
+    join(home, ".local", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ];
+  const nodeDir = dirname(execPath);
+  if (!dirs.includes(nodeDir)) dirs.push(nodeDir);
+  return dirs.join(":");
+}
 
 export function renderPlist(o: {
   label: string;
@@ -62,7 +81,7 @@ export async function launchdInstall(i: Instance, foremanBin: string): Promise<s
       instance: i.name,
       stateDir: i.dir,
       home: homedir(),
-      path: `${join(homedir(), ".local", "bin")}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
+      path: plistEnvPath(),
     }),
   );
   if (await launchdInstalled(label))

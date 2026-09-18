@@ -81,3 +81,14 @@ export function parseCli(argv: string[]): Cli {
   ) as Record<string, string | boolean>;
   return { instance, cmd: cmd as Command, args: defined, positionals: rest };
 }
+
+/**
+ * `epic new --phase <n>`. `Number("one")` is NaN and `Number("1.5")` is 1.5; both used to reach
+ * `runEpicNew`, which put them straight into a `phase:NaN` label. Refuse them by name instead.
+ */
+export function parsePhase(input: string): number {
+  const n = Number(input);
+  if (!Number.isInteger(n) || n < 1)
+    throw new Error(`--phase must be a positive whole number, got "${input}"`);
+  return n;
+}

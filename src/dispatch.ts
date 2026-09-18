@@ -8,6 +8,7 @@ import type { Exec } from "./exec.ts";
 import type { FeedEntry } from "./feed.ts";
 import { log } from "./log.ts";
 import { FORBIDDEN_ENV } from "./preflight.ts";
+import { defaultRepoConfig } from "./repo-config.ts";
 import { type Activity, emptyActivity, foldEvent } from "./stream.ts";
 import type { Role } from "./types.ts";
 
@@ -62,7 +63,7 @@ export interface DispatchRequest {
 }
 
 /**
- * The rebase round's prompt, naming the repo's own checks rather than a hardcoded pnpm trio, and
+ * The rebase round's prompt, naming the repo's own checks rather than a hardcoded trio, and
  * the repo's own default branch rather than a hardcoded `main`.
  */
 export function rebaseNotes(checks: string[], defaultBranch = "main"): string {
@@ -257,7 +258,9 @@ export async function ensureWorktree(
   branch: string,
   exec: Exec,
   exists: (p: string) => boolean = existsSync,
-  setup: string | null = "pnpm install",
+  // Spec §13.5: the process defaults live in repo-config.ts and nowhere else, so a grep over
+  // `src/` for a stack-specific string finds one file.
+  setup: string | null = defaultRepoConfig().setup,
   defaultBranch = "main",
 ): Promise<string> {
   const dir = join(cfg.workDir, String(issue));
@@ -384,7 +387,7 @@ export const realSpawn: Spawner = (cmd, args, opts) =>
 export interface DispatchDeps {
   spawn: Spawner;
   onAttempt: (req: DispatchRequest) => Promise<void>;
-  /** What a rebase round runs, named in the prompt in place of a hardcoded pnpm trio. */
+  /** What a rebase round runs, named in the prompt in place of a hardcoded trio. */
   checks?: string[];
   /** The repo's default branch, named in the prompt in place of a hardcoded `main`. */
   defaultBranch?: string;
@@ -392,8 +395,6 @@ export interface DispatchDeps {
   onSpawn?: (pid: number) => void;
   onActivity?: (activity: Activity, entries: FeedEntry[]) => void;
 }
-
-const DEFAULT_CHECKS = ["pnpm lint", "pnpm typecheck", "pnpm test"];
 
 export async function runSession(
   req: DispatchRequest,
@@ -405,7 +406,12 @@ export async function runSession(
   const r = await deps.spawn("claude", buildArgs(req, cfg), {
     cwd: req.worktree,
     env: childEnv(process.env, req.env),
-    input: buildPrompt(req, cfg, deps.checks ?? DEFAULT_CHECKS, deps.defaultBranch ?? "main"),
+    input: buildPrompt(
+      req,
+      cfg,
+      deps.checks ?? defaultRepoConfig().checks,
+      deps.defaultBranch ?? "main",
+    ),
     timeoutMs: cfg.wallClockMinutes * 60_000,
     signal: deps.signal,
     onSpawn: deps.onSpawn,

@@ -1,4 +1,5 @@
 import { mergeDecision } from "./merge.ts";
+import { matchedSkipLabels } from "./pick.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import { plan } from "./state.ts";
 import type { Action, Snapshot } from "./types.ts";
@@ -24,7 +25,7 @@ export function actionName(a: Action): string {
   return a.type === "idle" ? `idle(${a.reason})` : `${a.type}#${"issue" in a ? a.issue : a.epic}`;
 }
 
-function explain(a: Action, s: Snapshot): string {
+function explain(a: Action, s: Snapshot, repo: RepoConfig): string {
   const title = (n: number) => s.issues.find((i) => i.number === n)?.title ?? "";
   switch (a.type) {
     case "plan":
@@ -43,8 +44,10 @@ function explain(a: Action, s: Snapshot): string {
       return `${actionName(a)}: squash-merge PR #${a.pr} (CI green, approved, validated)`;
     case "ci_rerun":
       return `${actionName(a)}: rerun the failed jobs of PR #${a.pr} at ${a.sha.slice(0, 7)} (no session, one free retry per push)`;
-    case "skip_validator":
-      return `${actionName(a)}: label PR #${a.pr} validator:skipped (infra/db/shared only)`;
+    case "skip_validator": {
+      const labels = s.issues.find((i) => i.number === a.issue)?.labels ?? [];
+      return `${actionName(a)}: label PR #${a.pr} validator:skipped (issue carries only ${matchedSkipLabels(labels, repo.validator.skipLabels).join(", ")})`;
+    }
     case "block":
       return `${actionName(a)}: label #${a.issue} blocked (${a.reason})`;
     case "release":
@@ -60,7 +63,7 @@ export function describeNext(s: Snapshot, repo: RepoConfig = defaultRepoConfig()
   return {
     actions: actions.map(actionName),
     stopAt: stopIdx === -1 ? null : stopIdx,
-    explain: actions.map((a) => explain(a, s)),
+    explain: actions.map((a) => explain(a, s, repo)),
     prs: s.prs.map((p) => {
       const issue = p.issue === null ? undefined : s.issues.find((i) => i.number === p.issue);
       const d = issue ? mergeDecision(p, issue) : { ok: false as const, reason: "no open issue" };

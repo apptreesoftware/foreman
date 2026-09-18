@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { launchdLabel, renderPlist } from "./launchd.ts";
+import { launchdLabel, plistEnvPath, renderPlist } from "./launchd.ts";
 
 describe("launchd", () => {
   it("label is per instance", () => {
@@ -26,5 +26,21 @@ describe("launchd", () => {
     expect(p).toContain("<key>HOME</key><string>/Users/me</string>");
     expect(p).toContain("<key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string>");
     expect(p).not.toContain("ANTHROPIC_API_KEY");
+  });
+  it("PATH carries the node that installed it, so an nvm-only Mac still finds node and npx", () => {
+    const path = plistEnvPath("/Users/me", "/Users/me/.nvm/versions/node/v22.14.0/bin/node");
+    expect(path.split(":")).toEqual([
+      "/Users/me/.local/bin",
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+      "/Users/me/.nvm/versions/node/v22.14.0/bin",
+    ]);
+  });
+  it("a node already on the standard path is not repeated", () => {
+    expect(plistEnvPath("/Users/me", "/opt/homebrew/bin/node")).toBe(
+      "/Users/me/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+    );
   });
 });
