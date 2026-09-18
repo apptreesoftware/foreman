@@ -102,11 +102,11 @@ Today's schema minus `slackUser`:
 
 ### 4.4 launchd
 
-`foreman -p <name> launchd install` writes `~/Library/LaunchAgents/com.apptreesoftware.foreman.<name>.plist` with concrete paths (the `foreman` binary, `HOME`, the instance) and bootstraps it. `launchd uninstall` boots it out and removes the plist. The plist keeps `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60`, and unsets the API-billing env vars as `launchd/foreman.sh` does today. `git pull --ff-only` at daemon start stays.
+`foreman -p <name> launchd install` writes `~/Library/LaunchAgents/com.apptreesoftware.foreman.<name>.plist` with concrete paths (the `foreman` binary, `HOME`, the instance) and bootstraps it. `launchd uninstall` boots it out and removes the plist. The plist keeps `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60`, and names only `HOME` and `PATH`, so launchd starts the daemon from a clean environment and the API-billing env vars never reach it; `runDaemon` exits 2 if one is set anyway. `git pull --ff-only` at daemon start stays.
 
 ## 5. Repository config: `.foreman/`
 
-Committed in every repository the foreman works on. Read from the worktree at dispatch time, so a PR that changes it applies to the sessions that run on that branch.
+Committed in every repository the foreman works on. `rules.md`, `roles/<role>.md` and `settings.json` are read from the worktree at dispatch time, so a PR that changes them applies to the sessions that run on its own branch; `config.json` and `hooks/` are read from the clone at `repoDir` instead — the config once at daemon start, the hooks at every run — so a change to either needs the clone pulled (the daemon pulls at start) and the daemon restarted.
 
 ```
 .foreman/
@@ -155,9 +155,9 @@ Four optional executables in `.foreman/hooks/`. A missing hook is a no-op. Each 
 | Hook | Runs | Contract |
 |---|---|---|
 | `preflight` | every tick, from `repoDir`, after the built-in checks | Exit 0: ok. Non-zero: the daemon parks; the last non-empty stderr line is the reason. Stdout lines starting `warn:` are preflight warnings. |
-| `session-env` | before each `claude -p`, from the worktree | Stdout `KEY=VALUE` lines enter the child environment. Stdout lines starting `prompt:` are appended, in order, to the session prompt. Non-zero exit fails the attempt. |
-| `before-session` | after `session-env`, from the worktree | Non-zero exit fails the attempt (counts toward `limits.attempts`). |
-| `after-session` | always, from the worktree: after the child exits, is killed, or the daemon is interrupted; and again before the next session on the same worktree | Exit code logged, never fatal. |
+| `session-env` | once per dispatch, around every attempt of that session, from the worktree | Stdout `KEY=VALUE` lines enter the child environment. Stdout lines starting `prompt:` are appended, in order, to the session prompt. Non-zero exit blocks the issue with the hook's stderr; the operator fixes the hook and unblocks. |
+| `before-session` | after `session-env`, once per dispatch, around every attempt of that session, from the worktree | Non-zero exit blocks the issue with the hook's stderr; the operator fixes the hook and unblocks. |
+| `after-session` | once per dispatch, from the worktree: after the last attempt exits, is killed, or the daemon is interrupted; and again before the next dispatch on the same worktree | Exit code logged, never fatal. |
 
 The built-in preflight keeps what is generic to running `claude -p` on a subscription: the `STOP` file, `claude auth status` is a `claude.ai` login, no API-billing env var, `gh auth status` with the `project` scope, the daily cap, the GraphQL budget. Docker, Supabase, the `tone_tonic_val` stack and the Playwright chromium check leave the daemon.
 

@@ -21,6 +21,11 @@ know about a repository — how to install it, what the checks are, what a valid
 reviewer must check — is committed in that repository under `.foreman/`, so the tool itself stays
 generic and a change to the process ships as a pull request like anything else.
 
+Run a foreman only on a repository whose merges you gate. Everything a session writes on its
+branch is what the next session on that branch reads — the House rules, the per-role rules, the
+extra permissions — so the branch is inside the trust boundary and a human merge is what closes
+it.
+
 The pipeline is fixed and always on: **epic → planner → tasks → builder → reviewer → validator →
 merge → phase-closer**. The five roles are hardcoded, the label names and board statuses are
 hardcoded, and the foreman only works tasks that its own planner created. Section 4 is the whole
@@ -107,8 +112,9 @@ reads `idle(nothing eligible)`. Any `pull_request` workflow will do — it is th
 pipeline hangs on.
 
 Nothing in step 4 is committed. Review it, fill in `rules.md`, and commit it — the daemon reads
-`.foreman/` **from the worktree at dispatch time**, so a PR that changes it applies to the
-sessions that run on that branch:
+`rules.md`, `roles/<role>.md` and `settings.json` **from the worktree at dispatch time**, so a PR
+that changes them applies to the sessions that run on its own branch. `config.json` and `hooks/`
+come from the clone at `repo-dir` instead; section 5 has the whole of it:
 
 ```bash
 cd ~/Projects/widgets
@@ -152,7 +158,10 @@ foreman -p widgets launchd uninstall
 
 `launchd install` writes `~/Library/LaunchAgents/com.apptreesoftware.foreman.widgets.plist` with
 concrete paths and bootstraps it. The plist sets `KeepAlive`, `RunAtLoad` and `ThrottleInterval`
-60 s, and unsets the API-billing environment variables.
+60 s. launchd starts the daemon from a clean environment — only the `HOME` and `PATH` the plist
+names — so the API-billing variables never reach it; and if one is set anyway, the daemon refuses
+to start and exits 2. The `PATH` includes the directory of the `node` that ran `launchd install`,
+so role sessions on an `nvm`-only Mac still find `node` and `npx`.
 
 ## 4. The process
 
@@ -326,17 +335,27 @@ open claim.
 
 ## 5. `.foreman/`
 
-Committed in the repository the foreman works on, and read from the worktree at dispatch, so a
-pull request can change the process for the sessions that run on its own branch.
+Committed in the repository the foreman works on. Two halves of it are read from two different
+places, and the difference matters:
 
 ```
 .foreman/
-  config.json      process knobs
-  rules.md         appended to every role prompt as "House rules"
-  roles/<role>.md  optional, appended after rules.md for that role only
-  settings.json    { "allow": [...], "deny": [...] } merged into the headless settings
-  hooks/           preflight, session-env, before-session, after-session
+  config.json      process knobs                                    read from the clone, at daemon start
+  rules.md         appended to every role prompt as "House rules"   read from the worktree, at every dispatch
+  roles/<role>.md  optional, appended after rules.md for that role  read from the worktree, at every dispatch
+  settings.json    { "allow": [...], "deny": [...] } merged in      read from the worktree, at every dispatch
+  hooks/           preflight, session-env, before-session, after-session   run from the clone, at every run
 ```
+
+`rules.md`, `roles/<role>.md` and `settings.json` are read from the **worktree**, freshly for each
+dispatch, so a pull request can change the process for the sessions that run on its own branch.
+
+`config.json` and `hooks/` are read from the **clone at `repo-dir`**: the config once, when the
+daemon starts, and a hook every time it runs. A merged pull request that changes either therefore
+takes effect only once that clone has been pulled and the daemon restarted. The daemon pulls
+(`git pull --ff-only`, best-effort, never fatal) before its first tick, so in practice
+`foreman -p widgets restart` is enough; a clone that cannot fast-forward logs a warning and the
+daemon carries on with the working tree as it stands.
 
 ### `config.json`
 
@@ -367,8 +386,11 @@ Every key is optional; the file may be `{}`. These are the defaults:
 | `limits.attempts` | 3 | Dispatch attempts for one session before the issue is `blocked`. |
 | `models` | opus, sonnet, haiku, fable | The page's model buttons, the `model:<name>` labels `init` creates, and the names `foreman model` accepts. |
 
-A strict schema: an unknown key is an error, not a warning, so a typo fails loudly at the next
-dispatch.
+A strict schema: an unknown key is an error, not a warning. The daemon refuses to start on a bad
+file and names it on stderr (`foreman: /path/.foreman/config.json: <what is wrong>`, exit 2, so it
+lands in `logs/foreman.err.log`). `foreman status`, `stop`, `abort`, `go`, `next`, `model` and
+`cap` still work: they print that same line as a warning and carry on with the defaults, because
+the controls are most needed when something is wrong.
 
 A repository with no application to install or run, for instance a docs repository:
 
@@ -422,6 +444,11 @@ close`, `gh api`, pushes to the default branch, force pushes, `git worktree remo
 -rf` of home, and reads of `~/.ssh`, `~/.aws` and `~/.claude*`. Anything stack-specific — `pnpm`,
 `docker`, a browser MCP — is not in the base file; add it here.
 
+The foreman also appends four denies of its own, per dispatch, for the session's own worktree:
+`Edit`/`Write` of `<worktree>/.foreman/**` and `<worktree>/.claude/**`. A session cannot widen the
+next session's permissions, rewrite the House rules the reviewer reads, or add a Claude Code hook
+on its own branch. Those files are changed the way everything else is: by a human, in a PR.
+
 ### Hooks
 
 Four optional executables in `.foreman/hooks/`, any language, no rebuild. A missing hook is a
@@ -438,9 +465,9 @@ to inject and is never logged.
 | Hook | Runs | Contract |
 |---|---|---|
 | `preflight` | every tick, from `repoDir`, after the built-in checks | Exit 0: ok. Non-zero: the daemon parks and the last non-empty stderr line is the reason. Stdout lines starting `warn:` become preflight warnings. |
-| `session-env` | before each `claude -p`, from the worktree | Stdout `KEY=VALUE` lines enter the child's environment. Stdout lines starting `prompt:` are appended, in order, to the session prompt. A non-zero exit fails the attempt. |
-| `before-session` | after `session-env`, from the worktree | A non-zero exit fails the attempt and counts toward `limits.attempts`. |
-| `after-session` | always, from the worktree: after the child exits, is killed, or the daemon is interrupted; and again before the next session on the same worktree | The exit code is logged and never fatal. |
+| `session-env` | once per dispatch, around every attempt of that session, from the worktree | Stdout `KEY=VALUE` lines enter the child's environment. Stdout lines starting `prompt:` are appended, in order, to the session prompt. A non-zero exit blocks the issue with the hook's stderr; the operator fixes the hook and unblocks. |
+| `before-session` | after `session-env`, once per dispatch, around every attempt of that session, from the worktree | A non-zero exit blocks the issue with the hook's stderr; the operator fixes the hook and unblocks. |
+| `after-session` | once per dispatch, from the worktree: after the last attempt exits, is killed, or the daemon is interrupted; and again before the next dispatch on the same worktree | The exit code is logged and never fatal. |
 
 Debug one by hand against the instance's `repoDir`:
 
