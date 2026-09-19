@@ -14,6 +14,7 @@ import { loadRepoConfigSafe } from "../repo-config.ts";
 import { readSessions } from "../sessions.ts";
 import { readState } from "../state-file.ts";
 import { describeStatus, formatStatus } from "../status.ts";
+import { basicAuthorization } from "../web.ts";
 import { launchdLabel } from "./launchd.ts";
 
 export type CtlCommand = "status" | "next" | "stop" | "abort" | "go" | "model" | "cap";
@@ -108,6 +109,7 @@ export async function runCtl(
   async function postToDaemon(path: string, body: unknown, fallback: string): Promise<string> {
     const r = await fetch(`http://127.0.0.1:${cfg.webPort}/api/${path}`, {
       method: "POST",
+      headers: cfg.webAuth ? { authorization: basicAuthorization(cfg.webAuth) } : {},
       body: JSON.stringify(body),
     });
     const j = (await r.json()) as { ok: boolean; message?: string; error?: string };

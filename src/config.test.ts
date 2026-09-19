@@ -82,3 +82,21 @@ describe("expandHome", () => {
   it("expands ~/", () => expect(expandHome("~/x")).not.toContain("~"));
   it("leaves absolute paths", () => expect(expandHome("/a/b")).toBe("/a/b"));
 });
+
+describe("webAuth", () => {
+  it("is absent by default and accepted when both user and password are set", () => {
+    expect(parseConfig(JSON.stringify(base)).webAuth).toBeUndefined();
+    const cfg = parseConfig(
+      JSON.stringify({ ...base, webAuth: { user: "me", password: "correct horse" } }),
+    );
+    expect(cfg.webAuth).toEqual({ user: "me", password: "correct horse" });
+  });
+  it("rejects a short password and a missing user", () => {
+    expect(() =>
+      parseConfig(JSON.stringify({ ...base, webAuth: { user: "me", password: "short" } })),
+    ).toThrow();
+    expect(() =>
+      parseConfig(JSON.stringify({ ...base, webAuth: { password: "correct horse" } })),
+    ).toThrow();
+  });
+});

@@ -579,10 +579,26 @@ An instance is a name. Its machine config and all of its state live under `~/.fo
 | `webPort` | no | first free port from 8090, chosen by `add` |
 | `minGraphqlPoints` | no | 500 |
 | `notify` | no | none (§7) |
+| `webAuth` | no | none: the page is localhost-only |
 
 `workDir` absent means worktrees live at `<repoDir>/.worktrees/<issue>`, so a checkout is
 self-contained; add `.worktrees/` to the repository's `.gitignore`. `model` is always passed as
 `--model`, so a session never inherits whatever the interactive `claude` default happens to be.
+
+### Reaching the page from outside this Mac
+
+The page listens on `127.0.0.1` and, by default, refuses any request whose `Host` is not
+localhost. To reach it through a tunnel, set HTTP Basic credentials:
+
+```json
+"webAuth": { "user": "me", "password": "at least eight characters" }
+```
+
+With `webAuth` set, every route (the page itself included) demands those credentials, the `Host`
+check is dropped, and `foreman stop`/`go`/`model`/`cap` send them too. Then
+`ngrok http 8090` (or any tunnel that terminates TLS) exposes the page; the browser prompts once.
+The password is a credential like the Slack webhook: it is never logged or served. Restart the
+daemon after changing it.
 
 ### Which instance a command means
 

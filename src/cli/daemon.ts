@@ -179,6 +179,7 @@ export async function runDaemon(
   const launchdIsInstalled = await launchdInstalled(launchdLabel(instance.name));
   const web = await startWebServer({
     port: cfg.webPort,
+    auth: cfg.webAuth,
     status: () =>
       describeStatus({
         state: store.get(),

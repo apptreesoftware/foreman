@@ -97,6 +97,7 @@ Today's schema minus `slackUser`:
 | `webPort` | no | first free port from 8090, chosen by `add` |
 | `minGraphqlPoints` | no | 500 |
 | `notify` | no | none |
+| `webAuth` | no | none: `{ user, password }` for HTTP Basic; set, every route demands it and the localhost-only Host check is dropped so a tunnel can reach the page |
 
 `webPort` must be unique per instance on a Mac; `foreman add` refuses a port another instance already has.
 

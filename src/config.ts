@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { z } from "zod";
 import { NotifyConfigSchema } from "./notify.ts";
 
+export const WebAuthSchema = z
+  .object({ user: z.string().min(1), password: z.string().min(8) })
+  .strict();
+export type WebAuth = z.infer<typeof WebAuthSchema>;
+
 export const ConfigSchema = z.object({
   repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
   /** The board's number. Absent until `foreman init` creates it, which is what fills this in. */
@@ -32,6 +37,12 @@ export const ConfigSchema = z.object({
    * nothing on the page), so keep `foreman.json` out of the repo as it already is.
    */
   notify: NotifyConfigSchema.optional(),
+  /**
+   * HTTP Basic credentials for the page. Absent, the page answers localhost only; set, it answers
+   * any Host that presents these, so a tunnel (ngrok and the like) can reach it. The password is
+   * a credential like `slackWebhookUrl`: never logged, never served.
+   */
+  webAuth: WebAuthSchema.optional(),
 });
 export type ForemanConfig = Omit<z.infer<typeof ConfigSchema>, "workDir"> & {
   owner: string;

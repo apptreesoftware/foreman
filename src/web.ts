@@ -1,8 +1,10 @@
+import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { z } from "zod";
+import type { WebAuth } from "./config.ts";
 import { FEED_LIMIT_DEFAULT, type FeedEntry, isSessionId } from "./feed.ts";
 import { log } from "./log.ts";
 import type { NextReport } from "./next.ts";
@@ -24,6 +26,11 @@ export type WebCommand = "stop" | "abort" | "go";
 
 export interface WebDeps {
   port: number;
+  /**
+   * HTTP Basic credentials. Set, every route demands them and the Host check is dropped, so a
+   * tunnel can reach the page; absent, the page stays localhost-only (spec §7).
+   */
+  auth?: WebAuth;
   status: () => StatusReport;
   next: () => Promise<NextReport>;
   act: (cmd: WebCommand) => Promise<string>;
@@ -55,6 +62,19 @@ export interface WebDeps {
 export function isLocalHost(hostHeader: string | undefined, port: number): boolean {
   if (!hostHeader) return false;
   return hostHeader === `127.0.0.1:${port}` || hostHeader === `localhost:${port}`;
+}
+
+/** The `Authorization` value a client sends for these credentials; what `ctl` uses too. */
+export function basicAuthorization(auth: WebAuth): string {
+  return `Basic ${Buffer.from(`${auth.user}:${auth.password}`).toString("base64")}`;
+}
+
+/** Constant-time on the encoded header, so neither a length nor a prefix leaks by timing. */
+function authorized(header: string | undefined, auth: WebAuth): boolean {
+  if (!header) return false;
+  const want = Buffer.from(basicAuthorization(auth));
+  const got = Buffer.from(header);
+  return want.length === got.length && timingSafeEqual(want, got);
 }
 
 const OwnerRequestSchema = z.object({
@@ -110,9 +130,17 @@ export function createWebServer(d: WebDeps): http.Server {
     const u = new URL(req.url ?? "/", "http://localhost");
     const url = u.pathname;
     try {
-      // Spec §7: every route is localhost-only, not just the POST actions.
-      if (!isLocalHost(req.headers.host, bound))
+      if (d.auth) {
+        // Credentials replace the Host check: a rebinding page never carries them, because the
+        // browser caches Basic credentials per origin and the attacker's origin is not this one.
+        if (!authorized(req.headers.authorization, d.auth)) {
+          res.setHeader("www-authenticate", 'Basic realm="foreman"');
+          return json(res, 401, { ok: false, error: "unauthorized" });
+        }
+      } else if (!isLocalHost(req.headers.host, bound)) {
+        // Spec §7: every route is localhost-only, not just the POST actions.
         return json(res, 403, { ok: false, error: "localhost only" });
+      }
       if (req.method === "GET" && url === "/")
         return send(res, 200, html, "text/html; charset=utf-8");
       if (req.method === "GET" && url === "/api/status") return json(res, 200, d.status());
