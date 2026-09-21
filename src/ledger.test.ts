@@ -70,7 +70,7 @@ describe("operator interrupt comments", () => {
   });
 });
 
-describe("ci rerun ledger (#362)", () => {
+describe("ci rerun ledger", () => {
   const sha = "1111111111111111111111111111111111111111";
   const other = "2222222222222222222222222222222222222222";
 

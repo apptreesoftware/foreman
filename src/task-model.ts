@@ -15,7 +15,7 @@ export interface TaskModelGh {
 /**
  * The tasks the page may set a model on: every open task of every phase on the stored board.
  * This is the endpoint's allowlist, so an issue the last tick did not list under an approved
- * phase — or one already closed — never reaches GitHub (#259).
+ * phase — or one already closed — never reaches GitHub.
  */
 export function phaseTasks(board: Board | null): PhaseTask[] {
   return (board?.phases ?? []).flatMap((p) => p.tasks.filter((t) => !t.closed));
@@ -40,7 +40,7 @@ export async function applyTaskModel(
 
 /**
  * Reflects a just-applied label on the stored board, so the page shows the new model at once
- * rather than after the next tick — which, with a session running, can be an hour away (#204).
+ * rather than after the next tick — which, with a session running, can be an hour away.
  */
 export function applyTaskModelToBoard(board: Board, issue: number, model: TaskModelChoice): Board {
   const next = model === MODEL_DEFAULT ? null : model;

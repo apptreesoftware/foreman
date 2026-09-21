@@ -82,7 +82,7 @@ function fakeGh(issues: Issue[]) {
   return { gh, calls };
 }
 
-/** Epic #200 plus #190, the task a half-finished earlier apply already created for it (#223). */
+/** Epic #200 plus #190, the task a half-finished earlier apply already created for it. */
 const reusePlanIssues = () => [
   issue({
     number: 200,
@@ -228,7 +228,7 @@ describe("execute", () => {
     await execute({ type: "merge", pr: 9, issue: 1 }, ctx({ gh: counting }));
     expect(reads).toBe(1);
   });
-  it("ci_rerun: reruns the failed jobs and records the sha, starting no session (#362)", async () => {
+  it("ci_rerun: reruns the failed jobs and records the sha, starting no session", async () => {
     const sha = "1111111111111111111111111111111111111111";
     const i = issue({ number: 1, status: "In Review" });
     const { gh, calls } = fakeGh([i]);
@@ -316,7 +316,7 @@ describe("execute", () => {
       mergedAt: "2026-09-03T12:00:00Z",
     });
   });
-  it("claim: a rebase round keeps the issue In Review and hands the builder the rebase notes (#237)", async () => {
+  it("claim: a rebase round keeps the issue In Review and hands the builder the rebase notes", async () => {
     const i = issue({ number: 1, status: "In Review" });
     const { gh, calls } = fakeGh([i]);
     const inputs: string[] = [];
@@ -669,7 +669,7 @@ describe("execute", () => {
     // "noop": nothing was written, so the tick must not count this as work and re-tick at once.
     expect(r).toBe("noop");
     // No `plan applied` comment: planApplied() would read it as done and the epic would never
-    // get its tasks. The next tick retries instead (#189).
+    // get its tasks. The next tick retries instead.
     expect(calls).toEqual([]);
   });
   it("apply_plan fetches origin before reading the plan", async () => {
@@ -855,7 +855,7 @@ describe("runForever backoff", () => {
   });
 });
 
-describe("idle backoff (#387)", () => {
+describe("idle backoff", () => {
   // Drives runForever with a scripted sequence of outcomes, recording the sleep before each.
   async function delaysFor(outcomes: Array<TickOutcome | "fail">): Promise<number[]> {
     const seconds: number[] = [];
@@ -928,7 +928,7 @@ describe("idle backoff (#387)", () => {
   });
 });
 
-describe("snapshotFingerprint (#387)", () => {
+describe("snapshotFingerprint", () => {
   it("is stable when nothing changed", () => {
     const s = snapshot({ issues: [issue({ number: 1 })], prs: [pr({ number: 9, issue: 1 })] });
     expect(snapshotFingerprint(s)).toBe(snapshotFingerprint(snapshot({ ...s })));
@@ -1148,7 +1148,7 @@ describe("operator interrupt", () => {
     const line = readFileSync(join(dir, "sessions.log"), "utf8").trim();
     expect(JSON.parse(line)).toMatchObject({
       outcome: "aborted",
-      // Recorded on an interrupt too, so an aborted session's spend is still comparable (#226).
+      // Recorded on an interrupt too, so an aborted session's spend is still comparable.
       model: "opus",
       turns: 0,
       subtype: "interrupted",
@@ -1417,7 +1417,7 @@ describe("live activity", () => {
   });
 });
 
-describe("tick outcome (#223)", () => {
+describe("tick outcome", () => {
   // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
   const okExec: Exec = async () => ({
     code: 0,
@@ -1618,7 +1618,7 @@ describe("tick outcome (#223)", () => {
 });
 
 // Each notification fires exactly once for its trigger, and carries only numbers, titles and the
-// foreman's own reason strings — never the stderr excerpt that goes into the GitHub comment (#225).
+// foreman's own reason strings — never the stderr excerpt that goes into the GitHub comment.
 describe("notifications", () => {
   // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
   const okExec: Exec = async () => ({

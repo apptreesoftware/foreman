@@ -115,7 +115,7 @@ describe("preflight", () => {
         : okExec(cmd, args);
     expect((await preflight(cfg, deps({ exec }))).ok).toBe(true);
   });
-  it("parks on a quota that is already exhausted, which gh reports as an error (#387)", async () => {
+  it("parks on a quota that is already exhausted, which gh reports as an error", async () => {
     // GitHub answers `rateLimit` itself with an error once the hour's points are gone, and gh
     // exits non-zero. Read as "cannot tell", it let the tick through to die inside listIssues.
     const exec: Exec = async (cmd, args) =>

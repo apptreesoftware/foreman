@@ -37,7 +37,7 @@ describe("describeWaiting", () => {
   it("is empty when nothing blocks", () => {
     expect(kinds(snapshot({ issues: [issue({ number: 1 })] }))).toEqual([]);
   });
-  it("an agent-ready issue parked at Backlog is explained, not hidden (#249)", () => {
+  it("an agent-ready issue parked at Backlog is explained, not hidden", () => {
     const s = snapshot({ issues: [issue({ number: 7, status: "Backlog" })] });
     expect(describeWaiting(s, base)[0]).toMatchObject({
       kind: "human",
@@ -229,7 +229,7 @@ describe("describeWaiting", () => {
       detail: "PR #11 fix round 2 queued",
     });
   });
-  it("review_cycle when an approved PR conflicts with main and a rebase is queued (#237)", () => {
+  it("review_cycle when an approved PR conflicts with main and a rebase is queued", () => {
     const i1 = issue({ number: 1, status: "In Review" });
     const s = snapshot({
       issues: [i1],
@@ -248,7 +248,7 @@ describe("describeWaiting", () => {
       detail: "PR #11 conflicts with main; rebase queued",
     });
   });
-  it("human: a phase held by too many blocked tasks, once, with the count (#237)", () => {
+  it("human: a phase held by too many blocked tasks, once, with the count", () => {
     const blocked = (number: number) =>
       issue({
         number,

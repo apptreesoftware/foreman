@@ -89,11 +89,11 @@ describe("buildArgs / buildPrompt", () => {
     expect(a.join(" ")).toContain("--session-id 33333333-3333-3333-3333-333333333333");
     expect(a.join(" ")).toContain("--append-system-prompt-file /s/roles/builder.md");
     expect(a.join(" ")).not.toContain("dangerously");
-    // Always pinned, never inherited from the interactive CLI default (#210).
+    // Always pinned, never inherited from the interactive CLI default.
     expect(a.join(" ")).toContain("--model opus");
     expect(buildArgs(req, { ...cfg, model: "sonnet" }).join(" ")).toContain("--model sonnet");
   });
-  it("a rebase round says so instead of announcing a fix round (#237)", () => {
+  it("a rebase round says so instead of announcing a fix round", () => {
     const p = buildPrompt({ ...req, round: 2, rebase: true, notes: "merge main" }, cfg, CHECKS);
     expect(p).toContain("rebase round");
     expect(p).toContain("git merge origin/main");

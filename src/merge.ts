@@ -59,7 +59,7 @@ export function blockActions(s: Snapshot, repo: RepoConfig = defaultRepoConfig()
         (pr.labels.includes("reviewer:changes") ||
           pr.labels.includes("validator:failed") ||
           // Red CI that survived its rerun and its fix rounds ends here too, or the PR would sit
-          // at idle for ever the way #344 did (#362).
+          // at idle for ever.
           (pr.checks === "failure" && ciRerunsSpent(pr, issue, ciReruns))) &&
         fixRound(issue.comments) >= fixRounds,
     )

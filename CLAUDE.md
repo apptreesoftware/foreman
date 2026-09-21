@@ -6,7 +6,7 @@ Guidance for Claude Code sessions working in this repository.
 
 `@apptreesoftware/foreman`: a TypeScript daemon that runs a GitHub issue pipeline unattended. It shells out to `claude -p` for five fixed roles (planner, builder, reviewer, validator, phase-closer) against issues on a GitHub Projects v2 board and does the deterministic bookkeeping between them: labels, board Status, claims, CI reruns, squash merges. One daemon per repository; several per Mac. Everything repository-specific lives in the served repository's `.foreman/` directory, never here.
 
-Read `README.md` first. Design: `docs/2026-09-18-foreman-extraction-design.md` (spec, binding); `docs/2026-09-18-foreman-extraction.md` (the plan that built it).
+Read `README.md` first.
 
 ## Layout
 

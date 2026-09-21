@@ -8,7 +8,7 @@ export interface BudgetSample {
 
 /**
  * Three free `rateLimit` reads per tick turn the hourly GraphQL budget into an attributed
- * number (#198): what the loop's own snapshot cost, what the `claude -p` session it dispatched
+ * number: what the loop's own snapshot cost, what the `claude -p` session it dispatched
  * spent, and what was gone before the tick even started — a role session on another issue, a
  * second daemon, or a human at a terminal.
  */

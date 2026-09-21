@@ -63,12 +63,12 @@ function isRateLimited(stdout: string): boolean {
 
 /**
  * The remaining GitHub GraphQL points. The `rateLimit` query itself costs nothing, so this is
- * safe to run every tick; an unreadable answer returns null and never blocks the daemon (#192).
+ * safe to run every tick; an unreadable answer returns null and never blocks the daemon.
  *
  * An *exhausted* quota is not an unreadable answer. GitHub answers `rateLimit` itself with
  * `{"errors":[{"type":"RATE_LIMIT"}]}` and `gh` exits non-zero, which used to read as null and
  * so skipped the budget check entirely — preflight passed and the tick then died inside
- * `listIssues`, the very state the check exists to prevent (#387). Report it as zero instead.
+ * `listIssues`, the very state the check exists to prevent. Report it as zero instead.
  */
 export async function graphqlBudget(exec: Exec): Promise<BudgetSample | null> {
   const r = await exec("gh", [

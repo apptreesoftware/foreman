@@ -4,12 +4,12 @@ import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { Action, Snapshot } from "./types.ts";
 
 /**
- * The free half of the red-CI recovery (#362).
+ * The free half of the red-CI recovery.
  *
  * A failed check on an in-review PR used to produce nothing at all: `mergeDecision` refused the
  * merge on `checks failure` and `jobCandidates` had no branch for it, so an approved and
  * validated PR sat at `idle(nothing eligible)` until someone read the log. Most of those
- * failures are flakes — #344 was one — so the first answer is a rerun of the failed jobs, which
+ * failures are flakes, so the first answer is a rerun of the failed jobs, which
  * costs runner time and no model tokens. `pick.ts` handles the other half: when the rerun budget
  * for this head commit is spent and CI is still red, the PR gets a builder fix round.
  *

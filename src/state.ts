@@ -17,7 +17,7 @@ export function plan(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): Actio
   const out: Action[] = [
     ...mergeActions(s),
     // Before the pick: a rerun that turns the checks green makes the next tick's merge possible
-    // and saves the builder round the picker would otherwise queue (#362).
+    // and saves the builder round the picker would otherwise queue.
     ...ciActions(s, repo),
     ...skipValidatorActions(s, repo),
     ...reclaimActions(s, repo.limits.staleHours),

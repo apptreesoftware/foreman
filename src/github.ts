@@ -92,7 +92,7 @@ export function sizeOf(labels: string[]): Size | null {
 }
 
 /**
- * The model a `model:<name>` label pins the issue's sessions to (#259). The name reaches `claude`
+ * The model a `model:<name>` label pins the issue's sessions to. The name reaches `claude`
  * as argv, so one that fails `ModelSchema` — a flag, a path, an empty string — reads as no label.
  */
 export function modelOf(labels: string[]): string | null {
@@ -108,7 +108,7 @@ function names(labels: Array<{ name: string }> | undefined): string[] {
 /**
  * Everything the foreman knows about an issue, including where it sits on the board. The page
  * sizes are the ones `gh issue list --json` uses itself, so the ledger window is unchanged
- * (#387) — `planApplied` and `ciRerunCount` read comments an arbitrary distance back.
+ * — `planApplied` and `ciRerunCount` read comments an arbitrary distance back.
  */
 const ISSUE_NODE = `
     number
@@ -133,7 +133,7 @@ const ISSUE_NODE = `
  * The board Status and item id come from the issue's own `projectItems` rather than from a
  * separate `gh project item-list`, which cost 306 of the tick's 310 GraphQL points: it paged
  * every field value of every item on the board — closed issues included — to read three fields
- * off the handful the foreman had just fetched (#387). This query costs 5.
+ * off the handful the foreman had just fetched. This query costs 5.
  *
  * `states` is baked into the string rather than passed as a variable because `gh api graphql`
  * has no way to send a list argument.
@@ -261,7 +261,7 @@ export class GitHub {
   /**
    * The tick's one full read: issues, their comments and their board Status, in a single query.
    * There is no board cache to go stale — every issue carries its own live Status, so a Status
-   * edit made by hand is seen by the next tick (#249) without a second read (#387).
+   * edit made by hand is seen by the next tick without a second read.
    */
   async listIssues(state: "open" | "all" = "open"): Promise<Issue[]> {
     const query = issuesQuery(state);
@@ -291,7 +291,7 @@ export class GitHub {
   /**
    * One issue, one query. This used to call `listIssues("all")` — every claim, merge, resume
    * and plan re-downloaded every issue in the repo with all of its comments, which is what
-   * spent the hourly GraphQL budget (#192).
+   * spent the hourly GraphQL budget.
    */
   async getIssue(n: number): Promise<Issue> {
     const raw = (
@@ -347,7 +347,7 @@ export class GitHub {
   /**
    * Reruns the failed jobs of the newest workflow run for `sha`, and answers with its run id (or
    * null when GitHub has no run for that commit). REST rather than GraphQL on purpose: the
-   * tick's GraphQL budget is for the board reads, and this only fires on a red PR (#362).
+   * tick's GraphQL budget is for the board reads, and this only fires on a red PR.
    */
   async rerunFailedChecks(sha: string): Promise<number | null> {
     const found = (

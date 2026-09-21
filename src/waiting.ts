@@ -77,7 +77,7 @@ export function describeWaiting(
     if (e.state !== "OPEN") continue;
     const ei = byNumber.get(e.number);
     // A drafted plan and a closed phase both park the epic on `needs-owner`; `plan-approved`
-    // is what tells them apart, and the plan case also holds every other epic (#187).
+    // is what tells them apart, and the plan case also holds every other epic.
     if (e.labels.includes("needs-owner"))
       out.push({
         kind: "human",
@@ -107,7 +107,7 @@ export function describeWaiting(
         since: byNumber.get(next.number)?.updatedAt ?? null,
       });
   }
-  // A phase with too many blocked tasks starts no new builds until the owner clears one (#237);
+  // A phase with too many blocked tasks starts no new builds until the owner clears one;
   // said once per phase, ahead of the per-issue lines that explain which tasks those are.
   const blockedCount = (phase: number) =>
     s.issues.filter(
@@ -136,7 +136,7 @@ export function describeWaiting(
     }
   }
   // Non-epic issues parked on a human. The epics have their own loop above and their own card;
-  // these had nowhere to show at all before #224, so #165, #171 and #172 sat unanswered.
+  // these used to have nowhere to show at all, so they sat unanswered.
   for (const x of s.issues) {
     if (x.state !== "OPEN" || isEpic(x.number)) continue;
     const decision = x.labels.includes("decision");
@@ -207,7 +207,7 @@ export function describeWaiting(
   //  - Parked in a Status the picker never reads. Backlog and Done are the two that no other
   //    line explains: Backlog is where the planner leaves a task whose dependencies were still
   //    open, and Done on an open issue is a stale write. In Progress and In Review are normal
-  //    mid-flight states, so they stay quiet (#249).
+  //    mid-flight states, so they stay quiet.
   //  - No `Parent epic: #N` line, which the picker now requires. Nothing adopts an issue onto
   //    the board any more either, so a hand-made issue — Ready, or off the board entirely —
   //    would otherwise sit there for ever. Reporting it is all this does; the owner adds the

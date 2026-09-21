@@ -33,7 +33,7 @@ describe("plan", () => {
       { type: "claim", issue: 3, role: "builder", pr: null, round: 1 },
     ]);
   });
-  it("claims a rebase for an approved PR that conflicts with main, flagged for the prompt (#237)", () => {
+  it("claims a rebase for an approved PR that conflicts with main, flagged for the prompt", () => {
     const actions = plan(
       snapshot({
         issues: [issue({ number: 3, status: "In Review", labels: ["phase:1", "area:infra"] })],

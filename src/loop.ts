@@ -60,7 +60,7 @@ export interface Ctx {
   gh: GitHubApi;
   exec: Exec;
   spawn: Spawner;
-  /** Push notifications; `noopNotify` when `notify` is absent from foreman.json (#225). */
+  /** Push notifications; `noopNotify` when `notify` is absent from foreman.json. */
   notify: NotifyPort;
   dryRun: boolean;
   stateDir: string;
@@ -216,7 +216,7 @@ interface RunRole {
 }
 
 /**
- * The model a session on this issue runs as: the issue's `model:<name>` label (#259), else the
+ * The model a session on this issue runs as: the issue's `model:<name>` label, else the
  * owner's live override, else `model` from foreman.json.
  */
 export function modelFor(ctx: Ctx, labels: string[]): string {
@@ -232,7 +232,7 @@ export function capFor(ctx: Ctx): number {
  * The comparable half of a `sessions.log` line: what the session ran as and what it spent getting
  * there. `activity.model` is the id the CLI reported at init (`claude-opus-5`), which is what
  * makes opus-vs-sonnet comparable; the dispatched name is the fallback for a session that never
- * emitted an init event (#226).
+ * emitted an init event.
  */
 function sessionMetrics(
   result: SessionResult,
@@ -470,8 +470,8 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     }
   };
   // The owner can change the model from the page or `ctl model` mid-run; it lands in state.json
-  // and is read here, per dispatch, so it takes effect without restarting the daemon (#210). A
-  // `model:<name>` label on the issue outranks both, for every role that runs on it (#259).
+  // and is read here, per dispatch, so it takes effect without restarting the daemon. A
+  // `model:<name>` label on the issue outranks both, for every role that runs on it.
   const model = modelFor(ctx, r.issue.labels);
   let result: SessionResult;
   try {
@@ -664,7 +664,7 @@ async function applyOutcome(
       });
       break;
     // The plan is drafted; hand the epic back to the owner. `needs-owner` and the dropped
-    // `agent-ready` are both gates on the next planner session (#187) — either one alone stops
+    // `agent-ready` are both gates on the next planner session — either one alone stops
     // a re-plan, so a failed write here cannot restart a $5 planning session by itself.
     case "plan_drafted":
       await gh.addLabels("issue", n, ["needs-owner"]);
@@ -698,7 +698,7 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   const specPath = parseSpecPath(epic.body) ?? "";
   const nn = planPhaseNumber(epic.labels, specPath);
   // Nothing else in the daemon refreshes repoDir, so a plan PR merged minutes ago is only
-  // visible after this fetch; a failed fetch falls back to the last known origin/main (#189).
+  // visible after this fetch; a failed fetch falls back to the last known origin/main.
   if (!(await fetchOrigin(ctx.exec, cfg.repoDir)))
     log("warn", "fetch failed; reading the plan from the last known origin/main", {
       epic: epicNumber,
@@ -730,7 +730,7 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   // The epic's sub-issues, read at most once and only when a task is actually being reused: a
   // reused issue may be unlinked, because the attempt that created it can have died between
   // createIssue and addSubIssue. phaseComplete() only walks Epic.taskNumbers, so an unlinked task
-  // is invisible to it and the phase closes with the task still open and `agent-ready` (#223).
+  // is invisible to it and the phase closes with the task still open and `agent-ready`.
   let cache: Set<number> | null = null;
   const linkedTasks = async () => {
     cache ??= new Set(
@@ -740,9 +740,8 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
     return cache;
   };
   for (const t of planFile.tasks) {
-    // A task without a number is created — unless an earlier attempt already did. The Phase 1
-    // apply created #190, failed later in the tick, and the retry created #216, an exact
-    // duplicate. The title plus the "Parent epic" line the planner puts in every body is the key.
+    // A task without a number is created — unless an earlier attempt already did: an apply that
+    // failed later in the tick and was retried once created an exact duplicate. The title plus the "Parent epic" line the planner puts in every body is the key.
     const reused = t.number
       ? undefined
       : issues.find(
@@ -791,7 +790,7 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
     }
   }
   // The plan is applied, so the epic is no longer waiting on the owner: clear the gate that
-  // holds the planner (#187) and put the epic back where the phase-closer can see it.
+  // holds the planner and put the epic back where the phase-closer can see it.
   await gh.removeLabels("issue", epicNumber, ["needs-owner"]);
   const item = epic.itemId ?? (await gh.addToProject(epicNumber));
   await gh.setStatus(item, "In Progress");
@@ -810,7 +809,7 @@ function firstClaimAt(issue: Issue): string | null {
 
 /**
  * The issue as this tick's snapshot already saw it, falling back to a single-issue read. Only
- * the claim paths below re-read from GitHub on purpose, to spot a competing host's claim (#192).
+ * the claim paths below re-read from GitHub on purpose, to spot a competing host's claim.
  */
 async function issueFor(ctx: Ctx, n: number, snapshot?: Snapshot): Promise<Issue> {
   return snapshot?.issues.find((i) => i.number === n) ?? (await ctx.gh.getIssue(n));
@@ -868,7 +867,7 @@ export async function execute(
     }
     case "ci_rerun": {
       // Free recovery for a red PR: rerun the failed jobs, record it on the ledger so the budget
-      // is spent whatever happens next, and let the following ticks watch the checks (#362).
+      // is spent whatever happens next, and let the following ticks watch the checks.
       const runId = await gh.rerunFailedChecks(action.sha);
       await gh.comment("issue", action.issue, fmt.ciRerun(cfg.host, action.sha));
       log("info", runId === null ? "no workflow run to rerun" : "ci rerun requested", {
@@ -985,7 +984,7 @@ export async function execute(
         return "continue";
       }
       // A planner session runs for an hour or more with nothing else to show for it on GitHub,
-      // so mark the epic the way a builder marks a task: assigned and In Progress (#187).
+      // so mark the epic the way a builder marks a task: assigned and In Progress.
       if (action.type === "plan") {
         await gh.assign(action.epic, ctx.login);
         if (issue.status !== "In Progress") await setStatus(ctx, issue, "In Progress");
@@ -1003,7 +1002,7 @@ export async function execute(
 export interface TickOutcome {
   /**
    * True when this tick changed the board — started a session, merged, applied a plan, released
-   * or blocked — so the next tick need not wait out `pollSeconds` (#207, #223).
+   * or blocked — so the next tick need not wait out `pollSeconds`.
    */
   didWork: boolean;
   /** The last action that counted as work, for the log line; null when none did. */
@@ -1011,7 +1010,7 @@ export interface TickOutcome {
   /**
    * What GitHub looked like this tick, for the idle backoff to compare against the last one.
    * Absent when the tick never got as far as a snapshot — a parked daemon keeps polling at
-   * `pollSeconds` so that un-parking it is noticed promptly (#387).
+   * `pollSeconds` so that un-parking it is noticed promptly.
    */
   fingerprint?: string;
 }
@@ -1034,7 +1033,7 @@ export function snapshotFingerprint(s: Snapshot): string {
 
 export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   // Read per tick, so raising the cap from the page un-parks the daemon on the next tick rather
-  // than needing a restart to reload foreman.json (#213).
+  // than needing a restart to reload foreman.json.
   const pre = await preflight(
     { ...ctx.cfg, maxSessionsPerDay: capFor(ctx) },
     {
@@ -1049,7 +1048,7 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   );
   ctx.state?.patch({ lastPreflight: { ok: pre.ok, reason: pre.ok ? null : pre.reason } });
   // Preflight fails on every tick of a parked spell, so the notifier — not the loop — decides
-  // whether this transition is worth a push (#225).
+  // whether this transition is worth a push.
   await ctx.notify.syncParked(pre.ok ? null : pre.reason);
   if (!pre.ok) {
     log("warn", "preflight failed; sleeping", { reason: pre.reason });
@@ -1135,7 +1134,7 @@ export function backoffSeconds(pollSeconds: number, consecutiveFailures: number)
 
 /**
  * Longest gap between ticks while nothing is happening. Every tick costs GraphQL points whether
- * or not there is work, and a quiet spell is most of a day (#387); half an hour is late enough to
+ * or not there is work, and a quiet spell is most of a day; half an hour is late enough to
  * matter only for work that arrives while the owner is away, and `go`/`refresh` wake the loop at
  * once either way.
  */
@@ -1180,7 +1179,7 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
     }
     // A tick is quiet when it found nothing to do *and* GitHub has not moved since the tick
     // before — no new comment, label, push, check or board Status. Quiet ticks are the ones
-    // that spent the hourly GraphQL budget on nothing, so they are the ones that back off (#387).
+    // that spent the hourly GraphQL budget on nothing, so they are the ones that back off.
     // A failure is never quiet: its own backoff owns the delay.
     const quiet =
       consecutiveFailures === 0 &&
@@ -1191,7 +1190,7 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
     if (outcome.fingerprint !== undefined) lastFingerprint = outcome.fingerprint;
 
     // A tick that did work has changed the board — a merge unblocks dependents, a session has
-    // already spent its minutes — so waiting out another `pollSeconds` is dead time (#207, #223).
+    // already spent its minutes — so waiting out another `pollSeconds` is dead time.
     // A tick that found something new still sleeps the plain interval, and a failure backs off.
     const delaySeconds =
       outcome.didWork && consecutiveFailures === 0

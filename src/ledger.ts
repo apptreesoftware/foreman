@@ -83,7 +83,7 @@ export function fixRound(comments: Comment[]): number {
 
 /**
  * How many times the foreman has already rerun CI for this head commit. The ledger is the only
- * record — the daemon restarts, and a rerun that is forgotten is a rerun that repeats (#362).
+ * record — the daemon restarts, and a rerun that is forgotten is a rerun that repeats.
  */
 export function ciRerunCount(comments: Comment[], sha: string): number {
   if (!sha) return 0;

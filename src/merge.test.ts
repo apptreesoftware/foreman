@@ -28,7 +28,7 @@ describe("validatorRequired", () => {
   });
 });
 
-describe("mergeDecision on a conflicting branch (#237)", () => {
+describe("mergeDecision on a conflicting branch", () => {
   it("refuses with a reason the page can show, whatever the checks say", () => {
     const d = mergeDecision(pr({ issue: 20, labels: ready, mergeable: "CONFLICTING" }), inReview());
     expect(d).toEqual({ ok: false, reason: "conflicts with main" });
@@ -95,7 +95,7 @@ describe("actions", () => {
     });
     expect(skipValidatorActions(s)).toEqual([]);
   });
-  it("blockActions ends the line for a PR whose CI stays red (#362)", () => {
+  it("blockActions ends the line for a PR whose CI stays red", () => {
     const sha = "1111111111111111111111111111111111111111";
     const tired = inReview({
       comments: [

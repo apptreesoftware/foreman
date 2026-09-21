@@ -24,7 +24,7 @@ export interface SessionLogEntry {
 /**
  * One merged task, recorded at merge time from the issue the tick already had in hand. The
  * snapshot only carries open issues, so a merged task's ledger comments are gone from it by the
- * next tick — without this the phase card's cycle time would always be empty (#226).
+ * next tick — without this the phase card's cycle time would always be empty.
  */
 export interface MergeRecord {
   issue: number;
@@ -58,7 +58,7 @@ export function readSessions(stateDir: string): SessionLogEntry[] {
           attempt: Number(j.attempt ?? 1),
           costUsd: Number(j.costUsd ?? 0),
           outcome: String(j.outcome ?? ""),
-          // Lines written before #226 have none of these; they read as "unknown", never NaN.
+          // Lines written by older daemons have none of these; they read as "unknown", never NaN.
           model: String(j.model ?? ""),
           turns: Number(j.turns ?? 0),
           durationMinutes: Number(j.durationMinutes ?? 0),
