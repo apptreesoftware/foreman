@@ -3,7 +3,7 @@ import type { Exec } from "./exec.ts";
 /**
  * The approved plan is read from `origin/main`, never from the clone's working tree: nothing
  * else in the daemon pulls `repoDir`, so a merged plan PR would otherwise stay invisible until
- * a human ran `git pull` (#189).
+ * a human ran `git pull`.
  */
 export async function fetchOrigin(exec: Exec, repoDir: string): Promise<boolean> {
   const r = await exec("git", ["-C", repoDir, "fetch", "origin", "--prune"]);

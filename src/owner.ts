@@ -18,7 +18,7 @@ const DETAIL: Record<OwnerAction, string> = {
 
 /**
  * The epics waiting on a human, and what that human can do about each. Computed from the
- * snapshot the tick already fetched, so the page costs no extra GitHub reads (#198).
+ * snapshot the tick already fetched, so the page costs no extra GitHub reads.
  */
 export function ownerItems(s: Snapshot): OwnerItem[] {
   const titleOf = (n: number) => s.issues.find((i) => i.number === n)?.title ?? `#${n}`;
@@ -46,7 +46,7 @@ export function ownerItems(s: Snapshot): OwnerItem[] {
  * Applies a just-performed gate to the stored board, so the page stops offering it immediately.
  * A tick that dispatched a session does not return for up to `wallClockMinutes`, and the board
  * is only rebuilt inside a tick — without this the epic keeps its button for an hour after the
- * label landed on GitHub (#204). The next real tick recomputes everything from the snapshot.
+ * label landed on GitHub. The next real tick recomputes everything from the snapshot.
  */
 export function applyOwnerActionToBoard(board: Board, epic: number, action: OwnerAction): Board {
   if (!board.owner.some((o) => o.epic === epic)) return board;

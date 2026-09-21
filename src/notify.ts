@@ -7,7 +7,7 @@ import { log } from "./log.ts";
 /**
  * Push notifications for the handful of foreman events that change what the owner has to do.
  * The page is localhost-only, so without these a merge, a blocked issue or a parked daemon is
- * invisible from a phone (#225).
+ * invisible from a phone.
  *
  * Two rules hold everywhere in this file:
  *
@@ -198,7 +198,7 @@ async function postMacos(text: string, instance: string, exec: Exec): Promise<vo
 export function createNotifier(cfg: NotifyConfig | undefined, deps: NotifierDeps): NotifyPort {
   const webhook = cfg?.slackWebhookUrl;
   const macos = cfg?.macos === true;
-  // With neither channel configured the foreman behaves exactly as it did before #225: no sends,
+  // With neither channel configured the foreman behaves exactly as it did before notifications existed: no sends,
   // and no notify.json on disk either.
   if (!webhook && !macos) return noopNotify;
 

@@ -470,7 +470,7 @@
   for (const cmd of ["stop", "abort"]) $(cmd).onclick = () => { if (armed(cmd, $(cmd))) act(cmd); };
   $("go").onclick = () => act("go");
   // Board edits made by hand (Status, item-add, labels) reach the cards on the next tick; this
-  // asks for that tick now instead of waiting out the poll interval (#249).
+  // asks for that tick now instead of waiting out the poll interval.
   $("refresh").onclick = async () => {
     $("msg").textContent = "refreshing…";
     const j = await (await fetch("/api/refresh", { method: "POST" })).json();

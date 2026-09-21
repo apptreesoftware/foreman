@@ -31,14 +31,14 @@ export interface PullRequest {
   body: string;
   headRefName: string;
   /**
-   * The head commit. A CI rerun is budgeted per sha (#362), so a new push starts the count over
+   * The head commit. A CI rerun is budgeted per sha, so a new push starts the count over
    * on its own without anything having to remember what the last one was.
    */
   headSha: string;
   labels: string[];
   isDraft: boolean;
   checks: CheckState;
-  /** GitHub's own verdict on the branch; CONFLICTING gets a rebase job instead of a merge (#237). */
+  /** GitHub's own verdict on the branch; CONFLICTING gets a rebase job instead of a merge. */
   mergeable: Mergeable;
   issue: number | null; // parsed from "Closes #N"
   updatedAt: string;
@@ -67,7 +67,7 @@ export interface Snapshot {
 export type Action =
   | { type: "resume"; issue: number; role: Role; sessionId: string | null; pr: number | null }
   | { type: "merge"; pr: number; issue: number }
-  /** Rerun the failed jobs of a red PR's newest run. Costs no session, only a `gh` call (#362). */
+  /** Rerun the failed jobs of a red PR's newest run. Costs no session, only a `gh` call. */
   | { type: "ci_rerun"; pr: number; issue: number; sha: string }
   | { type: "skip_validator"; pr: number; issue: number }
   | {
@@ -76,7 +76,7 @@ export type Action =
       role: Role;
       pr: number | null;
       round: number;
-      /** A builder round that only merges origin/main; does not count as a fix round (#237). */
+      /** A builder round that only merges origin/main; does not count as a fix round. */
       rebase?: boolean;
     }
   | { type: "release"; issue: number; reason: string }

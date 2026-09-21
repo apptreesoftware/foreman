@@ -274,7 +274,7 @@ describe("live activity and board", () => {
     const none = describeStatus(input({ state: { ...state(), current } }));
     expect(none.current?.silentMinutes).toBe(12); // falls back to startedAt
   });
-  it("never shows STALLED for a pre-#178 daemon with no activity, even past the threshold", () => {
+  it("never shows STALLED for an older daemon with no activity, even past the threshold", () => {
     const r = describeStatus(input({ state: { ...state(), current } }));
     expect(r.current?.activity).toBeNull();
     expect(r.current?.silentMinutes).toBe(12); // >= stallMinutes (5)

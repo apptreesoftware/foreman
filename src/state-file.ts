@@ -9,7 +9,7 @@ export type StopMode = z.infer<typeof StopModeSchema>;
 /**
  * Order is the wait list's rank: what stops this Mac acting at all comes first, then the live
  * blockers on work in flight, and last `phase_gate` — a background label gate on a phase that has
- * not started, which must never headline the Now card ahead of a real blocker (#206).
+ * not started, which must never headline the Now card ahead of a real blocker.
  */
 export const WAIT_KINDS = [
   "stop",
@@ -56,7 +56,7 @@ export const PipelineRowSchema = z.object({
 });
 export type PipelineRow = z.infer<typeof PipelineRowSchema>;
 
-/** GitHub's hourly GraphQL budget, sampled around each tick and attributed (#198). */
+/** GitHub's hourly GraphQL budget, sampled around each tick and attributed. */
 export const BudgetReportSchema = z.object({
   at: z.string(),
   remaining: z.number().int(),
@@ -69,7 +69,7 @@ export const BudgetReportSchema = z.object({
 export type BudgetReport = z.infer<typeof BudgetReportSchema>;
 
 /**
- * The models the page and `ctl model` offer as one-click choices (#210). Not a whitelist of what
+ * The models the page and `ctl model` offer as one-click choices. Not a whitelist of what
  * is *allowed* — `foreman.json` and `ctl model <name>` accept any name matching `ModelSchema`, so
  * a dated model id still works and this list never has to be right about the future.
  */
@@ -96,14 +96,14 @@ export const TaskModelChoiceSchema = z.union([ModelSchema, z.literal(MODEL_DEFAU
 export type TaskModelChoice = z.infer<typeof TaskModelChoiceSchema>;
 
 /**
- * Daily session caps the page and `ctl cap` offer as one-click choices (#213). As with
+ * Daily session caps the page and `ctl cap` offer as one-click choices. As with
  * `MODEL_CHOICES`, any value passing `CapSchema` is accepted; these are only the shortcuts.
  */
 export const CAP_CHOICES = [20, 40, 60, 100] as const;
 /** A day's worth of sessions, bounded: a typo of 100000 must not uncap the Mac by accident. */
 export const CapSchema = z.number().int().min(1).max(500);
 
-/** The label gates a human owns; the page turns each into a button (#198). */
+/** The label gates a human owns; the page turns each into a button. */
 export const OWNER_ACTIONS = [
   "sign_off",
   "approve_plan",
@@ -155,7 +155,7 @@ export const PhaseTaskSchema = z.object({
 export type PhaseTask = z.infer<typeof PhaseTaskSchema>;
 
 /**
- * How far one approved phase has come and what it has cost (#226). Computed inside the tick from
+ * How far one approved phase has come and what it has cost. Computed inside the tick from
  * the snapshot plus `sessions.log`/`merges.log`, so the card is free of extra GitHub reads.
  */
 export const PhaseProgressSchema = z.object({
@@ -170,7 +170,7 @@ export const PhaseProgressSchema = z.object({
   /** Median claim→merge minutes of the merged tasks; null until one has merged. */
   medianMergeMinutes: z.number().nullable(),
   mergedTasks: z.number().int(),
-  /** Every task of the phase, by number, so the page can offer a per-task model (#259). */
+  /** Every task of the phase, by number, so the page can offer a per-task model. */
   tasks: z.array(PhaseTaskSchema).default([]),
 });
 export type PhaseProgress = z.infer<typeof PhaseProgressSchema>;
@@ -181,9 +181,9 @@ export const BoardSchema = z.object({
   pipeline: z.array(PipelineRowSchema),
   // Older state.json files predate this field; default keeps them readable.
   owner: z.array(OwnerItemSchema).default([]),
-  // Same: added in #224, and an older file must still parse.
+  // Same: added later, and an older file must still parse.
   needsYou: z.array(NeedsYouItemSchema).default([]),
-  // Same: added in #226.
+  // Same.
   phases: z.array(PhaseProgressSchema).default([]),
   explain: z.array(z.string()),
   prs: z.array(
@@ -243,7 +243,7 @@ export const ForemanStateSchema = z.object({
   /**
    * Live daily-cap override set from the page or `ctl cap`; null means "use `maxSessionsPerDay`
    * from foreman.json". Read per tick, so raising it un-parks a capped daemon without a restart
-   * (#213). Older state.json files predate this field; the default keeps them readable.
+   *. Older state.json files predate this field; the default keeps them readable.
    */
   maxSessionsPerDay: z.number().int().nullable().default(null),
 });

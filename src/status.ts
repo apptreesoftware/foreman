@@ -17,9 +17,9 @@ export type DaemonState = "RUNNING" | "STOPPED" | "CRASHED" | "UNKNOWN";
  * What the daemon is doing right now, as opposed to "is a session recorded this instant". Between
  * a session ending and the next tick the foreman sleeps `pollSeconds`, which used to read as
  * "idle" even with work queued; `idle` is now reserved for a tick that found nothing eligible
- * (#206). `parked` is the daemon returning early from every tick because preflight fails — the
+ *. `parked` is the daemon returning early from every tick because preflight fails — the
  * daily cap, `STOP`, a failing preflight hook, the GraphQL budget — which is neither idle nor
- * between ticks (#213).
+ * between ticks.
  */
 export type NowPhase = "session" | "parked" | "ticking" | "between_ticks" | "idle";
 
@@ -35,7 +35,7 @@ export interface StatusInput {
   host: string;
   stallMinutes: number;
   repo: string;
-  /** `model` from foreman.json; the state file's `model` overrides it while set (#210). */
+  /** `model` from foreman.json; the state file's `model` overrides it while set. */
   configModel: string;
   /** The repo's `models`; the page and `ctl status` offer these as one-click choices. */
   modelChoices: readonly string[];
@@ -83,7 +83,7 @@ export interface StatusReport {
   budget: BudgetReport | null;
   recent: SessionLogEntry[];
   today: { count: number; cap: number; spendUsd: number };
-  /** The daily session cap the next tick will enforce, and the page's one-click choices (#213). */
+  /** The daily session cap the next tick will enforce, and the page's one-click choices. */
   cap: {
     current: number;
     configured: number;
@@ -131,7 +131,7 @@ export function describeStatus(i: StatusInput): StatusReport {
   const today = todayStats(i.sessions, new Date(i.now));
   // The override is what the next tick's preflight will actually enforce, so the cap wait item
   // and the reported cap must both use it — otherwise raising the cap leaves a stale "capped"
-  // on the page until the next tick rebuilds the board (#213).
+  // on the page until the next tick rebuilds the board.
   const cap = s?.maxSessionsPerDay ?? i.maxSessionsPerDay;
   const live = liveWaits({
     host: i.host,
@@ -278,7 +278,7 @@ export function formatStatus(r: StatusReport): string {
     );
   lines.push(`next   ${r.lastPlan ? r.lastPlan.join(", ") : "–"}   (as of last tick)`);
   // How far the phase has come and what it has cost, so a glance answers "are we nearly there"
-  // and "what has this phase spent" without opening GitHub (#226).
+  // and "what has this phase spent" without opening GitHub.
   const phases = r.board?.phases ?? [];
   if (phases.length)
     for (const p of phases)
@@ -293,7 +293,7 @@ export function formatStatus(r: StatusReport): string {
   if (r.board?.waiting.length)
     lines.push(`waiting  ${r.board.waiting.map((w) => w.detail).join(" · ")}`);
   // Always printed, empty state included: an owner who cannot see this list does not know they
-  // are the thing holding the queue up (#224). The wait is a duration, not a clock time: these
+  // are the thing holding the queue up. The wait is a duration, not a clock time: these
   // rows routinely sit for days, and `hhmm` cannot say anything past 24h.
   const needsYou = r.board?.needsYou ?? [];
   lines.push(

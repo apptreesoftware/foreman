@@ -128,7 +128,7 @@ describe("web server", () => {
     const s = await fetch(`${base}/api/status`);
     expect(await s.json()).toMatchObject({ daemon: "RUNNING", lastPlan: ["plan#10"] });
   });
-  it("refreshes the project on demand, POST only (#249)", async () => {
+  it("refreshes the project on demand, POST only", async () => {
     const r = await fetch(`${base}/api/refresh`, { method: "POST" });
     expect(await r.json()).toEqual({ ok: true, message: "project re-read; tick requested" });
     expect(refreshes).toBe(1);

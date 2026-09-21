@@ -147,7 +147,7 @@ export async function ctlModel(d: CtlDeps, model: string | null): Promise<void> 
     d.out(
       `choices: ${MODEL_CHOICES.join(", ")}, ${MODEL_DEFAULT}   (any model name is accepted; ${MODEL_DEFAULT} clears an override)`,
     );
-    // Tasks whose `model:<name>` label outranks the line above, as of the last tick (#259).
+    // Tasks whose `model:<name>` label outranks the line above, as of the last tick.
     const pinned = phaseTasks(s?.board ?? null).filter((t) => t.model);
     if (pinned.length) {
       d.out("pinned by label (set from the page, or gh issue edit --add-label model:<name>):");

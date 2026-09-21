@@ -58,7 +58,7 @@ export interface DispatchRequest {
   /** The composed role prompt and settings for this dispatch, written under the instance state dir. */
   promptPath: string;
   settingsPath: string;
-  /** A builder round that only merges origin/main into the PR branch (#237). */
+  /** A builder round that only merges origin/main into the PR branch. */
   rebase: boolean;
 }
 
@@ -170,7 +170,7 @@ export function buildArgs(req: DispatchRequest, cfg: ForemanConfig): string[] {
     req.promptPath,
     ...(req.resume ? ["--resume", req.sessionId] : ["--session-id", req.sessionId]),
     // Always pinned: `cfg.model` is defaulted, so a session never inherits the interactive CLI
-    // default on this Mac. `runRole` passes the live override through here when one is set (#210).
+    // default on this Mac. `runRole` passes the live override through here when one is set.
     "--model",
     cfg.model,
   ];

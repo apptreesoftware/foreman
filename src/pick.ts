@@ -18,7 +18,7 @@ export interface Candidate {
   phase: number;
   size: Size | null;
   round: number;
-  /** A build whose Touches overlap an issue with an open PR; sorted after the others (#237). */
+  /** A build whose Touches overlap an issue with an open PR; sorted after the others. */
   contended: boolean;
 }
 
@@ -130,7 +130,7 @@ export function jobCandidates(s: Snapshot, repo: RepoConfig = defaultRepoConfig(
     // Red CI the free rerun did not clear is a builder's problem, and it comes first: reviewing
     // or validating a branch whose own suite fails spends a session on the wrong question, and
     // once the PR is approved and validated no other branch here fires at all — which is how a
-    // flake stalled #344 for an hour (#362).
+    // flake once stalled a PR for an hour.
     if (pr.checks === "failure" && ciRerunsSpent(pr, i, repo.limits.ciReruns)) {
       const round = fixRound(i.comments) + 1;
       if (round <= repo.limits.fixRounds) out.push({ kind: "fix", round, ...base });

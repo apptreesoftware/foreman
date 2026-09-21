@@ -123,7 +123,7 @@ describe("phaseProgress", () => {
         merge({ issue: 999, claimedAt: hoursAgo(20), mergedAt: hoursAgo(1) }), // other phase
       ],
     );
-    // samples: 60m (#101), 300m (#103), 180m (#102 from comments) → median 180
+    // samples: 60m, 300m, 180m (#102 from comments) → median 180
     expect(p?.mergedTasks).toBe(3);
     expect(p?.medianMergeMinutes).toBe(180);
   });

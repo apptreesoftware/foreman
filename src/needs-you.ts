@@ -6,7 +6,7 @@ import type { Snapshot } from "./types.ts";
 /**
  * The open non-epic issues waiting on the owner: a `decision` or `needs-owner` issue nobody has
  * answered, and a `blocked` issue only a human can restart. Epics are on the Owner card, so they
- * are excluded here. Oldest first — the point of the card is that #165 has been waiting a week.
+ * are excluded here. Oldest first — the point of the card is the issue that has been waiting a week.
  */
 export function needsYouItems(s: Snapshot): NeedsYouItem[] {
   return s.issues

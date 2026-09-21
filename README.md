@@ -31,8 +31,6 @@ merge → phase-closer**. The five roles are hardcoded, the label names and boar
 hardcoded, and the foreman only works tasks that its own planner created. Section 4 is the whole
 process; section 5 is everything a repository gets to change about it.
 
-Design: [`docs/2026-09-18-foreman-extraction-design.md`](docs/2026-09-18-foreman-extraction-design.md).
-
 ## 2. Install
 
 On a Mac, with [Homebrew](https://brew.sh):

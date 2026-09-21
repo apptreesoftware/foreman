@@ -146,7 +146,7 @@ export async function runDaemon(
       configPath: instance.configPath,
       dryRun,
       startedAt: new Date().toISOString(),
-      // A restart must not silently revert the owner's overrides back to foreman.json (#210, #213).
+      // A restart must not silently revert the owner's overrides back to foreman.json.
       model: previous?.model ?? null,
       maxSessionsPerDay: previous?.maxSessionsPerDay ?? null,
     }),
@@ -210,7 +210,7 @@ export async function runDaemon(
     feed: (session, limit) => readFeed(STATE_DIR, session, limit),
     setModel: async (model) => {
       // Read per dispatch by runRole's modelFor(), so a session already running keeps the model it
-      // started with and the next one picks this up — no restart (#210).
+      // started with and the next one picks this up — no restart.
       const next = model === MODEL_DEFAULT ? null : model;
       store.patch({ model: next });
       log("info", "model set", { model: next, configured: cfg.model });
@@ -218,14 +218,14 @@ export async function runDaemon(
     },
     setCap: async (maxSessionsPerDay) => {
       // Read per tick by runOnce's capFor(), so raising it while parked on the cap lets the very
-      // next tick run — no restart, and the sleep is cut short so it happens now (#213).
+      // next tick run — no restart, and the sleep is cut short so it happens now.
       store.patch({ maxSessionsPerDay });
       log("info", "cap set", { maxSessionsPerDay, configured: cfg.maxSessionsPerDay });
       controller.wake();
       return `cap is now ${maxSessionsPerDay ?? `the configured ${cfg.maxSessionsPerDay}`}`;
     },
     refresh: async () => {
-      // Every read carries its own board Status, so there is no cache left to drop (#387); the
+      // Every read carries its own board Status, so there is no cache left to drop; the
       // button's remaining job is to make the tick happen now rather than at the end of the poll
       // interval — including a poll the idle backoff has stretched.
       controller.wake();
@@ -237,7 +237,7 @@ export async function runDaemon(
     setTaskModel: async (issue, model) => {
       // The stored task row says which label is on the issue now, so the swap costs at most two
       // label edits and no GitHub read. Read per dispatch by runRole's modelFor(), so it applies
-      // to the issue's next session and never to one already running (#259).
+      // to the issue's next session and never to one already running.
       const current = phaseTasks(store.get().board).find((t) => t.issue === issue)?.model ?? null;
       const message = await applyTaskModel(gh, { issue, current }, model);
       log("info", "task model set", { issue, model, was: current });
@@ -257,7 +257,7 @@ export async function runDaemon(
         host: cfg.host,
       });
       log("info", "unblocked", { issue });
-      // Same reason as the owner gate: reflect it locally so the button goes now (#204), and wake
+      // Same reason as the owner gate: reflect it locally so the button goes now, and wake
       // the loop so the next tick can actually pick the issue up.
       const board = store.get().board;
       if (board) store.patch({ board: applyUnblockToBoard(board, issue) });
@@ -269,7 +269,7 @@ export async function runDaemon(
       log("info", "owner action", { epic, action });
       // The board is only rebuilt by a tick, and a tick that dispatched a session does not return
       // for up to wallClockMinutes, so reflect the gate locally instead of leaving the page
-      // offering a button that has already been pressed (#204).
+      // offering a button that has already been pressed.
       const board = store.get().board;
       if (board) store.patch({ board: applyOwnerActionToBoard(board, epic, action) });
       // The board is rebuilt per tick, so wake the loop instead of leaving the page stale for a

@@ -23,15 +23,15 @@ export const ConfigSchema = z.object({
   wallClockMinutes: z.number().int().min(1).default(90),
   /**
    * Passed to every `claude -p`. Defaulted rather than optional so a session never silently
-   * inherits whatever the interactive CLI default happens to be on this Mac (#210).
+   * inherits whatever the interactive CLI default happens to be on this Mac.
    */
   model: z.string().min(1).default("opus"),
   webPort: z.number().int().min(1).max(65535).default(8090),
   stallMinutes: z.number().int().min(1).default(5),
-  /** Preflight refuses to start a tick with fewer GitHub GraphQL points left than this (#192). */
+  /** Preflight refuses to start a tick with fewer GitHub GraphQL points left than this. */
   minGraphqlPoints: z.number().int().min(0).default(500),
   /**
-   * Push notifications for the events that change what the owner has to do (#225). Absent, or
+   * Push notifications for the events that change what the owner has to do. Absent, or
    * with neither channel set, the foreman notifies nothing — the page stays the only view.
    * `slackWebhookUrl` is a credential: it never leaves this process (no log line, no role prompt,
    * nothing on the page), so keep `foreman.json` out of the repo as it already is.

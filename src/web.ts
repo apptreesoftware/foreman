@@ -51,7 +51,7 @@ export interface WebDeps {
   refresh: () => Promise<string>;
   /** The open tasks of every phase on the board, as of the last tick; the task-model allowlist. */
   phaseTasks: () => PhaseTask[];
-  /** Swaps the issue's `model:<name>` label; only called for a task `phaseTasks` lists (#259). */
+  /** Swaps the issue's `model:<name>` label; only called for a task `phaseTasks` lists. */
   setTaskModel: (issue: number, model: TaskModelChoice) => Promise<string>;
   /** The repo's configured `models`; the task-model allowlist beyond `MODEL_DEFAULT`. */
   modelChoices: () => string[];
@@ -206,7 +206,7 @@ export function createWebServer(d: WebDeps): http.Server {
       }
       if (url === "/api/refresh") {
         // No body and no allowlist: the button only re-reads GitHub and wakes the loop, so there
-        // is nothing to validate and nothing it can write (#249).
+        // is nothing to validate and nothing it can write.
         if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
         return json(res, 200, { ok: true, message: await d.refresh() });
       }

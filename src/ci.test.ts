@@ -9,7 +9,7 @@ const SHA = "1111111111111111111111111111111111111111";
 const OTHER_SHA = "2222222222222222222222222222222222222222";
 const approved = ["reviewer:approved", "validator:passed"];
 
-/** The shape that stalled #344: approved, validated, in review, and CI red. */
+/** The shape that stalls a PR: approved, validated, in review, and CI red. */
 function stalled(over: { issueOver?: object; prOver?: object } = {}) {
   const i = issue({
     number: 20,
@@ -77,7 +77,7 @@ describe("ciActions", () => {
   });
 });
 
-describe("jobCandidates on red CI (#362)", () => {
+describe("jobCandidates on red CI", () => {
   it("queues nothing while the rerun is still owed — that is the cheaper answer", () => {
     expect(jobCandidates(stalled())).toEqual([]);
   });

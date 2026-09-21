@@ -195,7 +195,7 @@ describe("GitHub reads", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.slice(0, 3)).toEqual(["gh", "api", "graphql"]);
   });
-  it("never reads the whole project board (#387)", async () => {
+  it("never reads the whole project board", async () => {
     const calls: string[][] = [];
     const gh = new GitHub(cfg, fakeExec(calls), false);
     await gh.listIssues();
@@ -256,9 +256,9 @@ describe("GitHub reads", () => {
       expect(["success", "pending", "failure", "none"]).toContain(pr.checks);
       expect(pr.issue === null || Number.isInteger(pr.issue)).toBe(true);
     }
-    // GitHub's own verdict, so a conflicting branch gets a rebase job instead of a merge (#237).
+    // GitHub's own verdict, so a conflicting branch gets a rebase job instead of a merge.
     expect(prs[0]?.mergeable).toBe("CONFLICTING");
-    // The head commit: a CI rerun is budgeted per sha (#362).
+    // The head commit: a CI rerun is budgeted per sha.
     expect(prs[0]?.headSha).toMatch(/^[0-9a-f]{40}$/);
   });
   it("resolves status option ids from field-list", async () => {
@@ -289,7 +289,7 @@ describe("GitHub reads", () => {
     });
     await expect(new GitHub(cfg, exec, false).getIssue(4242)).rejects.toThrow("#4242");
   });
-  it("every read is live, so a hand board edit is seen by the next one (#249)", async () => {
+  it("every read is live, so a hand board edit is seen by the next one", async () => {
     const statuses = ["Backlog", "Ready"];
     let n = 0;
     const exec: Exec = async () => ({
@@ -337,7 +337,7 @@ describe("GitHub writes", () => {
       "--delete-branch",
     ]);
   });
-  it("rerunFailedChecks posts to the newest run for the sha (#362)", async () => {
+  it("rerunFailedChecks posts to the newest run for the sha", async () => {
     const calls: string[][] = [];
     const gh = new GitHub(cfg, fakeExec(calls), false);
     const sha = "aaaa1111bbbb2222cccc3333dddd4444eeee5555";

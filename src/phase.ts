@@ -79,7 +79,7 @@ export function planAwaitingOwner(epics: Epic[]): Epic | null {
  * The epic the planner may draft next, or null. Three gates, in order:
  * 1. no approved phase is still being built,
  * 2. no drafted plan is already waiting on the owner (one plan in flight),
- * 3. the owner has labelled the epic `agent-ready` — the human backstop (#187). The foreman
+ * 3. the owner has labelled the epic `agent-ready` — the human backstop. The foreman
  *    removes that label when the plan is drafted, so re-labelling is how you ask for a re-plan.
  */
 /** An approved phase whose tasks are still being built; the planner waits for it. */

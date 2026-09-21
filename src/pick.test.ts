@@ -122,7 +122,7 @@ describe("jobCandidates", () => {
   });
 });
 
-describe("rebase jobs (#237)", () => {
+describe("rebase jobs", () => {
   const inReview = (over = {}) =>
     issue({ number: 20, status: "In Review", labels: ["phase:1", "area:web"], ...over });
   const done = ["reviewer:approved", "validator:passed"];
@@ -181,7 +181,7 @@ describe("rebase jobs (#237)", () => {
   });
 });
 
-describe("blocked backpressure (#237)", () => {
+describe("blocked backpressure", () => {
   const blocked = (number: number, phase = 1) =>
     issue({ number, status: "Ready", labels: [`phase:${phase}`, "agent-ready", "blocked"] });
   it("holds new builds in a phase with MAX_BLOCKED_PER_PHASE blocked tasks", () => {
@@ -222,7 +222,7 @@ describe("blocked backpressure (#237)", () => {
   });
 });
 
-describe("contended builds (#237)", () => {
+describe("contended builds", () => {
   const touching = (number: number, touches: string, over = {}) =>
     issue({
       number,
