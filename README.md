@@ -578,6 +578,7 @@ An instance is a name. Its machine config and all of its state live under `~/.fo
 | `minGraphqlPoints` | no | 500 |
 | `notify` | no | none (§7) |
 | `webAuth` | no | none: the page is localhost-only |
+| `webHosts` | no | none: the page is localhost-only |
 
 `workDir` absent means worktrees live at `<repoDir>/.worktrees/<issue>`, so a checkout is
 self-contained; add `.worktrees/` to the repository's `.gitignore`. `model` is always passed as
@@ -597,6 +598,27 @@ check is dropped, and `foreman stop`/`go`/`model`/`cap` send them too. Then
 `ngrok http 8090` (or any tunnel that terminates TLS) exposes the page; the browser prompts once.
 The password is a credential like the Slack webhook: it is never logged or served. Restart the
 daemon after changing it.
+
+To reach the page over a private network without credentials, list the names this Mac answers to
+on that network:
+
+```json
+"webHosts": ["mini", "100.84.252.56"]
+```
+
+Each entry is a hostname or an IP literal. The page accepts every entry as a `Host` at
+`webPort`, so `http://mini:8090` and `http://100.84.252.56:8090` both load it; an IPv6 literal is
+written bare in the list and sent in brackets by the browser (`http://[fd7a::1]:8090`). IP literals
+are also listened on, next to `127.0.0.1`, which is always bound. Hostnames are only matched against
+`Host`; the daemon never resolves or binds them, so list the IP the name resolves to as well. An
+address this Mac does not hold when the daemon starts (the network interface is down, say) logs a
+warning and the page stays up on the others; restart the daemon once the interface is back. Each
+bound address logs a `web page listening` line with its URL.
+
+Anyone who can reach a listed address gets unauthenticated control of the page: stop, go, model,
+cap, unblock and the owner actions. List only addresses on a private network you trust. With
+`webAuth` also set, credentials replace the `Host` check as above, and `webHosts` only adds the
+listen addresses. Restart the daemon after changing it.
 
 ### Which instance a command means
 

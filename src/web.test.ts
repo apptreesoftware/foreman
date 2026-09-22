@@ -2,12 +2,19 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FeedEntry } from "./feed.ts";
 import type { NextReport } from "./next.ts";
 import { CAP_CHOICES, MODEL_CHOICES } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
-import { basicAuthorization, createWebServer, isLocalHost } from "./web.ts";
+import {
+  basicAuthorization,
+  createWebServer,
+  isLocalHost,
+  listenAddresses,
+  startWebServer,
+  type WebDeps,
+} from "./web.ts";
 
 const report: StatusReport = {
   host: "mac-a",
@@ -393,6 +400,121 @@ describe("isLocalHost", () => {
     expect(isLocalHost("localhost:8091", 8090)).toBe(false);
     expect(isLocalHost("evil.example:8090", 8090)).toBe(false);
     expect(isLocalHost(undefined, 8090)).toBe(false);
+  });
+  it("accepts nothing beyond loopback when webHosts is absent or empty", () => {
+    expect(isLocalHost("mini:8090", 8090)).toBe(false);
+    expect(isLocalHost("mini:8090", 8090, [])).toBe(false);
+  });
+  it("accepts each webHosts entry at the page's port, and nothing else", () => {
+    const hosts = ["mini", "100.84.252.56", "fd7a:115c::1"];
+    expect(isLocalHost("mini:8090", 8090, hosts)).toBe(true);
+    expect(isLocalHost("MINI:8090", 8090, hosts)).toBe(true);
+    expect(isLocalHost("100.84.252.56:8090", 8090, hosts)).toBe(true);
+    expect(isLocalHost("127.0.0.1:8090", 8090, hosts)).toBe(true);
+    expect(isLocalHost("mini:8091", 8090, hosts)).toBe(false);
+    expect(isLocalHost("mini", 8090, hosts)).toBe(false);
+    expect(isLocalHost("evil.example:8090", 8090, hosts)).toBe(false);
+    expect(isLocalHost("mini.evil.example:8090", 8090, hosts)).toBe(false);
+  });
+  it("expects an IPv6 entry in brackets, the way a browser sends it", () => {
+    const hosts = ["fd7a:115c::1"];
+    expect(isLocalHost("[fd7a:115c::1]:8090", 8090, hosts)).toBe(true);
+    expect(isLocalHost("fd7a:115c::1:8090", 8090, hosts)).toBe(false);
+    expect(isLocalHost("[fd7a:115c::1]:8091", 8090, hosts)).toBe(false);
+  });
+});
+
+describe("listenAddresses", () => {
+  it("is loopback alone when webHosts is absent", () => {
+    expect(listenAddresses(undefined)).toEqual(["127.0.0.1"]);
+    expect(listenAddresses([])).toEqual(["127.0.0.1"]);
+  });
+  it("adds the IP literals, never the hostnames, and binds each address once", () => {
+    expect(
+      listenAddresses(["mini", "100.84.252.56", "fd7a:115c::1", "127.0.0.1", "100.84.252.56"]),
+    ).toEqual(["127.0.0.1", "100.84.252.56", "fd7a:115c::1"]);
+  });
+});
+
+describe("web server with webHosts", () => {
+  const deps: WebDeps = {
+    port: 0,
+    hosts: ["mini", "::1"],
+    status: () => report,
+    next: async () => nextReport,
+    act: async () => "",
+    feed: () => [],
+    owner: async () => "",
+    ownerItems: () => [],
+    needsYouItems: () => [],
+    unblock: async () => "",
+    setModel: async () => "",
+    setCap: async () => "",
+    refresh: async () => "",
+    phaseTasks: () => [],
+    setTaskModel: async () => "",
+    modelChoices: () => [],
+    html: "<title>Foreman</title>",
+  };
+
+  /** node:http so the Host header can be set. */
+  const get = (address: string, port: number, host: string) =>
+    new Promise<number>((resolve, reject) => {
+      const req = http.request(
+        { host: address, port, path: "/api/status", headers: { host } },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode ?? 0));
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+
+  it("answers a listed Host and still refuses a foreign one", async () => {
+    const server = createWebServer(deps);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      expect(await get("127.0.0.1", port, `mini:${port}`)).toBe(200);
+      expect(await get("127.0.0.1", port, `[::1]:${port}`)).toBe(200);
+      expect(await get("127.0.0.1", port, `evil.example:${port}`)).toBe(403);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("listens on loopback and on each IP literal, and closes them together", async () => {
+    const server = await startWebServer(deps);
+    if (!server) throw new Error("web page not started");
+    const port = (server.address() as AddressInfo).port;
+    try {
+      expect(await get("127.0.0.1", port, `127.0.0.1:${port}`)).toBe(200);
+      expect(await get("::1", port, `[::1]:${port}`)).toBe(200);
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+    await expect(get("::1", port, `[::1]:${port}`)).rejects.toThrow();
+  });
+
+  it("warns and keeps loopback when an extra address cannot be bound", async () => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    // 192.0.2.0/24 is reserved for documentation, so no interface ever holds it.
+    const server = await startWebServer({ ...deps, hosts: ["192.0.2.1"] });
+    spy.mockRestore();
+    if (!server) throw new Error("web page not started");
+    const port = (server.address() as AddressInfo).port;
+    try {
+      expect(await get("127.0.0.1", port, `127.0.0.1:${port}`)).toBe(200);
+      const warn = lines.map((l) => JSON.parse(l)).find((l) => l.level === "warn");
+      expect(warn).toMatchObject({ msg: "web page not started", address: "192.0.2.1" });
+    } finally {
+      server.close();
+    }
   });
 });
 

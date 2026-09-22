@@ -43,6 +43,13 @@ export const ConfigSchema = z.object({
    * a credential like `slackWebhookUrl`: never logged, never served.
    */
   webAuth: WebAuthSchema.optional(),
+  /**
+   * Extra names the page answers to, each a hostname or an IP literal, so a private network can
+   * reach it without `webAuth`. Every entry is an accepted `Host` at `webPort`; IP literals are
+   * also listened on, next to `127.0.0.1`. Hostnames are never resolved or bound. Absent, the page
+   * is localhost-only. Anyone who can reach a listed address controls the page unauthenticated.
+   */
+  webHosts: z.array(z.string().min(1)).optional(),
 });
 export type ForemanConfig = Omit<z.infer<typeof ConfigSchema>, "workDir"> & {
   owner: string;
