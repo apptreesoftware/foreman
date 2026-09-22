@@ -100,3 +100,15 @@ describe("webAuth", () => {
     ).toThrow();
   });
 });
+
+describe("webHosts", () => {
+  it("is absent by default and accepts hostnames and IP literals", () => {
+    expect(parseConfig(JSON.stringify(base)).webHosts).toBeUndefined();
+    const cfg = parseConfig(JSON.stringify({ ...base, webHosts: ["mini", "100.84.252.56"] }));
+    expect(cfg.webHosts).toEqual(["mini", "100.84.252.56"]);
+  });
+  it("rejects an empty entry and a non-list", () => {
+    expect(() => parseConfig(JSON.stringify({ ...base, webHosts: [""] }))).toThrow();
+    expect(() => parseConfig(JSON.stringify({ ...base, webHosts: "mini" }))).toThrow();
+  });
+});

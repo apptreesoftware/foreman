@@ -180,6 +180,7 @@ export async function runDaemon(
   const web = await startWebServer({
     port: cfg.webPort,
     auth: cfg.webAuth,
+    hosts: cfg.webHosts,
     status: () =>
       describeStatus({
         state: store.get(),

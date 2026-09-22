@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import http from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, isIP } from "node:net";
 import { join } from "node:path";
 import { z } from "zod";
 import type { WebAuth } from "./config.ts";
@@ -31,6 +31,11 @@ export interface WebDeps {
    * tunnel can reach the page; absent, the page stays localhost-only (spec §7).
    */
   auth?: WebAuth;
+  /**
+   * Extra names the page answers to (hostnames or IP literals). Each is an accepted Host at the
+   * page's port; IP literals are also listened on next to 127.0.0.1. Absent, localhost only.
+   */
+  hosts?: string[];
   status: () => StatusReport;
   next: () => Promise<NextReport>;
   act: (cmd: WebCommand) => Promise<string>;
@@ -59,9 +64,31 @@ export interface WebDeps {
   html?: string;
 }
 
-export function isLocalHost(hostHeader: string | undefined, port: number): boolean {
+/** An entry as a browser writes it in `Host`: an IPv6 literal goes in brackets. */
+function hostForm(entry: string): string {
+  return isIP(entry) === 6 ? `[${entry}]` : entry;
+}
+
+/**
+ * Whether `Host` names this page: loopback, or one of `hosts`, at exactly this port. The DNS
+ * rebinding guard (spec §7): a hostile page's requests carry the hostile page's name.
+ */
+export function isLocalHost(
+  hostHeader: string | undefined,
+  port: number,
+  hosts: string[] = [],
+): boolean {
   if (!hostHeader) return false;
-  return hostHeader === `127.0.0.1:${port}` || hostHeader === `localhost:${port}`;
+  const got = hostHeader.toLowerCase();
+  return ["127.0.0.1", "localhost", ...hosts].some(
+    (h) => got === `${hostForm(h).toLowerCase()}:${port}`,
+  );
+}
+
+/** Where the page listens: 127.0.0.1 always, then each IP literal in `hosts`, once each. */
+export function listenAddresses(hosts: string[] | undefined): string[] {
+  const ips = (hosts ?? []).filter((h) => isIP(h) !== 0);
+  return [...new Set(["127.0.0.1", ...ips])];
 }
 
 /** The `Authorization` value a client sends for these credentials; what `ctl` uses too. */
@@ -137,7 +164,7 @@ export function createWebServer(d: WebDeps): http.Server {
           res.setHeader("www-authenticate", 'Basic realm="foreman"');
           return json(res, 401, { ok: false, error: "unauthorized" });
         }
-      } else if (!isLocalHost(req.headers.host, bound)) {
+      } else if (!isLocalHost(req.headers.host, bound, d.hosts)) {
         // Spec §7: every route is localhost-only, not just the POST actions.
         return json(res, 403, { ok: false, error: "localhost only" });
       }
@@ -224,17 +251,37 @@ export function createWebServer(d: WebDeps): http.Server {
   return server;
 }
 
-/** Listens on 127.0.0.1:<port>. A busy port is a warning, not a failure. */
-export function startWebServer(d: WebDeps): Promise<http.Server | null> {
+/** Listens on one address; a failure is a warning, not a failure, and resolves null. */
+function listenOn(d: WebDeps, port: number, address: string): Promise<http.Server | null> {
   return new Promise((resolve) => {
     const server = createWebServer(d);
     server.once("error", (err: NodeJS.ErrnoException) => {
-      log("warn", "web page not started", { port: d.port, error: err.code ?? err.message });
+      log("warn", "web page not started", { port, address, error: err.code ?? err.message });
       resolve(null);
     });
-    server.listen(d.port, "127.0.0.1", () => {
-      log("info", "web page listening", { url: `http://127.0.0.1:${d.port}` });
+    server.listen(port, address, () => {
+      const bound = (server.address() as AddressInfo).port;
+      log("info", "web page listening", { url: `http://${hostForm(address)}:${bound}` });
       resolve(server);
     });
   });
+}
+
+/**
+ * Listens on 127.0.0.1:<port>, then on each IP literal in `hosts` at the same port. A busy port
+ * or an address this Mac does not hold (its interface is down) is a warning, not a failure; the
+ * extra addresses are only tried once loopback is up. Closing the returned server closes them all.
+ */
+export async function startWebServer(d: WebDeps): Promise<http.Server | null> {
+  const [loopback, ...extra] = listenAddresses(d.hosts);
+  const server = await listenOn(d, d.port, loopback ?? "127.0.0.1");
+  if (!server) return null;
+  const port = (server.address() as AddressInfo).port;
+  const others = (await Promise.all(extra.map((a) => listenOn(d, port, a)))).filter(
+    (s): s is http.Server => s !== null,
+  );
+  server.once("close", () => {
+    for (const s of others) s.close();
+  });
+  return server;
 }
