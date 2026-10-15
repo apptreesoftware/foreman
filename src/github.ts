@@ -345,15 +345,18 @@ export class GitHub {
   }
 
   /**
-   * Reruns the failed jobs of the newest workflow run for `sha`, and answers with its run id (or
-   * null when GitHub has no run for that commit). REST rather than GraphQL on purpose: the
+   * Reruns the failed jobs of the newest FAILED workflow run for `sha`, and answers with its run id
+   * (or null when GitHub has no failed run for that commit). Filtered on `status=failure`, because
+   * the newest run for a sha is often a skipped or green workflow, and rerunning one of those is a
+   * 403 ("This workflow run cannot be retried") that threw before the ledger line was written, so
+   * the daemon retried it every tick. REST rather than GraphQL on purpose: the
    * tick's GraphQL budget is for the board reads, and this only fires on a red PR.
    */
   async rerunFailedChecks(sha: string): Promise<number | null> {
     const found = (
       await this.gh([
         "api",
-        `repos/${this.cfg.repo}/actions/runs?head_sha=${sha}&per_page=1`,
+        `repos/${this.cfg.repo}/actions/runs?head_sha=${sha}&status=failure&per_page=1`,
         "--jq",
         ".workflow_runs[0].id // empty",
       ])
