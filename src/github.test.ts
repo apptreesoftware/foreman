@@ -337,7 +337,7 @@ describe("GitHub writes", () => {
       "--delete-branch",
     ]);
   });
-  it("rerunFailedChecks posts to the newest run for the sha", async () => {
+  it("rerunFailedChecks posts to the newest failed run for the sha", async () => {
     const calls: string[][] = [];
     const gh = new GitHub(cfg, fakeExec(calls), false);
     const sha = "aaaa1111bbbb2222cccc3333dddd4444eeee5555";
@@ -345,7 +345,7 @@ describe("GitHub writes", () => {
     expect(calls[0]).toEqual([
       "gh",
       "api",
-      `repos/${cfg.repo}/actions/runs?head_sha=${sha}&per_page=1`,
+      `repos/${cfg.repo}/actions/runs?head_sha=${sha}&status=failure&per_page=1`,
       "--jq",
       ".workflow_runs[0].id // empty",
     ]);
@@ -357,7 +357,7 @@ describe("GitHub writes", () => {
       `repos/${cfg.repo}/actions/runs/77/rerun-failed-jobs`,
     ]);
   });
-  it("rerunFailedChecks answers null when the commit has no run, and reruns nothing", async () => {
+  it("rerunFailedChecks answers null when the commit has no failed run, and reruns nothing", async () => {
     const calls: string[][] = [];
     const exec: Exec = async (cmd, args) => {
       calls.push([cmd, ...args]);
