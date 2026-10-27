@@ -722,4 +722,21 @@ describe("web.html", () => {
     ])
       expect(html).toContain(v);
   });
+  it("loads the Session tab's history by range and offers each session's feed", () => {
+    expect(html).toContain("fetch(`/api/sessions");
+    for (const label of [">Today<", ">7 days<", ">30 days<", ">All<", ">Custom<"])
+      expect(html).toContain(label);
+    expect(html).toContain("View feed");
+    expect(html).toContain("pinFeed(");
+    expect(html).toContain("Show all");
+    expect(html).toContain("const openSessionRows");
+  });
+  it("keeps the model and cap controls, with their confirm texts, on the Session tab", () => {
+    expect(html).toContain(`window.confirm(\`Run foreman sessions as $${"{model}"}?`);
+    expect(html).toContain("Set the daily session cap to");
+    expect(html).toContain('post("/api/model"');
+    expect(html).toContain('post("/api/cap"');
+    expect(html).toContain("GitHub budget");
+    expect(html).toContain("launchd");
+  });
 });

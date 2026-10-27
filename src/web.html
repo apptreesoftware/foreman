@@ -235,6 +235,57 @@
     .tk .picker { grid-column: span 1; }
   }
 
+  /* Session: totals, a daily spend chart, spend by role, cost by task, the daemon's controls. */
+  .range { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .range input[type="date"] { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 13px var(--sans); }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .kpi { padding: 12px 16px; } .kpi b { display: block; font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; } .kpi span { color: var(--ink-3); font-size: 12.5px; }
+  .two { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 10px; margin-top: 10px; }
+  .ch { padding: 14px 18px 12px; min-width: 0; }
+  .ch h3 { margin: 0 0 10px; font-size: 14.5px; font-weight: 600; } .ch h3 small { color: var(--ink-3); font-weight: 500; margin-left: 8px; }
+  .plot { position: relative; height: 170px; margin-left: 44px; margin-top: 14px; }
+  .gridline { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); }
+  .gridline span { position: absolute; left: -44px; top: -8px; width: 38px; text-align: right; font: 11px var(--mono); color: var(--ink-3); }
+  .bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
+  .bars i { flex: 1; min-width: 2px; background: var(--act, var(--accent)); border-radius: 4px 4px 0 0; position: relative; }
+  .bars i:hover { background: var(--ink); }
+  .bars i.zero { background: transparent; }
+  .bars i .peak { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 3px; font: 600 11px var(--mono); color: var(--ink-2); white-space: nowrap; }
+  .xax { display: flex; justify-content: space-between; margin: 6px 0 0 44px; font: 11px var(--mono); color: var(--ink-3); }
+  .roles { display: grid; gap: 9px; }
+  .rl { display: grid; grid-template-columns: 92px minmax(0, 1fr) 64px; align-items: center; gap: 10px; font-size: 13px; }
+  .rl .b, .costc .b { height: 9px; background: var(--sunk); border-radius: 99px; overflow: hidden; }
+  .rl .b i, .costc .b i { display: block; height: 100%; border-radius: 99px; background: var(--act, var(--accent)); }
+  .rl .v, .costc .v { text-align: right; font: 12.5px var(--mono); color: var(--ink-2); }
+  table.costs { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.costs th { text-align: left; font-size: 12px; font-weight: 600; color: var(--ink-3); padding: 10px 14px 8px; border-bottom: 1px solid var(--line); }
+  table.costs td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.costs td.n, table.costs th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  table.costs tr.row { cursor: pointer; } table.costs tr.row:hover td { background: var(--sunk); }
+  table.costs tr.sub td { background: color-mix(in srgb, var(--sunk) 55%, transparent); font-size: 13px; padding: 6px 14px; }
+  table.costs tr.sub td:first-child { padding-left: 36px; color: var(--ink-3); font: 12px var(--mono); }
+  table.costs .num { color: var(--ink-3); margin-right: 6px; }
+  .costc { display: grid; grid-template-columns: minmax(40px, 1fr) 76px; gap: 10px; align-items: center; }
+  .oc { font-weight: 600; } .oc.ok { color: var(--ok); } .oc.bad { color: var(--bad); } .oc.warn { color: var(--warn); }
+  .more { padding: 10px 14px; }
+  .dm { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dm > div { padding: 12px 18px; border-right: 1px solid var(--line); min-width: 0; }
+  .dm > div:nth-child(3) { border-right: 0; }
+  .dm .k { font-size: 12px; color: var(--ink-3); font-weight: 600; }
+  .dm .v2 { font-size: 14px; margin-top: 3px; }
+  .dm .note { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+  .opts { display: flex; gap: 4px; margin-top: 7px; flex-wrap: wrap; }
+  .opts button { padding: 4px 9px; font-size: 12px; border-radius: 6px; color: var(--ink-2); }
+  .opts button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .dm .row2 { grid-column: 1 / -1; border-top: 1px solid var(--line); display: flex; gap: 6px 24px; padding: 10px 18px; font-size: 13px; color: var(--ink-2); border-right: 0; flex-wrap: wrap; }
+  .dm .row2 b { color: var(--ink); font-weight: 600; }
+  @container shell (max-width: 760px) {
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .two, .dm { grid-template-columns: minmax(0, 1fr); }
+    .dm > div { border-right: 0; border-bottom: 1px solid var(--line); }
+    table.costs .roles-col { display: none; }
+  }
+
   /* Toasts */
   #toasts { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; z-index: 20; max-width: min(420px, calc(100vw - 36px)); }
   .toast { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: 10px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); font-size: 13.5px; display: flex; gap: 10px; align-items: start; }
@@ -301,7 +352,11 @@
     <section data-tab="board" hidden><div class="top"><h1>Board</h1><span class="sub" id="boardMeta"></span></div>
       <div class="filters"><input type="search" id="boardSearch" placeholder="Search issues…" aria-label="Search issues"><div class="seg" id="boardSeg"></div><label class="check"><input type="checkbox" id="showDone"> Show done</label></div>
       <div id="boardBody"></div></section>
-    <section data-tab="session" hidden><div class="top"><h1>Session</h1></div><div id="sessionBody"></div></section>
+    <section data-tab="session" hidden><div class="top"><h1>Session</h1>
+      <div class="range"><div class="seg" id="rangeSeg"><button type="button" data-range="today">Today</button><button type="button" data-range="7">7 days</button><button type="button" data-range="30">30 days</button><button type="button" data-range="all" class="on">All</button><button type="button" data-range="custom">Custom</button></div><span id="customRange" hidden><input type="date" id="rangeFrom" aria-label="From"> – <input type="date" id="rangeTo" aria-label="To"></span></div></div>
+      <div id="sessionBody"><div class="card empty">loading…</div></div>
+      <div class="sec"><div class="sec-h"><h3>Daemon</h3><span>what today's sessions run as, and how many may run</span></div><div class="card dm" id="daemonCard"></div></div>
+    </section>
   </main>
 </div>
 </div>
@@ -702,8 +757,126 @@
     }
   }
 
-  // ---- tabs filled in by later sections ----
-  function loadSessions() {}
+  // ---- Session: spend and per-task cost history from sessions.log ----
+  let sessionRange = "all";
+  let showAllTasks = false;
+  let lastSessionKey = null;   // the newest session id the history was fetched for
+  let history = null;
+  const openSessionRows = new Set();
+  // "claude-opus-5" → "opus": the repository's one-click names, from `r.model.choices`.
+  const family = (model) => (r?.model?.choices ?? []).find((c) => (model ?? "").includes(c)) ?? (model || "–");
+  const localDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function rangeQuery() {
+    const today = new Date();
+    const back = (n) => localDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - n));
+    if (sessionRange === "today") return { from: localDay(today), to: localDay(today) };
+    if (sessionRange === "7") return { from: back(6), to: localDay(today) };
+    if (sessionRange === "30") return { from: back(29), to: localDay(today) };
+    if (sessionRange === "custom") return { from: $("rangeFrom").value || null, to: $("rangeTo").value || null };
+    return { from: null, to: null };
+  }
+  for (const b of $("rangeSeg").querySelectorAll("button")) b.onclick = () => {
+    sessionRange = b.dataset.range;
+    for (const x of $("rangeSeg").querySelectorAll("button")) x.classList.toggle("on", x === b);
+    $("customRange").hidden = sessionRange !== "custom";
+    showAllTasks = false;
+    loadSessions();
+  };
+  $("rangeFrom").onchange = () => loadSessions();
+  $("rangeTo").onchange = () => loadSessions();
+  async function loadSessions() {
+    const { from, to } = rangeQuery();
+    const q = new URLSearchParams();
+    if (from) q.set("from", from);
+    if (to) q.set("to", to);
+    try {
+      const res = await fetch(`/api/sessions?${q}`);
+      const j = await res.json();
+      if (!res.ok) { $("sessionBody").innerHTML = `<div class="card empty">${esc(j.error ?? "could not load the history")}</div>`; return; }
+      history = j;
+      lastSessionKey = r?.recent?.[0]?.sessionId ?? null;
+      renderSessions();
+    } catch { $("sessionBody").innerHTML = '<div class="card empty">could not load the history</div>'; }
+  }
+  const outcomeClass = (o) => (/^(pr_opened|approved|passed|phase_closed|plan_drafted)$/.test(o) ? "ok" : /^(blocked|failed|aborted|error_max_turns|interrupted)$/.test(o) ? "bad" : "warn");
+  function dailyChart(daily) {
+    if (!daily.length) return '<div class="empty">no sessions in this range</div>';
+    const max = Math.max(...daily.map((d) => d.spendUsd), 1);
+    const step = max > 400 ? 200 : max > 100 ? 50 : max > 20 ? 10 : 5;
+    const top = Math.ceil(max / step) * step;
+    const peak = daily.reduce((a, b) => (b.spendUsd > a.spendUsd ? b : a));
+    const lines = [];
+    for (let v = 0; v <= top; v += step) lines.push(`<div class="gridline" style="bottom:${(v / top) * 100}%"><span>$${v}</span></div>`);
+    const bars = daily.map((d) => `<i class="${d.spendUsd ? "" : "zero"}" style="height:${(d.spendUsd / top) * 100}%" title="${esc(d.date)}: ${usd(d.spendUsd)} · ${d.sessions} sessions">${d === peak && d.spendUsd ? `<span class="peak">${usd(d.spendUsd)}</span>` : ""}</i>`).join("");
+    const ticks = daily.length > 1 ? [0, Math.floor((daily.length - 1) / 2), daily.length - 1].map((i) => daily[i].date.slice(5)) : [daily[0].date.slice(5)];
+    return `<div class="plot">${lines.join("")}<div class="bars">${bars}</div></div><div class="xax">${ticks.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
+  }
+  function renderSessions() {
+    const h = history;
+    if (!h) return;
+    const per = h.totals.sessions ? h.totals.spendUsd / h.totals.sessions : 0;
+    const kpi = (v, l) => `<div class="card kpi"><b>${v}</b><span>${l}</span></div>`;
+    const maxRole = Math.max(...h.byRole.map((x) => x.spendUsd), 1);
+    const roles = h.byRole.length
+      ? h.byRole.map((x) => `<div class="rl"><span>${esc(x.role)}</span><span class="b"><i style="width:${(x.spendUsd / maxRole) * 100}%"></i></span><span class="v">${usd(x.spendUsd)}</span></div>`).join("")
+      : '<div class="empty">none</div>';
+    const maxCost = Math.max(...h.byIssue.map((x) => x.costUsd), 1);
+    const shown = showAllTasks ? h.byIssue : h.byIssue.slice(0, 10);
+    const rows = shown.map((x) => {
+      const open = openSessionRows.has(x.issue);
+      const head = `<tr class="row" data-row="${esc(x.issue)}" tabindex="0"><td>${open ? "▾" : "▸"} <span class="num">${link("issues", x.issue)}</span>${x.title === `#${x.issue}` ? "" : esc(x.title)}</td><td class="roles-col">${x.roles.map((ro) => `<span class="tag">${esc(ro)}</span>`).join(" ")}</td><td class="n">${x.sessions}</td><td>${esc(x.lastAt.slice(0, 10))}</td><td><div class="costc"><span class="b"><i style="width:${(x.costUsd / maxCost) * 100}%"></i></span><span class="v">${usd(x.costUsd)}</span></div></td></tr>`;
+      const subs = open
+        ? x.entries.map((e) => `<tr class="sub"><td>${esc(e.t.slice(0, 16).replace("T", " "))}</td><td class="roles-col">${esc(e.role)} · ${esc(family(e.model))} · ${esc(e.turns)} turns</td><td class="n"><span class="oc ${outcomeClass(e.outcome)}">${esc(e.outcome)}</span></td><td><button type="button" class="ghost small" data-feed="${esc(e.sessionId)}">View feed</button></td><td class="n mono">${usd(e.costUsd)}</td></tr>`).join("")
+        : "";
+      return head + subs;
+    }).join("");
+    $("sessionBody").innerHTML = `<div class="kpis">${kpi(usd(h.totals.spendUsd), "spend")}${kpi(h.totals.sessions, "sessions")}${kpi(h.totals.issues, "tasks and epics")}${kpi(usd(per), "per session")}</div>
+      <div class="two"><div class="card ch"><h3>Daily spend<small>local days · hover a bar for its sessions</small></h3>${dailyChart(h.daily)}</div><div class="card ch"><h3>By role</h3><div class="roles">${roles}</div></div></div>
+      <div class="sec"><div class="sec-h"><h3>Cost by task</h3><span>most expensive first · click a row for its sessions</span></div><div class="card">${h.byIssue.length
+        ? `<table class="costs"><thead><tr><th>Issue</th><th class="roles-col">Roles</th><th class="n">Sessions</th><th>Last run</th><th style="width:230px">Cost</th></tr></thead><tbody>${rows}</tbody></table>${h.byIssue.length > 10 ? `<div class="more"><button type="button" class="ghost" id="showAll">${showAllTasks ? "Show the top 10" : `Show all ${h.byIssue.length} →`}</button></div>` : ""}`
+        : '<div class="empty">no sessions in this range</div>'}</div></div>`;
+    for (const tr of $("sessionBody").querySelectorAll("tr.row")) {
+      const flip = () => { const n = Number(tr.dataset.row); openSessionRows.has(n) ? openSessionRows.delete(n) : openSessionRows.add(n); renderSessions(); };
+      tr.onclick = (e) => { if (!e.target.closest("a")) flip(); };
+      tr.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } };
+    }
+    for (const b of $("sessionBody").querySelectorAll("button[data-feed]")) b.onclick = (e) => { e.stopPropagation(); pinFeed(b.dataset.feed); };
+    const all = $("showAll");
+    if (all) all.onclick = () => { showAllTasks = !showAllTasks; renderSessions(); };
+  }
+  function pinFeed(sessionId) {
+    feedSession = sessionId;
+    feedPinned = true;
+    location.hash = "#dashboard";
+    loadFeed();
+  }
+
+  // The daemon's own controls: what the next session runs as, and how many may run today. Parking
+  // on the cap is the single most likely reason the foreman is doing nothing, so its count sits
+  // next to the buttons that raise it.
+  function setModel(model) {
+    if (!window.confirm(`Run foreman sessions as ${model}?\n\nA session running now keeps the model it started with; the next dispatch uses ${model}.`)) return;
+    post("/api/model", { model });
+  }
+  function setCap(cap) {
+    const what = cap === null ? "the value in foreman.json" : `${cap} sessions a day`;
+    if (!window.confirm(`Set the daily session cap to ${what}?\n\nEach session costs money; today's spend is on this card. Takes effect on the next tick.`)) return;
+    post("/api/cap", { maxSessionsPerDay: cap });
+  }
+  function renderDaemon(r) {
+    const m = r.model;
+    const c = r.cap;
+    const modelOpts = m ? (m.source === "override" ? [...m.choices, "default"] : m.choices) : [];
+    const capOpts = c ? (c.source === "override" ? [...c.choices, "default"] : c.choices) : [];
+    const b = r.budget;
+    $("daemonCard").innerHTML = `
+      <div><div class="k">Model for new sessions</div><div class="v2">${esc(m?.current ?? "–")}</div>${m?.source === "override" ? `<div class="note">override · foreman.json says ${esc(m.configured)}</div>` : ""}<div class="opts">${modelOpts.map((o) => `<button type="button" data-model="${esc(o)}" class="${o === m.current ? "on" : ""}">${esc(o === "default" ? `default (${m.configured})` : o)}</button>`).join("")}</div></div>
+      <div><div class="k">Daily session cap</div><div class="v2">${esc(r.today?.count ?? 0)} of ${esc(c?.current ?? r.today?.cap ?? 0)} today · ${usd(r.today?.spendUsd)}</div>${c?.source === "override" ? `<div class="note">override · foreman.json says ${esc(c.configured)}</div>` : ""}<div class="opts">${capOpts.map((o) => `<button type="button" data-cap="${esc(String(o))}" class="${o === c.current ? "on" : ""}">${esc(o === "default" ? `default (${c.configured})` : String(o))}</button>`).join("")}</div></div>
+      <div><div class="k">GitHub budget</div><div class="v2">${b ? `${b.remaining.toLocaleString("en-US")} of ${b.limit.toLocaleString("en-US")} points` : "–"}</div>${b ? `<div class="note">resets ${hm(b.resetAt)} · last tick ${esc(b.tickReads)} reads, ${esc(b.actionSpend)} by sessions, ${esc(b.betweenTicks)} elsewhere</div>` : ""}</div>
+      <div class="row2"><span>Last tick <b>${t(r.tick?.lastAt)}</b> · ${r.tick?.preflight ? (r.tick.preflight.ok ? "preflight ok" : `preflight failed: ${esc(r.tick.preflight.reason)}`) : "no tick yet"}</span><span>Next tick <b>${r.tick?.blockedBySession ? "after the session" : t(r.tick?.nextAt)}</b></span><span>Backoff <b>${esc(r.tick?.consecutiveFailures ?? 0)}</b></span><span>launchd <b>${r.launchdInstalled ? "installed" : "not installed"}</b></span>${r.lastPlan ? `<span>Plan <b>${esc(r.lastPlan.join(", "))}</b></span>` : ""}</div>`;
+    for (const x of $("daemonCard").querySelectorAll("button[data-model]")) x.onclick = () => { if (x.dataset.model !== m.current) setModel(x.dataset.model); };
+    for (const x of $("daemonCard").querySelectorAll("button[data-cap]")) x.onclick = () => { if (x.dataset.cap !== String(c.current)) setCap(x.dataset.cap === "default" ? null : Number(x.dataset.cap)); };
+  }
 
   async function refresh() {
     try { r = await (await fetch("/api/status")).json(); }
@@ -716,6 +889,9 @@
     renderNeedsYou(r);
     renderWaiting(r);
     renderBoard(r);
+    renderDaemon(r);
+    // The history only changes when a session finishes, so refetch then, not on every poll.
+    if (tab === "session" && (r.recent?.[0]?.sessionId ?? null) !== lastSessionKey) loadSessions();
     if (!feedPinned) feedSession = r.current?.sessionId ?? r.recent?.[0]?.sessionId ?? null;
     loadFeed();
   }
