@@ -453,6 +453,8 @@ describe("live activity and board", () => {
           // A week old: the case the card exists for, and the one a bare clock time cannot say.
           since: "2026-08-28T05:03:00.000Z",
           itemId: "PVTI_165",
+          reviewOf: null,
+          phaseReview: false,
         },
         {
           issue: 5,
@@ -460,6 +462,8 @@ describe("live activity and board", () => {
           labels: ["blocked"],
           since: "2026-09-04T04:00:00.000Z",
           itemId: null,
+          reviewOf: null,
+          phaseReview: false,
         },
       ],
       phases: [],

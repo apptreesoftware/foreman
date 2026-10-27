@@ -38,6 +38,7 @@ describe("needsYouItems", () => {
       ],
       epics: [epic({ number: 10, phase: 1, labels: ["epic", "phase:1", "needs-owner"] })],
     });
+    const unpaired = { reviewOf: null, phaseReview: false };
     expect(needsYouItems(s)).toEqual([
       {
         issue: 165,
@@ -45,16 +46,52 @@ describe("needsYouItems", () => {
         labels: ["decision", "needs-owner"],
         since: hoursAgo(30),
         itemId: "PVTI_165",
+        ...unpaired,
       },
-      { issue: 5, title: "Task 5", labels: ["blocked"], since: hoursAgo(9), itemId: "PVTI_5" },
+      {
+        issue: 5,
+        title: "Task 5",
+        labels: ["blocked"],
+        since: hoursAgo(9),
+        itemId: "PVTI_5",
+        ...unpaired,
+      },
       {
         issue: 171,
         title: "Task 171",
         labels: ["needs-owner"],
         since: hoursAgo(2),
         itemId: "PVTI_171",
+        ...unpaired,
       },
     ]);
+  });
+  it("marks a phase review paired with an open epic, and an unpaired one", () => {
+    const s = snapshot({
+      epics: [epic({ number: 514, phase: 10, labels: ["epic", "phase:10", "needs-owner"] })],
+      issues: [
+        issue({
+          number: 514,
+          title: "Phase 10a: Families and wards",
+          labels: ["epic", "phase:10", "plan-approved", "needs-owner"],
+        }),
+        issue({
+          number: 571,
+          title: "Phase 10 review: Phase 10a: Families and wards",
+          labels: ["phase:10", "needs-owner"],
+        }),
+        issue({
+          number: 336,
+          title: "Phase 3 review: Lesson creation",
+          labels: ["phase:3", "needs-owner"],
+        }),
+        issue({ number: 599, title: "decide: billing", labels: ["needs-owner"] }),
+      ],
+    });
+    const byIssue = new Map(needsYouItems(s).map((n) => [n.issue, n]));
+    expect(byIssue.get(571)).toMatchObject({ reviewOf: 514, phaseReview: true });
+    expect(byIssue.get(336)).toMatchObject({ reviewOf: null, phaseReview: true });
+    expect(byIssue.get(599)).toMatchObject({ reviewOf: null, phaseReview: false });
   });
   it("carries a null itemId for an issue that is not on the project board", () => {
     const s = snapshot({ issues: [issue({ number: 8, labels: ["blocked"], itemId: null })] });
@@ -105,13 +142,23 @@ describe("applyUnblockToBoard", () => {
   it("drops the row, its blocked wait item and the pipeline flag, and leaves the rest alone", () => {
     const b = board({
       needsYou: [
-        { issue: 5, title: "Task 5", labels: ["blocked"], since: hoursAgo(9), itemId: "PVTI_5" },
+        {
+          issue: 5,
+          title: "Task 5",
+          labels: ["blocked"],
+          since: hoursAgo(9),
+          itemId: "PVTI_5",
+          reviewOf: null,
+          phaseReview: false,
+        },
         {
           issue: 171,
           title: "Task 171",
           labels: ["needs-owner"],
           since: hoursAgo(2),
           itemId: null,
+          reviewOf: null,
+          phaseReview: false,
         },
       ],
       waiting: [

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { epic, issue, snapshot } from "../test/helpers.ts";
+import { comment, epic, issue, snapshot } from "../test/helpers.ts";
 import { applyOwnerAction, applyOwnerActionToBoard, ownerItems } from "./owner.ts";
 
 const e = (over = {}) => epic({ number: 200, phase: 2, labels: ["epic", "phase:2"], ...over });
@@ -35,6 +35,26 @@ describe("ownerItems", () => {
   it("offers nothing but pause once a plan is approved and being built", () => {
     const items = ownerItems(snap([e({ labels: ["epic", "phase:2", "plan-approved"] })]));
     expect(items[0]?.actions).toEqual(["pause"]);
+  });
+  it("carries the epic's updatedAt as since, and its paired review on a sign-off", () => {
+    const signOff = e({ labels: ["epic", "phase:2", "plan-approved", "needs-owner"] });
+    const s = snapshot({
+      epics: [signOff],
+      issues: [
+        issue({
+          number: 200,
+          title: "Phase 2: Things",
+          labels: signOff.labels,
+          updatedAt: "2026-09-01T00:00:00Z",
+          comments: [comment("Phase review: #250")],
+        }),
+        issue({ number: 250, title: "Phase 2 review: Things", labels: ["phase:2", "needs-owner"] }),
+      ],
+    });
+    expect(ownerItems(s)[0]).toMatchObject({ since: "2026-09-01T00:00:00Z", review: 250 });
+    // Not a sign-off: no review to show, even if one is paired.
+    const plan = e({ labels: ["epic", "phase:2", "needs-owner"] });
+    expect(ownerItems(snap([plan]))[0]?.review).toBeNull();
   });
   it("skips closed epics and sorts by phase", () => {
     const items = ownerItems(
@@ -118,6 +138,8 @@ describe("applyOwnerActionToBoard", () => {
         phase: 0,
         detail: "d",
         actions: ["sign_off" as const, "pause" as const],
+        since: null,
+        review: null,
       },
       {
         epic: 26,
@@ -125,6 +147,8 @@ describe("applyOwnerActionToBoard", () => {
         phase: 2,
         detail: "d",
         actions: ["start_planning" as const, "pause" as const],
+        since: null,
+        review: null,
       },
     ],
     needsYou: [],

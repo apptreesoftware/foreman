@@ -145,6 +145,10 @@ export const OwnerItemSchema = z.object({
   phase: z.number(),
   detail: z.string(),
   actions: z.array(OwnerActionSchema),
+  /** The epic issue's `updatedAt`, so the page can say how long it has waited. */
+  since: z.string().nullable().default(null),
+  /** The phase review issue paired with this epic; set only when it offers `sign_off`. */
+  review: z.number().int().nullable().default(null),
 });
 export type OwnerItem = z.infer<typeof OwnerItemSchema>;
 
@@ -162,6 +166,10 @@ export const NeedsYouItemSchema = z.object({
   since: z.string(),
   /** Project item id, so Unblock can set Status Ready without another read; null when off board. */
   itemId: z.string().nullable(),
+  /** The open epic this phase review belongs to; its Sign off row shows it instead of a row here. */
+  reviewOf: z.number().int().nullable().default(null),
+  /** Titled like a phase review; with `reviewOf` null, its epic is no longer open. */
+  phaseReview: z.boolean().default(false),
 });
 export type NeedsYouItem = z.infer<typeof NeedsYouItemSchema>;
 

@@ -78,7 +78,15 @@ describe("web server", () => {
       return `did ${action} on #${epic}`;
     },
     ownerItems: () => [
-      { epic: 124, title: "Phase 0.5", phase: 0, detail: "d", actions: ["sign_off", "pause"] },
+      {
+        epic: 124,
+        title: "Phase 0.5",
+        phase: 0,
+        detail: "d",
+        actions: ["sign_off", "pause"],
+        since: null,
+        review: null,
+      },
     ],
     needsYouItems: () => [
       {
@@ -87,6 +95,8 @@ describe("web server", () => {
         labels: ["blocked"],
         since: "2026-09-03T03:00:00Z",
         itemId: "PVTI_5",
+        reviewOf: null,
+        phaseReview: false,
       },
       {
         issue: 171,
@@ -94,6 +104,8 @@ describe("web server", () => {
         labels: ["needs-owner"],
         since: "2026-09-03T10:00:00Z",
         itemId: null,
+        reviewOf: null,
+        phaseReview: false,
       },
     ],
     unblock: async (issue) => {
