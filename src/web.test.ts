@@ -692,6 +692,17 @@ describe("web.html", () => {
     expect(html).toContain('post("/api/owner"');
     expect(html).toContain('post("/api/unblock"');
   });
+  it("greens the track line only through an unbroken run of finished stages", () => {
+    expect(html).toContain(".track .k:is(.done, .skipped) + .k::before { background: var(--ok); }");
+    expect(html).toContain(
+      ".track .k:not(.done, .skipped) ~ .k::before { background: var(--line); }",
+    );
+    expect(html).not.toContain(".track .k.active::before");
+  });
+  it("keeps size containers off the polled pipeline so WebKit does not reset the scroll", () => {
+    expect(html).not.toContain("container: pl");
+    expect(html).toContain("@container shell (max-width: 1044px)");
+  });
   it("lists Waiting on rows by kind and points human waits at Needs you", () => {
     expect(html).toContain("Nothing stops new claims");
     expect(html).toContain("Fix on GitHub");

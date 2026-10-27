@@ -122,9 +122,12 @@
   .doing .said { color: var(--ink-2); font-style: italic; }
 
   /* Pipeline: the track column and the tag column have fixed widths, so every card's dots sit at
-     the same x. Below 760px of pipeline width the track takes its own row under the title. */
+     the same x. Below 760px of pipeline width the track takes its own row under the title. That
+     width is the shell's minus the 232px sidebar and 52px of main padding, so the query sits on the
+     shell: a size container on .pl itself makes WebKit lay the page out short while the poll
+     rewrites the cards, and the clamp scrolls a reader at the bottom of the page back up. */
   .track { display: grid; grid-template-columns: repeat(5, 1fr); }
-  .pl { display: grid; gap: 8px; container: pl / inline-size; }
+  .pl { display: grid; gap: 8px; }
   .pi { padding: 13px 18px; display: grid; grid-template-columns: minmax(0, 1fr) 280px 160px; column-gap: 32px; row-gap: 12px; align-items: center; }
   .pi .ttl { min-width: 0; }
   .pi .tags { display: flex; gap: 5px; justify-content: flex-end; flex-wrap: wrap; }
@@ -133,15 +136,18 @@
   .track .k { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
   .track .k::before { content: ""; position: absolute; top: 5px; right: 50%; width: 100%; height: 2px; background: var(--line); }
   .track .k:first-child::before { display: none; }
-  .track .k.done::before, .track .k.active::before, .track .k.failed::before { background: var(--ok); }
+  /* CI runs alongside review and validate, so the line greens only through an unbroken run of
+     finished stages; a stage done out of order gets its dot, never a line. */
+  .track .k:is(.done, .skipped) + .k::before { background: var(--ok); }
+  .track .k:not(.done, .skipped) ~ .k::before { background: var(--line); }
   .track .d { position: relative; z-index: 1; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); }
   .track .done { color: var(--ok); } .track .done .d { background: var(--ok); border-color: var(--ok); }
   .track .active { color: var(--act, var(--accent)); } .track .active .d { border-color: var(--act, var(--accent)); background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); animation: pulse 1.6s ease-in-out infinite; }
   .track .failed { color: var(--bad); } .track .failed .d { background: var(--bad); border-color: var(--bad); }
-  .track .skipped .d { border-style: dashed; }
+  .track .skipped .d { border-style: dashed; border-color: var(--ink-3); }
   @keyframes pulse { 50% { opacity: .55; } }
   @media (prefers-reduced-motion: reduce) { .track .active .d { animation: none; } }
-  @container pl (max-width: 760px) {
+  @container shell (max-width: 1044px) {
     .pi { grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
     .pi .ttl { grid-column: 1; grid-row: 1; }
     .pi .tags { grid-column: 2; grid-row: 1; max-width: 160px; }
