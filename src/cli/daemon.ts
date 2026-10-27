@@ -15,6 +15,7 @@ import { describeNext } from "../next.ts";
 import { applyOwnerAction, applyOwnerActionToBoard } from "../owner.ts";
 import { checkEnv, preflight } from "../preflight.ts";
 import { loadRepoConfigSafe } from "../repo-config.ts";
+import { boardTitles, describeSessionHistory } from "../session-history.ts";
 import { readSessions } from "../sessions.ts";
 import { initialState, MODEL_DEFAULT, readState, StateStore } from "../state-file.ts";
 import { describeStatus } from "../status.ts";
@@ -226,6 +227,8 @@ export async function runDaemon(
       log("info", "model set", { model: next, configured: cfg.model });
       return `next session runs ${next ?? cfg.model}`;
     },
+    sessions: (range) =>
+      describeSessionHistory(readSessions(STATE_DIR), range, boardTitles(store.get().board)),
     setTheme: async (theme) => {
       store.patch({ theme });
       log("info", "theme set", { theme });

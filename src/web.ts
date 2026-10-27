@@ -8,6 +8,7 @@ import type { WebAuth } from "./config.ts";
 import { FEED_LIMIT_DEFAULT, type FeedEntry, isSessionId } from "./feed.ts";
 import { log } from "./log.ts";
 import type { NextReport } from "./next.ts";
+import { parseRange, type SessionHistory, type SessionRange } from "./session-history.ts";
 import {
   CapSchema,
   type EffortChoice,
@@ -53,6 +54,8 @@ export interface WebDeps {
   unblock: (issue: number) => Promise<string>;
   /** Sets the model the next dispatch uses; the name has already passed `ModelSchema`. */
   setModel: (model: string) => Promise<string>;
+  /** Spend and sessions from `sessions.log` over a range already checked by `parseRange`. */
+  sessions: (range: SessionRange) => SessionHistory;
   /** Saves the page's color theme for this instance; the name has already passed `ThemeSchema`. */
   setTheme: (theme: ThemeName) => Promise<string>;
   /** Sets the daily session cap the next tick enforces; null clears the override. */
@@ -193,6 +196,11 @@ export function createWebServer(d: WebDeps): http.Server {
         const limit =
           Number(u.searchParams.get("limit") ?? FEED_LIMIT_DEFAULT) || FEED_LIMIT_DEFAULT;
         return json(res, 200, { session, entries: d.feed(session, limit) });
+      }
+      if (req.method === "GET" && url === "/api/sessions") {
+        const range = parseRange(u.searchParams.get("from"), u.searchParams.get("to"));
+        if (!range) return json(res, 400, { ok: false, error: "bad range" });
+        return json(res, 200, d.sessions(range));
       }
       if (url === "/api/owner") {
         if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });

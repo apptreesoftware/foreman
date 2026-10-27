@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FeedEntry } from "./feed.ts";
 import type { NextReport } from "./next.ts";
+import type { SessionRange } from "./session-history.ts";
 import { CAP_CHOICES, EFFORT_LEVELS, MODEL_CHOICES } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
 import {
@@ -59,6 +60,7 @@ describe("web server", () => {
   const taskModels: string[] = [];
   const taskEfforts: string[] = [];
   const themes: string[] = [];
+  const ranges: SessionRange[] = [];
   let refreshes = 0;
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
@@ -119,6 +121,16 @@ describe("web server", () => {
     setModel: async (model) => {
       models.push(model);
       return `next session runs ${model}`;
+    },
+    sessions: (range) => {
+      ranges.push(range);
+      return {
+        ...range,
+        totals: { spendUsd: 0, sessions: 0, issues: 0 },
+        daily: [],
+        byRole: [],
+        byIssue: [],
+      };
     },
     setTheme: async (theme) => {
       themes.push(theme);
@@ -255,6 +267,20 @@ describe("web server", () => {
     expect((await fetch(`${base}/api/model`)).status).toBe(405);
     expect(models).toEqual(["sonnet", "claude-haiku-4-5-20251001"]);
   });
+  it("serves the session history for a valid range and refuses a bad one", async () => {
+    const all = await fetch(`${base}/api/sessions`);
+    expect(all.status).toBe(200);
+    expect((await all.json()).totals).toEqual({ spendUsd: 0, sessions: 0, issues: 0 });
+    expect((await fetch(`${base}/api/sessions?from=2026-10-01&to=2026-10-26`)).status).toBe(200);
+    const bad = await fetch(`${base}/api/sessions?from=nope`);
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ ok: false, error: "bad range" });
+    expect((await fetch(`${base}/api/sessions?from=2026-10-27&to=2026-10-01`)).status).toBe(400);
+    expect(ranges).toEqual([
+      { from: null, to: null },
+      { from: "2026-10-01", to: "2026-10-26" },
+    ]);
+  });
   it("sets the page theme to one of the four, and nothing else", async () => {
     const post = (body: unknown) =>
       fetch(`${base}/api/theme`, { method: "POST", body: JSON.stringify(body) });
@@ -366,6 +392,14 @@ describe("web server with webAuth", () => {
     needsYouItems: () => [],
     unblock: async () => "",
     setModel: async () => "",
+    sessions: () => ({
+      from: null,
+      to: null,
+      totals: { spendUsd: 0, sessions: 0, issues: 0 },
+      daily: [],
+      byRole: [],
+      byIssue: [],
+    }),
     setTheme: async () => "",
     setCap: async () => "",
     refresh: async () => "",
@@ -512,6 +546,14 @@ describe("web server with webHosts", () => {
     needsYouItems: () => [],
     unblock: async () => "",
     setModel: async () => "",
+    sessions: () => ({
+      from: null,
+      to: null,
+      totals: { spendUsd: 0, sessions: 0, issues: 0 },
+      daily: [],
+      byRole: [],
+      byIssue: [],
+    }),
     setTheme: async () => "",
     setCap: async () => "",
     refresh: async () => "",
