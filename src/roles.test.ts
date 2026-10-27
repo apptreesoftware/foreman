@@ -64,8 +64,10 @@ describe("the base prompts say nothing about one particular repository", () => {
     for (const f of files) {
       const text = readFileSync(join(dir, `${f}.md`), "utf8");
       const found = [...text.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
-      for (const p of found)
-        expect(["checks", "plansDir", "specGlob"], `${f}.md uses {{${p}}}`).toContain(p);
+      // `{{issue}}` reaches the planner as written: it goes into the plan file, and apply_plan
+      // fills it, not the composer.
+      const filled = ["checks", "plansDir", "specGlob", ...(f === "planner" ? ["issue"] : [])];
+      for (const p of found) expect(filled, `${f}.md uses {{${p}}}`).toContain(p);
     }
   });
 });
