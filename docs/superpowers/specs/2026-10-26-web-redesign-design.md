@@ -1,6 +1,6 @@
 # Web page redesign
 
-Status: draft for owner review · 2026-10-26
+Status: final draft, open questions answered · 2026-10-26
 
 ## Intent
 
@@ -31,7 +31,8 @@ easy to tell apart.
 
 - No new foreman behaviour. Every action the page can take today it can still take, with the same
   confirmation text and the same server-side allowlists; no new kind of GitHub write.
-- No change to the daemon loop, the scheduler, the ledger grammar or the roles.
+- No change to the daemon loop, the scheduler, the ledger grammar or the roles, except recording
+  the issue title in each `sessions.log` entry (see "Owner decisions").
 - No frontend framework, bundler or build step for the page.
 - No multi-instance overview page. Each instance keeps its own page on its own port.
 
@@ -233,7 +234,7 @@ Every open issue on the project board, grouped under its phase epic.
 
 - **Top bar:** title with a count line (`N open issues in M phases · read from the last tick,
   HH:MMZ`), a search box (number or title), a Status filter (All, Ready, In progress, In review,
-  Backlog, Blocked, each with a count) and a "Show done" checkbox.
+  Backlog, Blocked, Off board, each with a count) and a "Show done" checkbox.
 - **Epic card header:** `PHASE <N>` eyebrow, `#<epic> <title>`, a state chip (Planning / Plan
   waiting / Building / Sign-off waiting / Not started, plus Paused), and **Pause** or **Resume**.
   A facts line: green progress bar `done of total`, spend and session count, median claim→merge
@@ -303,7 +304,7 @@ All computed from the existing snapshot or local files; no new GitHub reads.
 3. **`OwnerItem.since`** (ISO or null): when the epic started waiting, for the wait-time column.
    `src/waiting.ts` already computes this for the same epics.
 4. **`Board.issues[]`**, built in `describeBoard` from `Snapshot.issues`, `prs` and `epics`: for
-   every open non-epic issue, `{ issue, title, status, labels (display subset), epic, phase, pr,
+   every open non-epic issue, on the board or not (`status` null shows as "Off board"), `{ issue, title, status, labels (display subset), epic, phase, pr,
    dependsOn, openDependsOn, blocked, model, effort }`. Grouping, in order: (1) the open epic
    whose `taskNumbersOf` set includes the issue (sub-issues plus the body's `Parent epic: #N`
    line, the same set the phase progress uses); (2) else, by its `phase:<N>` label, the one open
@@ -323,7 +324,8 @@ All computed from the existing snapshot or local files; no new GitHub reads.
    counts them, so the Session tab and the cap counter agree. Same host check / auth as
    every other route. The page fetches it when the Session tab opens, when the range changes, and
    when `recent[0].sessionId` changes in the status poll.
-9. **Titles in the cost history**: see open question 1.
+9. **`SessionLogEntry.title`** (optional string): see "Owner decisions" 1. `readSessions` keeps
+   reading old lines without it.
 
 ## Calls made during design (owner may override)
 
@@ -346,20 +348,17 @@ All computed from the existing snapshot or local files; no new GitHub reads.
 - Board pickers are offered for every open issue on the board, widening the allowlist from
   approved-phase tasks.
 
-## Open questions
+## Owner decisions after review
 
-1. **Titles for closed issues in the cost history.** `sessions.log` records the issue number but
-   not its title, and closed issues are not in the snapshot, so most history rows would show only
-   `#N`. Options: (a) add an optional `title` to each new `sessions.log` entry, so rows from now on
-   have titles and older rows show `#N` (or a title from any later entry for the same issue); (b)
-   look titles up on GitHub when the Session tab opens, cached in the instance directory, which
-   spends API budget the page avoids today; (c) both; (d) neither: titles only for issues still
-   open (from the snapshot), `#N` for the rest. (a) touches `appendSession` in `src/loop.ts`,
-   which the non-goals otherwise leave alone; (b) adds a `gh` read path; (d) is page-only.
-2. **Issues that are open but not on the project board.** Some repositories have open issues with
-   no board Status (phase review issues, follow-ups filed by hand). Show them on the Board under
-   an "Off board" status, or leave them off? Showing them adds an "Off board" filter and widens
-   the picker allowlist to every open issue the snapshot holds.
+1. **Titles in the cost history: record them from now on.** `SessionLogEntry` gains an optional
+   `title`, filled from the issue the session ran on wherever `appendSession` is called in
+   `src/loop.ts`. This is the one change to the loop, and it is additive. On the Session tab, a
+   row's title comes from the newest log entry for that issue that has one, else from the
+   snapshot if the issue is still open, else `#N`. No GitHub lookup.
+2. **Open issues not on the project board are shown.** They appear on the Board with the status
+   "Off board" (a hollow grey dot), grouped like any other issue, and the Status filter gains an
+   "Off board" bucket with its count. The model and effort pickers work on them, since
+   `Board.issues` is the picker allowlist.
 
 ## Left to the builder
 
