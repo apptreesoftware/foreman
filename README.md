@@ -676,11 +676,30 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
 - **Ask what the next tick would do:** `foreman -p widgets next`. The only subcommand that calls
   GitHub; it explains why each open PR is or is not mergeable, and it ignores the `STOP` file.
 - **The page:** `foreman -p widgets page` opens `http://127.0.0.1:<webPort>`, served by the daemon
-  while it runs and bound to localhost only. It carries the same view plus a pipeline table
-  (build → review → validate → CI → merge per in-flight issue), a **Phase** card with a progress
-  bar, a **Needs you** card, an **Owner** card of label gates, and a live event feed per session.
-  Feeds live in `~/.foreman/<name>/activity/<sessionId>.jsonl` and hold tool names and one-line
-  summaries only, never tool inputs or thinking.
+  while it runs and bound to localhost only. A sidebar names the instance and switches between
+  five tabs, each reachable by its own URL fragment (`#dashboard`, `#needs-you`, `#waiting`,
+  `#board`, `#session`):
+  - **Dashboard** — the controls, a banner for every reason the foreman is not taking work (STOP,
+    failed preflight, daily cap, paused phase, stalled session, orphaned child, unfinished
+    bookkeeping), the running session, the in-flight pipeline (build → review → validate → CI →
+    merge per issue) and the live event feed.
+  - **Needs you** — every decision only the owner can make, grouped by the action: approve a
+    plan, sign off a phase, ready to plan, unblock, answer or close. The sidebar badge counts them,
+    Ready to plan excepted.
+  - **Waiting on** — what the foreman is waiting for by itself: CI, review rounds, dependencies,
+    another Mac's claim, the phase gate, and setup problems to fix on GitHub.
+  - **Board** — every open issue, on the project board or not, grouped under its phase epic, with
+    each epic's progress and Pause/Resume, and a model and an effort picker per issue.
+  - **Session** — spend and sessions from `sessions.log` for today, 7 days, 30 days, the whole log
+    or a custom range: a daily chart, spend by role, cost per task with each session's feed, and
+    the daemon's model, daily cap, GitHub budget and tick.
+
+  Each instance gets its own color theme so that several open tabs are easy to tell apart. The
+  first start picks the theme the other instances on this Mac use least; the swatches in the
+  sidebar footer change it (`POST /api/theme`, saved in `state.json`). Feeds live in
+  `~/.foreman/<name>/activity/<sessionId>.jsonl` and hold tool names and one-line summaries only,
+  never tool inputs or thinking. The Session tab reads `GET /api/sessions?from=&to=` (local dates,
+  both optional).
 - **Show the board as it is now:** the page's **Refresh project** button. It drops the cached
   board and wakes the loop, so a Status you set in the GitHub UI shows up within a tick rather
   than at the end of the poll interval. `foreman go` does the waking half only.
@@ -705,7 +724,7 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
 - **Raise the daily cap:** `foreman -p widgets cap` prints the cap the next tick will enforce and
   where it came from; `foreman -p widgets cap 50` raises it; `cap default` hands control back to
   `foreman.json`. The cap is read per tick, so raising it un-parks a capped daemon immediately.
-  The override survives a restart. The **Tick** card offers the same, confirm-first.
+  The override survives a restart. The page's **Session** tab offers the same, confirm-first.
 - **Change the model:** `foreman -p widgets model` prints what the next session will run as;
   `foreman -p widgets model sonnet` changes it. With the daemon running the change goes through
   the page, which owns `state.json`, and applies at the next dispatch — the session running now
@@ -715,21 +734,22 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   builder, reviewer, validator, fix rounds — as that model, outranking both the live override and
   `foreman.json`. The label is the source of truth, so it works from `gh issue edit` too.
 - **Change one task's effort:** every session runs at `high` effort. To run a task at a different
-  level, give it a label: `foreman -p widgets effort xhigh --issue 12`, or use the effort buttons
-  under the task on the page's **Phases** card. This covers builder, reviewer, validator and fix
+  level, give it a label: `foreman -p widgets effort xhigh --issue 12`, or use the issue's effort
+  picker on the page's **Board** tab. This covers builder, reviewer, validator and fix
   rounds. The levels are Claude Code's own: `low`, `medium`, `high`, `xhigh`, `max`. Choosing
   `high` or `default` removes the label. There is no global effort setting.
   `foreman -p widgets effort` prints the default and every task with an effort label;
   `effort --issue 12` prints that task's effort. With the daemon running, a change goes through
-  the page, which only accepts tasks listed on the board. With no daemon, it edits the label on
+  the page, which only accepts issues its Board tab lists. With no daemon, it edits the label on
   GitHub directly. A session already running keeps its effort; the issue's next session uses the
   new one. `gh issue edit 12 --add-label effort:max` works the same way.
-- **Owner gates, from the page:** the **Owner** card lists every open epic with the label gates
-  only a human can open — **Sign off**, **Approve plan**, **Start planning**, **Pause**/**Resume**.
-  Each button confirms the exact label change and wakes the daemon. The same gates are just
+- **Owner gates, from the page:** the **Needs you** tab offers **Approve plan**, **Sign off** and
+  **Start planning** on the epics waiting for them, and the **Board** tab's epic headers offer
+  **Pause**/**Resume**. A phase review issue is shown on its epic's Sign off row. Each button
+  confirms the exact label change and wakes the daemon. The same gates are just
   labels, so `gh issue edit <epic> --add-label <label>` is identical.
-- **Issues waiting on you:** the **Needs you** card lists every open non-epic issue labelled
-  `needs-owner`, `decision` or `blocked`, oldest first. `foreman status` prints the same list.
+- **Issues waiting on you:** the **Needs you** tab lists every open non-epic issue labelled
+  `needs-owner`, `decision` or `blocked`, oldest first, with how long each has waited. `foreman status` prints the same list.
   A `blocked` row has an **Unblock** button: it removes `blocked`, sets Status **Ready** and
   comments `unblocked by owner via foreman@<host>` — fix whatever caused the block first, because
   nothing else about the issue changes.
@@ -826,8 +846,9 @@ jq -s 'map(.costUsd) | add' ~/.foreman/widgets/sessions.log
 ```
 
 A merge appends one line to `merges.log` (`issue`, `pr`, `host`, `claimedAt`, `mergedAt`). The
-merged issue drops out of every later snapshot, so this is what keeps the phase card's cycle time
-computable. Both logs are local caches; losing them only empties those numbers.
+merged issue drops out of every later snapshot, so this is what keeps the phase cycle time on the
+Board tab computable. Each `sessions.log` line also records the issue's `title`, so the Session
+tab can name a task after it has closed. Both logs are local caches; losing them only empties those numbers.
 
 ## 9. Resume and multi-Mac
 
