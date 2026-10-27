@@ -750,9 +750,10 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   labels, so `gh issue edit <epic> --add-label <label>` is identical.
 - **Issues waiting on you:** the **Needs you** tab lists every open non-epic issue labelled
   `needs-owner`, `decision` or `blocked`, oldest first, with how long each has waited. `foreman status` prints the same list.
-  A `blocked` row has an **Unblock** button: it removes `blocked`, sets Status **Ready** and
-  comments `unblocked by owner via foreman@<host>` — fix whatever caused the block first, because
-  nothing else about the issue changes.
+  A `blocked` row has an **Unblock** button: it removes `blocked`, removes `reviewer:changes` and
+  `validator:failed` from the issue's PR, sets Status **Ready** and comments
+  `unblocked by owner via foreman@<host>` — fix whatever caused the block first, because nothing
+  else about the issue changes.
 - **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.apptreesoftware.foreman.widgets`,
   or `foreman -p widgets launchd uninstall`.
 
@@ -874,8 +875,8 @@ branch.
   (round 2 and later may block only on prior findings still open, regressions in the delta, or a
   real safety issue; anything else becomes a follow-up issue), and a merge conflict is never a
   change request — an approved PR that conflicts gets a rebase round that does not count.
-- **To unblock a task by hand:** fix or rebase the branch, push, remove `reviewer:changes` from the
-  PR and `blocked` from the issue (or use the page's **Unblock** button). The fix-round counter
+- **To unblock a task by hand:** fix or rebase the branch, push, remove `reviewer:changes` and
+  `validator:failed` from the PR and `blocked` from the issue (or use the page's **Unblock** button). The fix-round counter
   stays where it was, so the next reviewer verdict must be an approval or the task is blocked
   again.
 
