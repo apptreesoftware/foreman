@@ -539,6 +539,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
       attempt: current.attempt,
       costUsd: result.costUsd,
       outcome: mode === "abort" ? "aborted" : "interrupted",
+      title: r.issue.title,
       ...sessionMetrics(result, current, model),
     });
     try {
@@ -580,6 +581,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     attempt: req.attempt,
     costUsd: result.costUsd,
     outcome: result.outcome?.outcome ?? result.subtype,
+    title: r.issue.title,
     ...sessionMetrics(result, current, model),
   });
   await gh.comment(
