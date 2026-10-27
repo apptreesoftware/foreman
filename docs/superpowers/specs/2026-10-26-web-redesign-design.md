@@ -119,7 +119,8 @@ Four schemes, each with a dark and a light token set. Dark values (from `colors-
 
 Ink for all dark themes follows the indigo row's pattern (`ink` ≈ #ECEEF2, `ink-2` ≈ #A3AAB5,
 `ink-3` ≈ #6E7581), tinted toward each theme as in the mockup. Light primaries: indigo #3B5BDB,
-violet #6E56CF, teal #0C8599 (white text), mono #111113 (white text); the light ground and soft
+violet #6E56CF, teal #0B7285 (white text; darker than the mockup's #0C8599, which fails 4.5:1),
+mono #111113 (white text); the light ground and soft
 accent values are on each theme's strip in the mockup. The builder derives the remaining light
 tokens in the same structure.
 
@@ -136,8 +137,10 @@ tool pills only; it is never a button fill. (This fixes the current Go button, w
 on a dark background.)
 
 **Choosing a theme:** the swatches in the sidebar footer call `POST /api/theme`. With no choice
-saved, the theme is derived from the instance name (a stable hash over the four themes), so
-instances differ before anyone picks.
+saved, the daemon picks one at start and saves it, so it never changes on its own afterwards: the
+theme least used by the other instances on this Mac (read from their `state.json` files via
+`listInstances`), ties broken by a stable hash of the instance name. Up to four instances
+therefore start with four different themes; a fifth repeats one.
 
 ### Dashboard
 
@@ -188,7 +191,7 @@ sub-line, and its action on the right.
    "read the plan" link. Button: **Approve plan**, solid theme primary.
 2. **Sign off a phase** · epics offering `sign_off`. Sub-line: a small green progress bar with
    `done/total tasks`, the phase spend, and a link to its review issue. Button: **Sign off**,
-   solid green (#2B8A3E, white text).
+   solid green (#287A3A, white text, 5.3:1).
 3. **Ready to plan** · epics offering `start_planning`. Not counted in the badge. Sub-line notes a
    planner session costs about $5. Button: **Start planning**, amber tint (amber-soft
    background, amber text and border).
@@ -202,10 +205,12 @@ Each group title has a small dot in its button's color. Every button keeps today
 `window.confirm` text.
 
 A phase review issue (`Phase <N> review: <epic title>`, created by the phase-closer with
-`needs-owner`) is shown on its epic's Sign off row, not as its own row. Match it by the epic's
-title appearing in the review title, not by the `phase:<N>` label alone, because several epics can
-share a phase number (10a, 10b, 10c). A review issue with no open matching epic goes to Answer or
-close.
+`needs-owner`) is shown on its epic's Sign off row, not as its own row. Pair them in this order:
+(1) the epic's own comment `Phase review: #<review>`, which `roles/phase-closer.md` has the
+phase-closer post and which is already in the snapshot's comments; (2) otherwise, the epic's title
+with its leading `Phase <X>:` removed appearing in the review's title. Never pair by the
+`phase:<N>` label alone, because several epics can share a phase number. A review issue with no
+open matching epic goes to Answer or close.
 
 Pause and Resume are no longer on this tab; they live on the Board's epic headers.
 
@@ -299,8 +304,12 @@ All computed from the existing snapshot or local files; no new GitHub reads.
    `src/waiting.ts` already computes this for the same epics.
 4. **`Board.issues[]`**, built in `describeBoard` from `Snapshot.issues`, `prs` and `epics`: for
    every open non-epic issue, `{ issue, title, status, labels (display subset), epic, phase, pr,
-   dependsOn, openDependsOn, blocked, model, effort }`. The epic is the open epic whose
-   `taskNumbers` include the issue; else the `phase:<N>` label; else none.
+   dependsOn, openDependsOn, blocked, model, effort }`. Grouping, in order: (1) the open epic
+   whose `taskNumbersOf` set includes the issue (sub-issues plus the body's `Parent epic: #N`
+   line, the same set the phase progress uses); (2) else, by its `phase:<N>` label, the one open
+   epic with that phase when exactly one exists; (3) else, when several open epics share that
+   phase, a `Phase <N> · not linked to an epic` group; (4) else, when no open epic has that phase,
+   `Phase <N> · epic closed`; (5) else "No phase".
 5. **`Board.epics[]`** or an extension of `phases`, so the Board can show every open epic
    (including ones being planned) with its state, not only approved phases.
 6. **Needs-you pairing**: the review-issue-to-epic match described above, computed server-side so
@@ -310,8 +319,8 @@ All computed from the existing snapshot or local files; no new GitHub reads.
    issue number.
 8. **`GET /api/sessions?from=YYYY-MM-DD&to=YYYY-MM-DD`** (both optional; absent means the whole
    log): `{ totals, daily[], byRole[], byIssue[] }`, each `byIssue` row with its entries. Computed
-   from `readSessions`. Sessions are counted by distinct `sessionId`; cost is summed the same way
-   `todayStats` sums it, so the Session tab and the cap counter agree. Same host check / auth as
+   from `readSessions`. Sessions and cost are counted per log line, the same way `todayStats`
+   counts them, so the Session tab and the cap counter agree. Same host check / auth as
    every other route. The page fetches it when the Session tab opens, when the range changes, and
    when `recent[0].sessionId` changes in the status poll.
 9. **Titles in the cost history**: see open question 1.
@@ -321,7 +330,12 @@ All computed from the existing snapshot or local files; no new GitHub reads.
 - Theme choice is stored in `state.json` through `store.patch`, not in `foreman.json` as first
   said in conversation: the daemon reads `foreman.json` only at start and the page never writes
   it; `state.json` is the existing home for page-set overrides and is per instance.
-- With no saved choice, the theme is derived from the instance name.
+- With no saved choice, the daemon saves the theme least used by the other instances on this Mac,
+  so instances start distinct and a theme never shifts on its own.
+- Review pairing uses the epic's `Phase review: #<review>` comment first, then a title match.
+- Board grouping uses `taskNumbersOf`, then a unique open epic for the phase label.
+- Session counts follow `todayStats` (per log line).
+- Sign off green is #287A3A and light teal is #0B7285, to meet 4.5:1.
 - The sidebar shows the instance name (what `foreman -p` uses), not the repository name.
 - A phase review issue shows on its epic's Sign off row.
 - Ready to plan is not counted in the Needs you badge.
@@ -339,7 +353,13 @@ All computed from the existing snapshot or local files; no new GitHub reads.
    `#N`. Options: (a) add an optional `title` to each new `sessions.log` entry, so rows from now on
    have titles and older rows show `#N` (or a title from any later entry for the same issue); (b)
    look titles up on GitHub when the Session tab opens, cached in the instance directory, which
-   spends API budget the page avoids today; (c) both.
+   spends API budget the page avoids today; (c) both; (d) neither: titles only for issues still
+   open (from the snapshot), `#N` for the rest. (a) touches `appendSession` in `src/loop.ts`,
+   which the non-goals otherwise leave alone; (b) adds a `gh` read path; (d) is page-only.
+2. **Issues that are open but not on the project board.** Some repositories have open issues with
+   no board Status (phase review issues, follow-ups filed by hand). Show them on the Board under
+   an "Off board" status, or leave them off? Showing them adds an "Off board" filter and widens
+   the picker allowlist to every open issue the snapshot holds.
 
 ## Left to the builder
 
