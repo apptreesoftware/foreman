@@ -10,6 +10,8 @@ import { log } from "./log.ts";
 import type { NextReport } from "./next.ts";
 import {
   CapSchema,
+  type EffortChoice,
+  EffortChoiceSchema,
   MODEL_DEFAULT,
   ModelSchema,
   type NeedsYouItem,
@@ -60,6 +62,8 @@ export interface WebDeps {
   setTaskModel: (issue: number, model: TaskModelChoice) => Promise<string>;
   /** The repo's configured `models`; the task-model allowlist beyond `MODEL_DEFAULT`. */
   modelChoices: () => string[];
+  /** Swaps the issue's `effort:<level>` label; only called for a task `phaseTasks` lists. */
+  setTaskEffort: (issue: number, effort: EffortChoice) => Promise<string>;
   /** Page HTML; defaults to src/web.html. Injectable for tests. */
   html?: string;
 }
@@ -117,6 +121,12 @@ const ModelRequestSchema = z.object({ model: ModelSchema });
 const TaskModelRequestSchema = z.object({
   issue: z.number().int().positive(),
   model: TaskModelChoiceSchema,
+});
+
+// Claude Code's levels are the whole allowlist, so no per-repo list is needed here.
+const TaskEffortRequestSchema = z.object({
+  issue: z.number().int().positive(),
+  effort: EffortChoiceSchema,
 });
 
 // `null` is the clear-the-override case; everything else must be a sane session count, so a
@@ -224,6 +234,16 @@ export function createWebServer(d: WebDeps): http.Server {
         if (model !== MODEL_DEFAULT && !d.modelChoices().includes(model))
           return json(res, 400, { ok: false, error: "model not offered" });
         return json(res, 200, { ok: true, message: await d.setTaskModel(issue, model) });
+      }
+      if (url === "/api/task-effort") {
+        if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
+        const parsed = TaskEffortRequestSchema.safeParse(await readJson(req));
+        // An effort reaches `claude` as argv, so only Claude Code's own levels get past here.
+        if (!parsed.success) return json(res, 400, { ok: false, error: "bad request" });
+        const { issue, effort } = parsed.data;
+        if (!d.phaseTasks().some((t) => t.issue === issue))
+          return json(res, 400, { ok: false, error: `#${issue} is not a task on the board` });
+        return json(res, 200, { ok: true, message: await d.setTaskEffort(issue, effort) });
       }
       if (url === "/api/cap") {
         if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });

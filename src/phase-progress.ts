@@ -1,4 +1,4 @@
-import { modelOf, parentEpicOf } from "./github.ts";
+import { effortOf, modelOf, parentEpicOf } from "./github.ts";
 import { parseClaim } from "./ledger.ts";
 import type { MergeRecord, SessionLogEntry } from "./sessions.ts";
 import type { PhaseProgress, PhaseTask } from "./state-file.ts";
@@ -90,6 +90,13 @@ export function phaseProgress(
 function taskRow(n: number, issues: Issue[]): PhaseTask {
   const i = issues.find((x) => x.number === n);
   return i
-    ? { issue: n, title: i.title, status: i.status, closed: false, model: modelOf(i.labels) }
-    : { issue: n, title: `#${n}`, status: null, closed: true, model: null };
+    ? {
+        issue: n,
+        title: i.title,
+        status: i.status,
+        closed: false,
+        model: modelOf(i.labels),
+        effort: effortOf(i.labels),
+      }
+    : { issue: n, title: `#${n}`, status: null, closed: true, model: null, effort: null };
 }

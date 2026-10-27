@@ -72,6 +72,7 @@ export function overlayCurrent(board: Board, current: CurrentSession, host: stri
           fixRound: current.round,
           blocked: false,
           model: null,
+          effort: null,
         };
   const row: PipelineRow = {
     ...base,

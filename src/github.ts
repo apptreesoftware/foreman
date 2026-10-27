@@ -1,6 +1,12 @@
 import type { Exec } from "./exec.ts";
 import { log } from "./log.ts";
-import { MODEL_LABEL_PREFIX, ModelSchema } from "./state-file.ts";
+import {
+  EFFORT_LABEL_PREFIX,
+  type EffortLevel,
+  EffortSchema,
+  MODEL_LABEL_PREFIX,
+  ModelSchema,
+} from "./state-file.ts";
 import type { CheckState, Comment, Issue, Mergeable, PullRequest, Size, Status } from "./types.ts";
 
 export interface GhConfig {
@@ -99,6 +105,16 @@ export function modelOf(labels: string[]): string | null {
   const l = labels.find((x) => x.startsWith(MODEL_LABEL_PREFIX));
   const name = l?.slice(MODEL_LABEL_PREFIX.length);
   return name && ModelSchema.safeParse(name).success ? name : null;
+}
+
+/**
+ * The effort an `effort:<level>` label pins the issue's sessions to. Only Claude Code's own levels
+ * count; anything else on the label (a typo, a flag) reads as no label, since it reaches argv.
+ */
+export function effortOf(labels: string[]): EffortLevel | null {
+  const l = labels.find((x) => x.startsWith(EFFORT_LABEL_PREFIX));
+  const r = EffortSchema.safeParse(l?.slice(EFFORT_LABEL_PREFIX.length));
+  return r.success ? r.data : null;
 }
 
 function names(labels: Array<{ name: string }> | undefined): string[] {

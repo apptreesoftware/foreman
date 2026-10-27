@@ -1,7 +1,7 @@
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "../config.ts";
-import { ctlCap, ctlGo, ctlModel, ctlStop } from "../ctl.ts";
+import { ctlCap, ctlEffort, ctlGo, ctlModel, ctlStop } from "../ctl.ts";
 import { realExec } from "../exec.ts";
 import { GitHub } from "../github.ts";
 import type { Instance } from "../instance.ts";
@@ -17,7 +17,7 @@ import { describeStatus, formatStatus } from "../status.ts";
 import { basicAuthorization } from "../web.ts";
 import { launchdLabel } from "./launchd.ts";
 
-export type CtlCommand = "status" | "next" | "stop" | "abort" | "go" | "model" | "cap";
+export type CtlCommand = "status" | "next" | "stop" | "abort" | "go" | "model" | "effort" | "cap";
 
 function pidAlive(pid: number): boolean {
   try {
@@ -31,7 +31,7 @@ function pidAlive(pid: number): boolean {
 export async function runCtl(
   instance: Instance,
   cmd: CtlCommand,
-  o: { watch: boolean; json: boolean; value: string | null },
+  o: { watch: boolean; json: boolean; value: string | null; issue?: number | null },
 ): Promise<void> {
   const uid = launchdUid();
   const label = launchdLabel(instance.name);
@@ -173,6 +173,28 @@ export async function runCtl(
     case "model":
       await ctlModel(deps, o.value);
       break;
+    case "effort": {
+      // Built lazily: only the no-daemon path talks to GitHub, and only with --issue.
+      const gh = () =>
+        new GitHub({ repo: cfg.repo, owner: cfg.owner, project: cfg.project }, realExec, false);
+      await ctlEffort(
+        {
+          stateDir: STATE_DIR,
+          pidAlive,
+          out: deps.out,
+          postTaskEffort: (issue, effort) =>
+            postToDaemon("task-effort", { issue, effort }, `#${issue} effort ${effort}`),
+          issueLabels: async (issue) => (await gh().getIssue(issue)).labels,
+          labels: {
+            addLabels: (kind, n, labels) => gh().addLabels(kind, n, labels),
+            removeLabels: (kind, n, labels) => gh().removeLabels(kind, n, labels),
+          },
+        },
+        o.value,
+        o.issue ?? null,
+      );
+      break;
+    }
     case "cap":
       // A non-numeric value other than `default` becomes NaN, which ctlCap refuses by name.
       await ctlCap(deps, o.value === null || o.value === "default" ? o.value : Number(o.value));

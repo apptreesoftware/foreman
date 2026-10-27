@@ -2,7 +2,15 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { type CtlDeps, ctlCap, ctlGo, ctlModel, ctlStop } from "./ctl.ts";
+import {
+  type CtlDeps,
+  ctlCap,
+  ctlEffort,
+  ctlGo,
+  ctlModel,
+  ctlStop,
+  type EffortCtlDeps,
+} from "./ctl.ts";
 import { initialState, readState, writeState } from "./state-file.ts";
 
 const current = {
@@ -174,8 +182,22 @@ describe("ctlModel", () => {
             medianMergeMinutes: null,
             mergedTasks: 0,
             tasks: [
-              { issue: 101, title: "One", status: "Ready", closed: false, model: null },
-              { issue: 102, title: "Two", status: "Ready", closed: false, model: "sonnet" },
+              {
+                issue: 101,
+                title: "One",
+                status: "Ready",
+                closed: false,
+                model: null,
+                effort: null,
+              },
+              {
+                issue: 102,
+                title: "Two",
+                status: "Ready",
+                closed: false,
+                model: "sonnet",
+                effort: null,
+              },
             ],
           },
         ],
@@ -277,5 +299,75 @@ describe("ctlGo", () => {
     const b = deps();
     await ctlGo(b.d);
     expect(b.log.out.join("\n")).toContain("foreman -p widgets start");
+  });
+});
+
+describe("ctlEffort", () => {
+  function effortDeps(o: { alive?: boolean; labels?: string[]; state?: boolean } = {}) {
+    const dir = mkdtempSync(join(tmpdir(), "tt-ctl-effort-"));
+    const log = { out: [] as string[], gh: [] as string[] };
+    if (o.state !== false) writeState(dir, base());
+    const d: EffortCtlDeps = {
+      stateDir: dir,
+      pidAlive: () => o.alive ?? false,
+      out: (l) => {
+        log.out.push(l);
+      },
+      postTaskEffort: async (issue, effort) => {
+        log.out.push(`posted #${issue} ${effort}`);
+        return `#${issue} runs at ${effort} effort from its next session`;
+      },
+      issueLabels: async () => o.labels ?? [],
+      labels: {
+        addLabels: async (_k, n, l) => {
+          log.gh.push(`add ${n} ${l.join(",")}`);
+        },
+        removeLabels: async (_k, n, l) => {
+          log.gh.push(`remove ${n} ${l.join(",")}`);
+        },
+      },
+    };
+    return { d, log };
+  }
+
+  it("with no arguments names the default and the levels a task may pick", async () => {
+    const { d, log } = effortDeps();
+    await ctlEffort(d, null, null);
+    expect(log.out[0]).toContain("effort high");
+    expect(log.out.join("\n")).toContain("low, medium, high, xhigh, max");
+  });
+  it("refuses a level without --issue: other levels are chosen per task", async () => {
+    const { d, log } = effortDeps({ alive: true });
+    await ctlEffort(d, "max", null);
+    expect(log.out.join("\n")).toContain("--issue");
+    expect(log.out.join("\n")).not.toContain("posted");
+  });
+  it("refuses anything that is not a Claude Code level", async () => {
+    const { d, log } = effortDeps({ alive: true });
+    await ctlEffort(d, "ultra", 12);
+    expect(log.out.join("\n")).toContain("not an effort level");
+    expect(log.out.join("\n")).not.toContain("posted");
+  });
+  it("goes through the running daemon's page, so the board shows it at once", async () => {
+    const { d, log } = effortDeps({ alive: true });
+    await ctlEffort(d, "xhigh", 12);
+    expect(log.out).toContain("posted #12 xhigh");
+    expect(log.gh).toEqual([]);
+  });
+  it("with no daemon swaps the label straight on GitHub, reading the issue's current one", async () => {
+    const { d, log } = effortDeps({ labels: ["phase:1", "effort:low"] });
+    await ctlEffort(d, "max", 12);
+    expect(log.gh).toEqual(["remove 12 effort:low", "add 12 effort:max"]);
+    expect(log.out.join("\n")).toContain("#12 runs at max effort");
+  });
+  it("with no state file at all still works, since the label is the truth", async () => {
+    const { d, log } = effortDeps({ state: false, labels: ["effort:max"] });
+    await ctlEffort(d, "default", 12);
+    expect(log.gh).toEqual(["remove 12 effort:max"]);
+  });
+  it("--issue with no level prints the issue's effort", async () => {
+    const { d, log } = effortDeps({ labels: ["effort:medium"] });
+    await ctlEffort(d, null, 12);
+    expect(log.out[0]).toContain("#12 runs at medium effort");
   });
 });

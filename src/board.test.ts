@@ -74,8 +74,8 @@ describe("describeBoard", () => {
         medianMergeMinutes: 120,
         mergedTasks: 1,
         tasks: [
-          { issue: 1, title: "Task 1", status: "Ready", closed: false, model: null },
-          { issue: 2, title: "#2", status: null, closed: true, model: null },
+          { issue: 1, title: "Task 1", status: "Ready", closed: false, model: null, effort: null },
+          { issue: 2, title: "#2", status: null, closed: true, model: null, effort: null },
         ],
       },
     ]);
@@ -131,6 +131,7 @@ describe("overlayCurrent", () => {
           fixRound: 1,
           blocked: false,
           model: null,
+          effort: null,
         },
       ],
     };

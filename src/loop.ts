@@ -21,7 +21,7 @@ import {
 import type { Exec } from "./exec.ts";
 import { realExec } from "./exec.ts";
 import { appendFeed, type FeedEntry } from "./feed.ts";
-import { type GitHubApi, modelOf, phaseOf } from "./github.ts";
+import { effortOf, type GitHubApi, modelOf, phaseOf } from "./github.ts";
 import type { HookName, HookResult } from "./hooks.ts";
 import { fileHookLog, parseSessionEnv, runHook } from "./hooks.ts";
 import { fmt, openClaim, parseClaim } from "./ledger.ts";
@@ -48,7 +48,13 @@ import {
   todayStats,
 } from "./sessions.ts";
 import { plan } from "./state.ts";
-import type { CurrentSession, StateStore, StopMode } from "./state-file.ts";
+import {
+  type CurrentSession,
+  EFFORT_DEFAULT_LEVEL,
+  type EffortLevel,
+  type StateStore,
+  type StopMode,
+} from "./state-file.ts";
 import type { Activity } from "./stream.ts";
 import type { Action, Epic, Issue, Role, Snapshot } from "./types.ts";
 
@@ -221,6 +227,15 @@ interface RunRole {
  */
 export function modelFor(ctx: Ctx, labels: string[]): string {
   return modelOf(labels) ?? ctx.state?.get().model ?? ctx.cfg.model;
+}
+
+/**
+ * The effort a session on this issue runs at: the issue's `effort:<level>` label, else the fixed
+ * default. Unlike the model there is no live override or foreman.json knob — any level other
+ * than the default is chosen for one task.
+ */
+export function effortFor(labels: string[]): EffortLevel {
+  return effortOf(labels) ?? EFFORT_DEFAULT_LEVEL;
 }
 
 /** The daily session cap this tick enforces: the owner's live override, else foreman.json's. */
@@ -416,6 +431,8 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     promptPath: files.promptPath,
     settingsPath: files.settingsPath,
     rebase: r.rebase === true,
+    // Read per dispatch, so a label set mid-run applies from the issue's next session.
+    effort: effortFor(r.issue.labels),
   };
   const started = Date.now();
   let current: CurrentSession = {

@@ -14,6 +14,7 @@ export const COMMANDS = [
   "status",
   "next",
   "model",
+  "effort",
   "cap",
   "logs",
   "page",
@@ -40,6 +41,7 @@ export const USAGE = `foreman — one daemon per repository, driven by claude -p
   foreman [-p <name>] start | stop | abort | go | restart
   foreman [-p <name>] status [--watch] [--json] | next
   foreman [-p <name>] model [<name>|default] | cap [<n>|default]
+  foreman [-p <name>] effort [<level>|default] [--issue <n>]   one task's effort; default high
   foreman [-p <name>] logs [-f] | page
   foreman [-p <name>] launchd install | uninstall | status
   foreman [-p <name>] hooks run <preflight|session-env|before-session|after-session>
@@ -62,6 +64,7 @@ const OPTIONS = {
   watch: { type: "boolean" },
   json: { type: "boolean" },
   f: { type: "boolean" },
+  issue: { type: "string" },
 } as const;
 
 export function parseCli(argv: string[]): Cli {

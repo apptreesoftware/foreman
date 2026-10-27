@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Exec, ExecResult } from "./exec.ts";
 import {
+  effortOf,
   GitHub,
   modelOf,
   parseChecks,
@@ -173,6 +174,14 @@ describe("pure parsers", () => {
     expect(phaseOf(["size:M"])).toBeNull();
     expect(sizeOf(["size:M"])).toBe("M");
     expect(sizeOf([])).toBeNull();
+  });
+  it("effortOf reads an effort:<level> label and ignores anything that is not a Claude Code level", () => {
+    expect(effortOf(["phase:1", "effort:high"])).toBe("high");
+    expect(effortOf(["effort:max"])).toBe("max");
+    expect(effortOf(["effort:ultra"])).toBeNull();
+    expect(effortOf(["effort:--dangerously-skip-permissions"])).toBeNull();
+    expect(effortOf(["effort:"])).toBeNull();
+    expect(effortOf(["size:M"])).toBeNull();
   });
   it("modelOf reads a model:<name> label and ignores anything that is not a plain model name", () => {
     expect(modelOf(["phase:1", "model:sonnet"])).toBe("sonnet");

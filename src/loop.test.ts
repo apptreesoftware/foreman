@@ -12,6 +12,7 @@ import { fmt } from "./ledger.ts";
 import {
   ACTIVITY_FLUSH_MS,
   type Ctx,
+  effortFor,
   ensureLogin,
   execute,
   idleSeconds,
@@ -997,6 +998,38 @@ describe("model", () => {
   });
 });
 
+describe("effort", () => {
+  async function dispatchWith(labels: string[]): Promise<string> {
+    const seen: string[][] = [];
+    const ok = okSpawn({ outcome: "pr_opened", pr: 5, notes: "" });
+    const st = memState();
+    const { gh } = fakeGh([issue({ number: 1, status: "In Progress", labels })]);
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        state: st.store,
+        stateDir: mkdtempSync(join(tmpdir(), "tt-loop-effort-")),
+        spawn: async (...a) => {
+          seen.push(a[1]);
+          return ok(...a);
+        },
+      }),
+    );
+    return (seen[0] ?? []).join(" ");
+  }
+
+  it("runs at high effort when the issue has no effort label", async () => {
+    expect(await dispatchWith([])).toContain("--effort high");
+  });
+
+  it("runs at the issue's effort:<level> label instead", async () => {
+    const argv = await dispatchWith(["phase:1", "effort:max"]);
+    expect(argv).toContain("--effort max");
+    expect(argv).not.toContain("--effort high");
+  });
+});
+
 describe("daily cap override", () => {
   // preflight only needs exec to succeed; this stdout keeps `claude auth status` happy.
   const okExec: Exec = async () => ({
@@ -1411,7 +1444,16 @@ describe("live activity", () => {
         sessions: 1,
         medianMergeMinutes: null,
         mergedTasks: 0,
-        tasks: [{ issue: 1, title: "Task 1", status: "In Review", closed: false, model: null }],
+        tasks: [
+          {
+            issue: 1,
+            title: "Task 1",
+            status: "In Review",
+            closed: false,
+            model: null,
+            effort: null,
+          },
+        ],
       },
     ]);
   });
@@ -1775,6 +1817,15 @@ describe("notifications", () => {
     await runOnce(ctx({ gh, exec: okExec, notify: n.port, stateDir: dir }));
     expect(n.parked).toEqual(["STOP file present"]);
     expect(n.decisions).toEqual([]);
+  });
+});
+
+describe("effortFor", () => {
+  it("is the issue's effort label, else high", () => {
+    expect(effortFor([])).toBe("high");
+    expect(effortFor(["phase:1", "effort:low"])).toBe("low");
+    // A label that is not a Claude Code level is no label.
+    expect(effortFor(["effort:ultra"])).toBe("high");
   });
 });
 

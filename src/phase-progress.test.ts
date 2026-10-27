@@ -53,7 +53,7 @@ describe("phaseProgress", () => {
           number: 102,
           title: "Two",
           status: "In Progress",
-          labels: ["phase:1", "model:sonnet"],
+          labels: ["phase:1", "model:sonnet", "effort:high"],
         }),
         issue({ number: 101, title: "One", status: "Ready" }),
         // Names the epic in its body but is not a linked sub-issue: still a task.
@@ -62,12 +62,19 @@ describe("phaseProgress", () => {
     });
     const [p] = phaseProgress(s, [], []);
     expect(p?.tasks).toEqual([
-      { issue: 101, title: "One", status: "Ready", closed: false, model: null },
-      { issue: 102, title: "Two", status: "In Progress", closed: false, model: "sonnet" },
+      { issue: 101, title: "One", status: "Ready", closed: false, model: null, effort: null },
+      {
+        issue: 102,
+        title: "Two",
+        status: "In Progress",
+        closed: false,
+        model: "sonnet",
+        effort: "high",
+      },
       // Closed tasks are gone from the snapshot, so only their number is known.
-      { issue: 103, title: "#103", status: null, closed: true, model: null },
-      { issue: 104, title: "#104", status: null, closed: true, model: null },
-      { issue: 105, title: "Five", status: "Backlog", closed: false, model: null },
+      { issue: 103, title: "#103", status: null, closed: true, model: null, effort: null },
+      { issue: 104, title: "#104", status: null, closed: true, model: null, effort: null },
+      { issue: 105, title: "Five", status: "Backlog", closed: false, model: null, effort: null },
     ]);
     expect(p).toMatchObject({ tasksTotal: 5, tasksDone: 2 });
   });

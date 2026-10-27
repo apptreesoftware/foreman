@@ -136,11 +136,14 @@ async function main(): Promise<number> {
     case "status":
     case "next":
     case "model":
+    case "effort":
     case "cap":
       await runCtl(instance, cli.cmd, {
         watch: b("watch"),
         json: b("json"),
         value: cli.positionals[0] ?? null,
+        // A non-numeric --issue becomes NaN, which ctlEffort refuses by name.
+        issue: typeof cli.args.issue === "string" ? Number(cli.args.issue) : null,
       });
       return 0;
     case "logs": {

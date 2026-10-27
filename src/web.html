@@ -225,7 +225,7 @@
   function renderPipeline(rows) {
     const cell = (name, st) => `<span class="stage ${esc(st)}${name === "ci" ? " ci" : ""}">${name === "validate" ? "valid" : name}</span>`;
     $("pipeline").innerHTML = rows.length
-      ? rows.map((p) => `<tr><td class="mono">${link("issues", p.issue)}</td><td>${esc(p.title)}</td><td><div class="stages">${["build", "review", "validate", "ci", "merge"].map((s) => cell(s, p.stages[s])).join("")}</div></td><td class="mono">${p.claim ? `${esc(p.claim.host)} · ${esc(p.claim.role)} r${p.claim.round}` : "—"}</td><td class="mono">${p.pr ? link("pull", p.pr) : "—"}</td><td>${p.model ? `<span class="tag" title="every session on this issue runs as ${esc(p.model)}">${esc(p.model)}</span> ` : ""}${p.blocked ? '<span class="tag bad">blocked</span>' : p.fixRound > 1 ? `<span class="tag">fix round ${p.fixRound}</span>` : p.stages.ci === "pending" ? '<span class="tag ci">ci pending</span>' : p.stages.merge === "active" ? '<span class="tag">mergeable</span>' : ""}</td></tr>`).join("")
+      ? rows.map((p) => `<tr><td class="mono">${link("issues", p.issue)}</td><td>${esc(p.title)}</td><td><div class="stages">${["build", "review", "validate", "ci", "merge"].map((s) => cell(s, p.stages[s])).join("")}</div></td><td class="mono">${p.claim ? `${esc(p.claim.host)} · ${esc(p.claim.role)} r${p.claim.round}` : "—"}</td><td class="mono">${p.pr ? link("pull", p.pr) : "—"}</td><td>${p.model ? `<span class="tag" title="every session on this issue runs as ${esc(p.model)}">${esc(p.model)}</span> ` : ""}${p.effort ? `<span class="tag" title="every session on this issue runs at ${esc(p.effort)} effort">${esc(p.effort)} effort</span> ` : ""}${p.blocked ? '<span class="tag bad">blocked</span>' : p.fixRound > 1 ? `<span class="tag">fix round ${p.fixRound}</span>` : p.stages.ci === "pending" ? '<span class="tag ci">ci pending</span>' : p.stages.merge === "active" ? '<span class="tag">mergeable</span>' : ""}</td></tr>`).join("")
       : '<tr><td colspan="6" class="mono" style="color:var(--ink-3)">nothing in flight</td></tr>';
   }
 
@@ -306,6 +306,8 @@
   const openPhases = new Set();
   // The one-click model names, from the last status poll (`StatusReport.model.choices`).
   let modelChoices = [];
+  // Claude Code's effort levels and the fixed default, from the same poll (`StatusReport.effort`).
+  let effort = { default: "high", levels: [] };
   function renderPhases(items) {
     $("phases").innerHTML = items.length
       ? items.map((p) => {
@@ -313,10 +315,11 @@
           const median = p.medianMergeMinutes === null ? "no merge yet" : `median ${mins(p.medianMergeMinutes)} claim→merge`;
           const open = openPhases.has(p.epic);
           const pinned = (p.tasks ?? []).filter((t) => t.model).length;
+          const efforts = (p.tasks ?? []).filter((t) => t.effort).length;
           return `<div class="p"><div class="who"><span>${link("issues", p.epic)} phase ${esc(p.phase)} ${esc(p.title)}</span><b>${p.tasksDone}/${p.tasksTotal}</b></div>
             <div class="bar"><i style="width:${pct}%"></i></div>
             <div class="facts"><span>$${Number(p.spendUsd).toFixed(2)} · ${p.sessions} sessions</span><span>${esc(median)}</span></div>
-            <div class="facts"><span class="toggle" data-phase="${p.epic}" role="button" tabindex="0">${open ? "▾" : "▸"} tasks${pinned ? ` · ${pinned} pinned to a model` : ""}</span></div>
+            <div class="facts"><span class="toggle" data-phase="${p.epic}" role="button" tabindex="0">${open ? "▾" : "▸"} tasks${pinned ? ` · ${pinned} pinned to a model` : ""}${efforts ? ` · ${efforts} off ${esc(effort.default)} effort` : ""}</span></div>
             ${open ? renderTasks(p.tasks ?? []) : ""}</div>`;
         }).join("")
       : '<div class="empty">no approved phase in flight</div>';
@@ -326,15 +329,19 @@
       el.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); flip(); } };
     }
     for (const b of $("phases").querySelectorAll("button[data-task-model]")) b.onclick = () => setTaskModel(Number(b.dataset.issue), b.dataset.taskModel, b.dataset.current || null);
+    for (const b of $("phases").querySelectorAll("button[data-task-effort]")) b.onclick = () => setTaskEffort(Number(b.dataset.issue), b.dataset.taskEffort, b.dataset.current || null);
   }
   // One row per task of the phase. A `model:<name>` label on the issue pins every foreman session
   // on it to that model, outranking the Tick card's choice; `default` removes the label. Closed
   // tasks have left the snapshot, so they show as done and take no button.
+  // The second row is the task's effort: every session runs at the default unless an
+  // `effort:<level>` label says otherwise, and choosing the default removes the label.
   function renderTasks(tasks) {
     if (!tasks.length) return '<div class="tasks"><div class="task closed">no tasks yet</div></div>';
     const choices = [...modelChoices, "default"];
     return `<div class="tasks">${tasks.map((t) => {
-      const acts = t.closed ? "" : `<span class="acts">${choices.map((c) => `<button type="button" data-issue="${t.issue}" data-task-model="${esc(c)}" data-current="${esc(t.model ?? "")}" class="${c === (t.model ?? "default") ? "on" : ""}" title="${c === "default" ? "use the global model" : `pin #${t.issue} to ${esc(c)}`}">${esc(c)}</button>`).join("")}</span>`;
+      const efforts = `<span class="acts">${effort.levels.map((c) => `<button type="button" data-issue="${t.issue}" data-task-effort="${esc(c)}" data-current="${esc(t.effort ?? "")}" class="${c === (t.effort ?? effort.default) ? "on" : ""}" title="${c === effort.default ? `the default effort; removes #${t.issue}'s effort label` : `run #${t.issue} at ${esc(c)} effort`}">${esc(c)}</button>`).join("")}</span>`;
+      const acts = t.closed ? "" : `<span class="acts">${choices.map((c) => `<button type="button" data-issue="${t.issue}" data-task-model="${esc(c)}" data-current="${esc(t.model ?? "")}" class="${c === (t.model ?? "default") ? "on" : ""}" title="${c === "default" ? "use the global model" : `pin #${t.issue} to ${esc(c)}`}">${esc(c)}</button>`).join("")}</span>${efforts}`;
       return `<div class="task${t.closed ? " closed" : ""}"><span>${link("issues", t.issue)} ${esc(t.title)}<span class="st">${t.closed ? "done" : esc(t.status ?? "off board")}</span></span>${acts}</div>`;
     }).join("")}</div>`;
   }
@@ -343,6 +350,15 @@
     if (!window.confirm(`Run every foreman session on #${issue} as ${what}?\n\nBuilder, reviewer and validator alike, outranking the Tick card's model. A session running now keeps the model it started with; the issue's next session uses this.`)) return;
     $("msg").textContent = `#${issue} model ${model}…`;
     const j = await (await fetch("/api/task-model", { method: "POST", body: JSON.stringify({ issue, model }) })).json();
+    $("msg").textContent = j.ok ? j.message : `error: ${j.error}`;
+    refresh();
+  }
+
+  async function setTaskEffort(issue, level, current) {
+    const what = level === effort.default ? `the default ${level} effort${current ? ` (drops ${current})` : ""}` : `${level} effort`;
+    if (!window.confirm(`Run every foreman session on #${issue} at ${what}?\n\nBuilder, reviewer and validator alike. A session running now keeps the effort it started with; the issue's next session uses this.`)) return;
+    $("msg").textContent = `#${issue} effort ${level}…`;
+    const j = await (await fetch("/api/task-effort", { method: "POST", body: JSON.stringify({ issue, effort: level }) })).json();
     $("msg").textContent = j.ok ? j.message : `error: ${j.error}`;
     refresh();
   }
@@ -443,6 +459,7 @@
     $("hmeta").textContent = r.daemon === "UNKNOWN" ? "no state.json: restart the daemon" : "";
     renderNow(r);
     modelChoices = r.model?.choices ?? [];
+    effort = r.effort ?? effort;
     renderPipeline(r.board?.pipeline ?? []);
     renderPhases(r.board?.phases ?? []);
     renderOwner(r.board?.owner ?? []);
