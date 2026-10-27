@@ -699,6 +699,10 @@ describe("web.html", () => {
     );
     expect(html).not.toContain(".track .k.active::before");
   });
+  it("keeps size containers off the polled pipeline so WebKit does not reset the scroll", () => {
+    expect(html).not.toContain("container: pl");
+    expect(html).toContain("@container shell (max-width: 1044px)");
+  });
   it("lists Waiting on rows by kind and points human waits at Needs you", () => {
     expect(html).toContain("Nothing stops new claims");
     expect(html).toContain("Fix on GitHub");

@@ -122,9 +122,12 @@
   .doing .said { color: var(--ink-2); font-style: italic; }
 
   /* Pipeline: the track column and the tag column have fixed widths, so every card's dots sit at
-     the same x. Below 760px of pipeline width the track takes its own row under the title. */
+     the same x. Below 760px of pipeline width the track takes its own row under the title. That
+     width is the shell's minus the 232px sidebar and 52px of main padding, so the query sits on the
+     shell: a size container on .pl itself makes WebKit lay the page out short while the poll
+     rewrites the cards, and the clamp scrolls a reader at the bottom of the page back up. */
   .track { display: grid; grid-template-columns: repeat(5, 1fr); }
-  .pl { display: grid; gap: 8px; container: pl / inline-size; }
+  .pl { display: grid; gap: 8px; }
   .pi { padding: 13px 18px; display: grid; grid-template-columns: minmax(0, 1fr) 280px 160px; column-gap: 32px; row-gap: 12px; align-items: center; }
   .pi .ttl { min-width: 0; }
   .pi .tags { display: flex; gap: 5px; justify-content: flex-end; flex-wrap: wrap; }
@@ -144,7 +147,7 @@
   .track .skipped .d { border-style: dashed; border-color: var(--ink-3); }
   @keyframes pulse { 50% { opacity: .55; } }
   @media (prefers-reduced-motion: reduce) { .track .active .d { animation: none; } }
-  @container pl (max-width: 760px) {
+  @container shell (max-width: 1044px) {
     .pi { grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
     .pi .ttl { grid-column: 1; grid-row: 1; }
     .pi .tags { grid-column: 2; grid-row: 1; max-width: 160px; }
