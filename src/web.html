@@ -189,6 +189,52 @@
   .linkrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-radius: 12px; border: 1px dashed var(--line); color: var(--ink-2); margin-top: 20px; flex-wrap: wrap; }
   .linkrow a { font-weight: 600; }
 
+  /* Board: one card per group, a table of its open issues with model and effort pickers. */
+  .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .filters input[type="search"] { flex: 0 1 240px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 13.5px var(--sans); }
+  .seg { display: inline-flex; background: var(--sunk); border-radius: 9px; padding: 3px; flex-wrap: wrap; }
+  .seg button { border: 0; background: transparent; padding: 5px 11px; border-radius: 7px; font-size: 12.5px; color: var(--ink-2); }
+  .seg button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .15); }
+  .seg button b { color: var(--ink-3); font-weight: 600; margin-left: 4px; }
+  .check { margin-left: auto; font-size: 13px; color: var(--ink-2); display: flex; gap: 6px; align-items: center; }
+  .ep { margin-bottom: 14px; }
+  .ep.closed { opacity: .8; }
+  .eph { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; padding: 14px 18px; align-items: center; }
+  .eph .k { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; }
+  .eph .t { font-size: 16px; font-weight: 650; } .eph .t .num { color: var(--ink-3); font-weight: 500; margin-right: 6px; }
+  .eph .facts { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; color: var(--ink-2); font-size: 13px; grid-column: 1 / -1; }
+  .eph .right { display: flex; gap: 8px; align-items: center; }
+  .eph .mini .b { width: 120px; }
+  .tk { display: grid; grid-template-columns: minmax(0, 1fr) 112px 60px 112px 100px; gap: 14px; align-items: center; padding: 9px 18px; border-top: 1px solid var(--line); }
+  .tk.head { padding: 8px 18px 6px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; }
+  .tk .tt { font-weight: 600; font-size: 14px; } .tk .tt .num { color: var(--ink-3); font-weight: 500; margin-right: 6px; }
+  .tk .sub { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; margin-top: 3px; font-size: 12.5px; color: var(--ink-3); }
+  .lbl-chip { font: 600 11px/1 var(--sans); padding: 3px 6px; border-radius: 5px; background: var(--sunk); color: var(--ink-2); }
+  .lbl-chip.bad { background: var(--bad-soft); color: var(--bad); }
+  .st { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; color: var(--ink-3); }
+  .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .st.ready { color: var(--accent); } .st.progress { color: var(--warn); } .st.review { color: var(--violet-st); } .st.done { color: var(--ok); }
+  .st.off::before { background: transparent; border: 1.5px solid currentColor; }
+  .picker { position: relative; }
+  .picker > button { width: 100%; display: flex; justify-content: space-between; gap: 4px; padding: 4px 8px; font-size: 12.5px; font-weight: 500; color: var(--ink-3); border-radius: 7px; }
+  .picker > button::after { content: "▾"; font-size: 10px; }
+  .picker > button.set { border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .picker > button.set.eff { border-color: color-mix(in srgb, var(--warn) 55%, transparent); color: var(--warn); background: var(--warn-soft); }
+  .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); padding: 4px; min-width: 150px; display: grid; }
+  .menu button { border: 0; background: transparent; text-align: left; display: flex; justify-content: space-between; gap: 10px; padding: 6px 10px; border-radius: 6px; font-weight: 500; color: var(--ink-2); }
+  .menu button:hover { background: var(--sunk); }
+  .menu button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .menu button small { color: var(--ink-3); }
+  .done-row { padding: 9px 18px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 13px; }
+  .done-row button { border: 0; background: transparent; padding: 0; color: var(--ink-3); font-weight: 600; }
+  .done-row .nums { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; }
+  @container shell (max-width: 760px) {
+    .tk { grid-template-columns: minmax(0, 1fr) auto; }
+    .tk.head { display: none; }
+    .tk .pr { display: none; }
+    .tk .picker { grid-column: span 1; }
+  }
+
   /* Toasts */
   #toasts { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; z-index: 20; max-width: min(420px, calc(100vw - 36px)); }
   .toast { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: 10px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); font-size: 13.5px; display: flex; gap: 10px; align-items: start; }
@@ -252,7 +298,9 @@
     </section>
     <section data-tab="needs-you" hidden><div class="top"><h1>Needs you</h1><span class="sub" id="needsMeta"></span></div><div id="needsBody"></div></section>
     <section data-tab="waiting" hidden><div class="top"><h1>Waiting on</h1><span class="sub">what the foreman is waiting for before it can move work forward</span></div><div id="waitBody"></div></section>
-    <section data-tab="board" hidden><div class="top"><h1>Board</h1><span class="sub" id="boardMeta"></span></div><div id="boardBody"></div></section>
+    <section data-tab="board" hidden><div class="top"><h1>Board</h1><span class="sub" id="boardMeta"></span></div>
+      <div class="filters"><input type="search" id="boardSearch" placeholder="Search issues…" aria-label="Search issues"><div class="seg" id="boardSeg"></div><label class="check"><input type="checkbox" id="showDone"> Show done</label></div>
+      <div id="boardBody"></div></section>
     <section data-tab="session" hidden><div class="top"><h1>Session</h1></div><div id="sessionBody"></div></section>
   </main>
 </div>
@@ -540,8 +588,121 @@
     $("waitBody").innerHTML = `<div class="banners">${banners.length ? bannerHtml(banners) : clear}</div>${groups || '<div class="card empty">nothing else is pending</div>'}<div class="linkrow"><span>Items waiting on you are on the Needs you tab, not repeated here.</span><a href="#needs-you">Needs you · ${needs} →</a></div>`;
   }
 
+  // ---- Board: every open issue, grouped under its epic ----
+  // UI state lives outside the renderer, so the 3 s re-render keeps the search, the filter, an
+  // open picker and an expanded done list exactly as the owner left them.
+  let boardQuery = "";
+  let boardFilter = "all";
+  let showDone = false;
+  const openPicker = { issue: null, kind: null };
+  const openDone = new Set();
+  const STATUS_CLASS = { Backlog: "", Ready: "ready", "In Progress": "progress", "In Review": "review", Done: "done" };
+  const FILTERS = [
+    ["all", "All", () => true],
+    ["Ready", "Ready", (i) => i.status === "Ready"],
+    ["In Progress", "In progress", (i) => i.status === "In Progress"],
+    ["In Review", "In review", (i) => i.status === "In Review"],
+    ["Backlog", "Backlog", (i) => i.status === "Backlog"],
+    ["blocked", "Blocked", (i) => i.blocked],
+    ["off", "Off board", (i) => i.status === null],
+  ];
+  const GROUP_STATE = { planning: ["Planning", "warn"], plan_waiting: ["Plan waiting", "warn"], building: ["Building", "acc"], signoff_waiting: ["Sign-off waiting", "ok"], not_started: ["Not started", ""] };
+  $("boardSearch").oninput = (e) => { boardQuery = e.target.value.trim().toLowerCase(); if (r) renderBoard(r); };
+  $("showDone").onchange = (e) => { showDone = e.target.checked; if (r) renderBoard(r); };
+  document.addEventListener("click", (e) => {
+    if (openPicker.issue !== null && !e.target.closest(".picker")) { openPicker.issue = null; if (r) renderBoard(r); }
+  });
+  // A daemon older than per-task effort reports no `effort`; its sessions run at the default.
+  const effortDefault = () => r?.effort?.default ?? "high";
+
+  function setTaskModel(issue, model, current) {
+    const what = model === "default" ? `the global model${current ? ` (drops ${current})` : ""}` : model;
+    if (!window.confirm(`Run every foreman session on #${issue} as ${what}?\n\nBuilder, reviewer and validator alike, outranking the model on the Session tab. A session running now keeps the model it started with; the issue's next session uses this.`)) return;
+    post("/api/task-model", { issue, model });
+  }
+  function setTaskEffort(issue, level, current) {
+    const what = level === effortDefault() ? `the default ${level} effort${current ? ` (drops ${current})` : ""}` : `${level} effort`;
+    if (!window.confirm(`Run every foreman session on #${issue} at ${what}?\n\nBuilder, reviewer and validator alike. A session running now keeps the effort it started with; the issue's next session uses this.`)) return;
+    post("/api/task-effort", { issue, effort: level });
+  }
+  function picker(i, kind) {
+    const isModel = kind === "model";
+    const value = isModel ? i.model ?? "default" : i.effort ?? effortDefault();
+    const set = isModel ? i.model !== null : i.effort !== null;
+    const options = isModel ? [...(r.model?.choices ?? []), "default"] : r.effort?.levels ?? [];
+    const open = openPicker.issue === i.issue && openPicker.kind === kind;
+    const menu = open
+      ? `<div class="menu">${options.map((o) => `<button type="button" data-pick="${esc(o)}" class="${o === value ? "on" : ""}">${esc(o)}${!isModel && o === effortDefault() ? "<small>default</small>" : ""}</button>`).join("")}</div>`
+      : "";
+    return `<div class="picker" data-issue="${esc(i.issue)}" data-kind="${kind}"><button type="button" class="${set ? `set${isModel ? "" : " eff"}` : ""}" aria-haspopup="true" aria-expanded="${open}">${esc(value)}</button>${menu}</div>`;
+  }
+  function hintsFor(i, nextClaim, pipe) {
+    const out = [];
+    if (i.openDependsOn.length) out.push(`waits on ${i.openDependsOn.map((d) => `#${d}`).join(", ")}`);
+    if (nextClaim === i.issue) out.push("next to claim");
+    const failed = pipe && ["build", "review", "validate"].find((s) => pipe.stages[s] === "failed");
+    if (failed) out.push(`${failed === "validate" ? "validator" : failed} failed${pipe.fixRound > 1 ? ` · fix round ${pipe.fixRound}` : ""}`);
+    return out.map((h) => `<span>${esc(h)}</span>`).join("");
+  }
+  function renderBoard(r) {
+    const all = r.board?.issues ?? [];
+    const groups = r.board?.groups ?? [];
+    const phases = new Map((r.board?.phases ?? []).map((p) => [p.epic, p]));
+    const pipeline = new Map((r.board?.pipeline ?? []).map((p) => [p.issue, p]));
+    const claim = (r.lastPlan ?? []).map((a) => /^claim#(\d+)$/.exec(a)).find(Boolean);
+    const nextClaim = claim ? Number(claim[1]) : null;
+    const match = (i) => !boardQuery || String(i.issue).includes(boardQuery) || i.title.toLowerCase().includes(boardQuery);
+    const filterFn = (FILTERS.find(([key]) => key === boardFilter) ?? FILTERS[0])[2];
+    const shown = all.filter((i) => match(i) && filterFn(i));
+    $("boardSeg").innerHTML = FILTERS.map(([key, label, fn]) => `<button type="button" data-filter="${esc(key)}" class="${key === boardFilter ? "on" : ""}">${label}<b>${all.filter(fn).length}</b></button>`).join("");
+    for (const b of $("boardSeg").querySelectorAll("button")) b.onclick = () => { boardFilter = b.dataset.filter; renderBoard(r); };
+    $("boardMeta").textContent = r.board ? `${all.length} open issues in ${groups.length} groups · read from the last tick, ${hm(r.board.at)}` : "";
+    const narrowed = boardQuery || boardFilter !== "all";
+    const cards = groups.map((g) => {
+      const rows = shown.filter((i) => i.group === g.key);
+      if (narrowed && !rows.length) return "";
+      const p = g.epic !== null ? phases.get(g.epic) : null;
+      const [stateLabel, stateCls] = g.state ? GROUP_STATE[g.state] ?? [g.state, ""] : [null, ""];
+      const facts = p
+        ? `<span class="mini"><span class="b"><i style="width:${p.tasksTotal ? Math.round((p.tasksDone / p.tasksTotal) * 100) : 0}%"></i></span>${p.tasksDone} of ${p.tasksTotal} done</span><span>${usd(p.spendUsd)} · ${p.sessions} sessions</span><span>${p.medianMergeMinutes === null ? "no merge yet" : `median ${mins(p.medianMergeMinutes)} claim→merge`}</span>`
+        : rows.length ? `<span>${rows.length} open</span>` : "<span>no tasks yet</span>";
+      const head = `<div class="eph"><div>${g.phase !== null ? `<div class="k">Phase ${esc(g.phase)}</div>` : ""}<div class="t">${g.epic !== null ? `<span class="num">${link("issues", g.epic)}</span>` : ""}${esc(g.title)}</div></div><div class="right">${stateLabel ? `<span class="tag ${stateCls}">${esc(stateLabel)}</span>` : ""}${g.paused ? '<span class="tag warn">Paused</span>' : ""}${g.kind === "epic" ? ownerButton(g.epic, g.paused ? "unpause" : "pause") : ""}</div><div class="facts">${facts}</div></div>`;
+      const table = rows.length
+        ? `<div class="tk head"><span>Issue</span><span>Status</span><span>PR</span><span>Model</span><span>Effort</span></div>${rows.map((i) => {
+            const labels = i.labels.map((l) => `<span class="lbl-chip${l === "blocked" ? " bad" : ""}">${esc(l)}</span>`).join("");
+            const status = i.status === null ? '<span class="st off">Off board</span>' : `<span class="st ${STATUS_CLASS[i.status] ?? ""}">${esc(i.status)}</span>`;
+            return `<div class="tk"><div><div class="tt"><span class="num">${link("issues", i.issue)}</span>${esc(i.title)}</div><div class="sub">${labels}${hintsFor(i, nextClaim, pipeline.get(i.issue))}</div></div>${status}<span class="pr mono">${i.pr ? link("pull", i.pr) : "–"}</span>${picker(i, "model")}${picker(i, "effort")}</div>`;
+          }).join("")}`
+        : "";
+      const done = showDone && g.doneTasks.length
+        ? `<div class="done-row"><button type="button" data-done="${esc(g.key)}">${openDone.has(g.key) ? "▾" : "▸"} ${g.doneTasks.length} done</button>${openDone.has(g.key) ? `<div class="nums">${g.doneTasks.map((n) => link("issues", n)).join("")}</div>` : ""}</div>`
+        : "";
+      return `<div class="card ep${g.kind === "closed" ? " closed" : ""}">${head}${table}${done}</div>`;
+    }).join("");
+    const el = $("boardBody");
+    el.innerHTML = cards || `<div class="card empty">${r.board ? "no open issues match" : "the board appears after the first tick"}</div>`;
+    for (const b of el.querySelectorAll("button[data-owner]")) b.onclick = () => ownerAct(Number(b.dataset.epic), b.dataset.owner);
+    for (const b of el.querySelectorAll("button[data-done]")) b.onclick = () => { openDone.has(b.dataset.done) ? openDone.delete(b.dataset.done) : openDone.add(b.dataset.done); renderBoard(r); };
+    for (const p of el.querySelectorAll(".picker")) {
+      const issue = Number(p.dataset.issue);
+      const kind = p.dataset.kind;
+      p.querySelector(":scope > button").onclick = () => {
+        const same = openPicker.issue === issue && openPicker.kind === kind;
+        openPicker.issue = same ? null : issue;
+        openPicker.kind = same ? null : kind;
+        renderBoard(r);
+      };
+      for (const o of p.querySelectorAll("button[data-pick]")) o.onclick = () => {
+        const row = all.find((i) => i.issue === issue);
+        openPicker.issue = null;
+        renderBoard(r);
+        if (kind === "model") { if (o.dataset.pick !== (row?.model ?? "default")) setTaskModel(issue, o.dataset.pick, row?.model ?? null); }
+        else if (o.dataset.pick !== (row?.effort ?? effortDefault())) setTaskEffort(issue, o.dataset.pick, row?.effort ?? null);
+      };
+    }
+  }
+
   // ---- tabs filled in by later sections ----
-  function renderBoard(r) {}
   function loadSessions() {}
 
   async function refresh() {

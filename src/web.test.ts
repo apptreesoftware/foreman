@@ -697,4 +697,29 @@ describe("web.html", () => {
     expect(html).toContain("r.attention?.waitRows");
     expect(html).toContain('href="#needs-you"');
   });
+  it("lists every board issue by group with a status filter, off board included", () => {
+    expect(html).toContain("r.board?.groups");
+    expect(html).toContain("r.board?.issues");
+    expect(html).toContain("Off board");
+    expect(html).toContain("Show done");
+    // Group titles come from the server and are escaped like everything else.
+    expect(html).toContain("esc(g.title)");
+  });
+  it("offers model and effort pickers that confirm before POSTing", () => {
+    expect(html).toContain("window.confirm(`Run every foreman session on #");
+    expect(html).toContain("A session running now keeps the effort it started with");
+    expect(html).toContain('post("/api/task-model"');
+    expect(html).toContain('post("/api/task-effort"');
+    expect(html).toContain('ownerButton(g.epic, g.paused ? "unpause" : "pause")');
+  });
+  it("keeps Board UI state across the 3 s re-render", () => {
+    for (const v of [
+      "let boardQuery",
+      "let boardFilter",
+      "let showDone",
+      "const openPicker",
+      "const openDone",
+    ])
+      expect(html).toContain(v);
+  });
 });
