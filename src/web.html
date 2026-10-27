@@ -243,11 +243,11 @@
   .two { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 10px; margin-top: 10px; }
   .ch { padding: 14px 18px 12px; min-width: 0; }
   .ch h3 { margin: 0 0 10px; font-size: 14.5px; font-weight: 600; } .ch h3 small { color: var(--ink-3); font-weight: 500; margin-left: 8px; }
-  .plot { position: relative; height: 170px; margin-left: 44px; margin-top: 14px; }
+  .plot { position: relative; height: 170px; margin-left: 44px; margin-top: 14px; overflow: hidden; }
   .gridline { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); }
   .gridline span { position: absolute; left: -44px; top: -8px; width: 38px; text-align: right; font: 11px var(--mono); color: var(--ink-3); }
   .bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
-  .bars i { flex: 1; min-width: 2px; background: var(--act, var(--accent)); border-radius: 4px 4px 0 0; position: relative; }
+  .bars i { flex: 1; min-width: 0; background: var(--act, var(--accent)); border-radius: 4px 4px 0 0; position: relative; }
   .bars i:hover { background: var(--ink); }
   .bars i.zero { background: transparent; }
   .bars i .peak { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 3px; font: 600 11px var(--mono); color: var(--ink-2); white-space: nowrap; }
@@ -294,10 +294,11 @@
 
   /* Narrow page: the sidebar becomes a strip of icon tabs, header controls wrap, tiles go 2 x 2. */
   @container shell (max-width: 760px) {
-    .app { grid-template-columns: minmax(0, 1fr); }
+    .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
     .side { position: static; height: auto; min-width: 0; flex-direction: row; align-items: center; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
     .side .hd { border-bottom: 0; padding: 10px 8px 10px 12px; }
-    .side .hd .psub, .side .hd .pill-state { display: none; }
+    .side .hd .psub { display: none; }
+    .side .hd .pill-state { margin-top: 2px; font-size: 11px; white-space: nowrap; }
     .tile { width: 30px; height: 30px; font-size: 15px; border-radius: 8px; }
     .pname { font-size: 16px; }
     .navs { flex-direction: row; padding: 8px; }
@@ -312,6 +313,7 @@
   @container shell (max-width: 460px) {
     .navs a .lbl { display: none; } .navs a.on .lbl { display: inline; }
     .side .hd .pname { display: none; }
+    .side .hd .pill-state { font-size: 0; gap: 0; }
   }
 </style>
 </head>
@@ -353,7 +355,7 @@
       <div class="filters"><input type="search" id="boardSearch" placeholder="Search issues…" aria-label="Search issues"><div class="seg" id="boardSeg"></div><label class="check"><input type="checkbox" id="showDone"> Show done</label></div>
       <div id="boardBody"></div></section>
     <section data-tab="session" hidden><div class="top"><h1>Session</h1>
-      <div class="range"><div class="seg" id="rangeSeg"><button type="button" data-range="today">Today</button><button type="button" data-range="7">7 days</button><button type="button" data-range="30">30 days</button><button type="button" data-range="all" class="on">All</button><button type="button" data-range="custom">Custom</button></div><span id="customRange" hidden><input type="date" id="rangeFrom" aria-label="From"> – <input type="date" id="rangeTo" aria-label="To"></span></div></div>
+      <div class="range"><div class="seg" id="rangeSeg"><button type="button" data-range="today">Today</button><button type="button" data-range="7">7 days</button><button type="button" data-range="30">30 days</button><button type="button" data-range="all" class="on">All</button><button type="button" data-range="custom">Custom</button></div><span id="customRange" hidden><input type="date" id="rangeFrom" aria-label="From" min="2000-01-01" max="2099-12-31"> – <input type="date" id="rangeTo" aria-label="To" min="2000-01-01" max="2099-12-31"></span></div></div>
       <div id="sessionBody"><div class="card empty">loading…</div></div>
       <div class="sec"><div class="sec-h"><h3>Daemon</h3><span>what today's sessions run as, and how many may run</span></div><div class="card dm" id="daemonCard"></div></div>
     </section>
@@ -364,8 +366,8 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const t = (iso) => (iso ? `${iso.slice(11, 19)}Z` : "–");
-  const hm = (iso) => (iso ? `${iso.slice(11, 16)}Z` : "–");
+  const t = (iso) => (iso ? esc(`${String(iso).slice(11, 19)}Z`) : "–");
+  const hm = (iso) => (iso ? esc(`${String(iso).slice(11, 16)}Z`) : "–");
   const mins = (m) => (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m` : `${m}m`);
   const days = (m) => (m >= 1440 ? `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h` : mins(m));
   const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
@@ -439,6 +441,7 @@
   function bannerRows(r) {
     const rows = (r.attention?.banners ?? []).map((w) => ({ cls: BANNER[w.kind]?.cls ?? "warn", text: esc(w.detail), fix: BANNER[w.kind]?.fix ?? "" }));
     if (r.daemon === "UNKNOWN") rows.push({ cls: "warn", text: "no state.json: restart the daemon", fix: "" });
+    if (r.daemon === "STOPPED") rows.push({ cls: "warn", text: "the daemon is stopped", fix: "foreman start" });
     if (r.daemon === "CRASHED") rows.push({ cls: "bad", text: "the daemon crashed", fix: "check foreman.err.log, then start it" });
     if (r.current?.stalled) rows.push({ cls: "bad", text: `session stalled: no output for ${mins(r.current.silentMinutes)}`, fix: "Abort ends it" });
     if (r.orphan) rows.push({ cls: "bad", text: `child ${esc(r.orphan.pid)} still running for #${esc(r.orphan.issue)}`, fix: "" });
@@ -762,6 +765,7 @@
   let showAllTasks = false;
   let lastSessionKey = null;   // the newest session id the history was fetched for
   let history = null;
+  let sessionSeq = 0;      // bumps per request, so a slow older response cannot overwrite a newer one
   const openSessionRows = new Set();
   // "claude-opus-5" → "opus": the repository's one-click names, from `r.model.choices`.
   const family = (model) => (r?.model?.choices ?? []).find((c) => (model ?? "").includes(c)) ?? (model || "–");
@@ -789,9 +793,11 @@
     const q = new URLSearchParams();
     if (from) q.set("from", from);
     if (to) q.set("to", to);
+    const seq = ++sessionSeq;
     try {
       const res = await fetch(`/api/sessions?${q}`);
       const j = await res.json();
+      if (seq !== sessionSeq) return;
       if (!res.ok) { $("sessionBody").innerHTML = `<div class="card empty">${esc(j.error ?? "could not load the history")}</div>`; return; }
       history = j;
       lastSessionKey = r?.recent?.[0]?.sessionId ?? null;
@@ -799,15 +805,25 @@
     } catch { $("sessionBody").innerHTML = '<div class="card empty">could not load the history</div>'; }
   }
   const outcomeClass = (o) => (/^(pr_opened|approved|passed|phase_closed|plan_drafted)$/.test(o) ? "ok" : /^(blocked|failed|aborted|error_max_turns|interrupted)$/.test(o) ? "bad" : "warn");
-  function dailyChart(daily) {
-    if (!daily.length) return '<div class="empty">no sessions in this range</div>';
+  // Past 120 days a bar per day is thinner than a pixel; seven days per bar keeps it readable.
+  function weekly(daily) {
+    const out = [];
+    for (let i = 0; i < daily.length; i += 7) {
+      const wk = daily.slice(i, i + 7);
+      out.push({ date: wk[0].date, spendUsd: wk.reduce((a, d) => a + d.spendUsd, 0), sessions: wk.reduce((a, d) => a + d.sessions, 0), week: true });
+    }
+    return out;
+  }
+  function dailyChart(days) {
+    if (!days.length) return '<div class="empty">no sessions in this range</div>';
+    const daily = days.length > 120 ? weekly(days) : days;
     const max = Math.max(...daily.map((d) => d.spendUsd), 1);
     const step = max > 400 ? 200 : max > 100 ? 50 : max > 20 ? 10 : 5;
     const top = Math.ceil(max / step) * step;
     const peak = daily.reduce((a, b) => (b.spendUsd > a.spendUsd ? b : a));
     const lines = [];
     for (let v = 0; v <= top; v += step) lines.push(`<div class="gridline" style="bottom:${(v / top) * 100}%"><span>$${v}</span></div>`);
-    const bars = daily.map((d) => `<i class="${d.spendUsd ? "" : "zero"}" style="height:${(d.spendUsd / top) * 100}%" title="${esc(d.date)}: ${usd(d.spendUsd)} · ${d.sessions} sessions">${d === peak && d.spendUsd ? `<span class="peak">${usd(d.spendUsd)}</span>` : ""}</i>`).join("");
+    const bars = daily.map((d) => `<i class="${d.spendUsd ? "" : "zero"}" style="height:${(d.spendUsd / top) * 100}%" title="${d.week ? "week of " : ""}${esc(d.date)}: ${usd(d.spendUsd)} · ${d.sessions} sessions">${d === peak && d.spendUsd ? `<span class="peak">${usd(d.spendUsd)}</span>` : ""}</i>`).join("");
     const ticks = daily.length > 1 ? [0, Math.floor((daily.length - 1) / 2), daily.length - 1].map((i) => daily[i].date.slice(5)) : [daily[0].date.slice(5)];
     return `<div class="plot">${lines.join("")}<div class="bars">${bars}</div></div><div class="xax">${ticks.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
   }
@@ -831,7 +847,7 @@
       return head + subs;
     }).join("");
     $("sessionBody").innerHTML = `<div class="kpis">${kpi(usd(h.totals.spendUsd), "spend")}${kpi(h.totals.sessions, "sessions")}${kpi(h.totals.issues, "tasks and epics")}${kpi(usd(per), "per session")}</div>
-      <div class="two"><div class="card ch"><h3>Daily spend<small>local days · hover a bar for its sessions</small></h3>${dailyChart(h.daily)}</div><div class="card ch"><h3>By role</h3><div class="roles">${roles}</div></div></div>
+      <div class="two"><div class="card ch"><h3>${h.daily.length > 120 ? "Weekly" : "Daily"} spend<small>${h.daily.length > 120 ? "weekly bars" : "local days"} · hover a bar for its sessions</small></h3>${dailyChart(h.daily)}</div><div class="card ch"><h3>By role</h3><div class="roles">${roles}</div></div></div>
       <div class="sec"><div class="sec-h"><h3>Cost by task</h3><span>most expensive first · click a row for its sessions</span></div><div class="card">${h.byIssue.length
         ? `<table class="costs"><thead><tr><th>Issue</th><th class="roles-col">Roles</th><th class="n">Sessions</th><th>Last run</th><th style="width:230px">Cost</th></tr></thead><tbody>${rows}</tbody></table>${h.byIssue.length > 10 ? `<div class="more"><button type="button" class="ghost" id="showAll">${showAllTasks ? "Show the top 10" : `Show all ${h.byIssue.length} →`}</button></div>` : ""}`
         : '<div class="empty">no sessions in this range</div>'}</div></div>`;
@@ -880,7 +896,11 @@
 
   async function refresh() {
     try { r = await (await fetch("/api/status")).json(); }
-    catch { $("pill").textContent = "page offline"; $("pill").className = "pill-state offline"; return; }
+    catch {
+      $("pill").textContent = "page offline"; $("pill").className = "pill-state offline";
+      $("banners").innerHTML = bannerHtml([{ cls: "bad", text: "page offline: the daemon is not answering", fix: "what you see is from the last answer" }]);
+      return;
+    }
     repo = r.repo ?? repo;
     renderShell(r);
     $("banners").innerHTML = bannerHtml(bannerRows(r));

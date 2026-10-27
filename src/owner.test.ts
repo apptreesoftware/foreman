@@ -174,6 +174,22 @@ describe("applyOwnerActionToBoard", () => {
     const resumed = applyOwnerActionToBoard(paused, 26, "unpause");
     expect(resumed.owner.find((o) => o.epic === 26)?.actions).toContain("pause");
   });
+  it("flips the Board group's paused flag, so its Pause/Resume button follows the click", () => {
+    const group = {
+      key: "epic:26",
+      kind: "epic" as const,
+      epic: 26,
+      phase: 2,
+      title: "Phase 2",
+      state: "not_started" as const,
+      paused: false,
+      doneTasks: [],
+    };
+    const withGroup = { ...board, groups: [group] };
+    const paused = applyOwnerActionToBoard(withGroup, 26, "pause");
+    expect(paused.groups[0]?.paused).toBe(true);
+    expect(applyOwnerActionToBoard(paused, 26, "unpause").groups[0]?.paused).toBe(false);
+  });
   it("leaves other epics alone and tolerates an unknown epic", () => {
     expect(applyOwnerActionToBoard(board, 999, "pause")).toEqual(board);
   });

@@ -68,21 +68,27 @@ describe("needsYouItems", () => {
   });
   it("marks a phase review paired with an open epic, and an unpaired one", () => {
     const s = snapshot({
-      epics: [epic({ number: 514, phase: 10, labels: ["epic", "phase:10", "needs-owner"] })],
+      epics: [
+        epic({
+          number: 514,
+          phase: 10,
+          labels: ["epic", "phase:10", "plan-approved", "needs-owner"],
+        }),
+      ],
       issues: [
         issue({
           number: 514,
-          title: "Phase 10a: Families and wards",
+          title: "Phase 10a: Billing",
           labels: ["epic", "phase:10", "plan-approved", "needs-owner"],
         }),
         issue({
           number: 571,
-          title: "Phase 10 review: Phase 10a: Families and wards",
+          title: "Phase 10 review: Phase 10a: Billing",
           labels: ["phase:10", "needs-owner"],
         }),
         issue({
           number: 336,
-          title: "Phase 3 review: Lesson creation",
+          title: "Phase 3 review: Onboarding",
           labels: ["phase:3", "needs-owner"],
         }),
         issue({ number: 599, title: "decide: billing", labels: ["needs-owner"] }),

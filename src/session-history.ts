@@ -26,7 +26,13 @@ export interface SessionHistory {
   }[];
 }
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * Years 2000–2099 only. A date input fires `change` once per typed year digit (`0002-…`,
+ * `0020-…`, `0202-…`), and each of those would otherwise be a valid range of centuries.
+ */
+const DATE = /^20\d{2}-\d{2}-\d{2}$/;
+/** Past ten years the chart stops zero-filling the range and spans only the days the log has. */
+const MAX_FILL_DAYS = 3660;
 
 /** A real calendar date in `YYYY-MM-DD` form; `2026-02-30` is not one. */
 function isDate(s: string): boolean {
@@ -34,6 +40,9 @@ function isDate(s: string): boolean {
   const d = new Date(`${s}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
+
+const daysBetween = (a: string, b: string) =>
+  Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 
 /** The query string's range, or null when either bound is not a date or they are out of order. */
 export function parseRange(from: string | null, to: string | null): SessionRange | null {
@@ -73,33 +82,48 @@ export function describeSessionHistory(
   range: SessionRange,
   openTitles: ReadonlyMap<number, string>,
 ): SessionHistory {
-  const dayOf = (e: SessionLogEntry) => localDate(new Date(e.t));
-  const inRange = entries
-    .filter((e) => {
-      const d = dayOf(e);
-      return (range.from === null || d >= range.from) && (range.to === null || d <= range.to);
-    })
-    .sort((a, b) => a.t.localeCompare(b.t));
+  const sorted = [...entries].sort((a, b) => a.t.localeCompare(b.t));
+  const days = new Map<SessionLogEntry, string>(sorted.map((e) => [e, localDate(new Date(e.t))]));
+  const dayOf = (e: SessionLogEntry) => days.get(e) as string;
+  const inRange = sorted.filter((e) => {
+    const d = dayOf(e);
+    return (range.from === null || d >= range.from) && (range.to === null || d <= range.to);
+  });
   const logged = new Map<number, string>();
-  for (const e of [...entries].sort((a, b) => a.t.localeCompare(b.t)))
-    if (e.title) logged.set(e.issue, e.title);
+  for (const e of sorted) if (e.title) logged.set(e.issue, e.title);
 
   const spend = (xs: SessionLogEntry[]) => xs.reduce((s, e) => s + e.costUsd, 0);
+  // One pass into per-day buckets, then the days of the chart look them up.
+  const buckets = new Map<string, { spendUsd: number; sessions: number }>();
+  for (const e of inRange) {
+    const b = buckets.get(dayOf(e)) ?? { spendUsd: 0, sessions: 0 };
+    b.spendUsd += e.costUsd;
+    b.sessions += 1;
+    buckets.set(dayOf(e), b);
+  }
   const first = inRange[0];
   const last = inRange[inRange.length - 1];
-  const daily =
-    first && last
-      ? datesBetween(range.from ?? dayOf(first), range.to ?? dayOf(last)).map((date) => {
-          const day = inRange.filter((e) => dayOf(e) === date);
-          return { date, spendUsd: spend(day), sessions: day.length };
-        })
-      : [];
+  let daily: SessionHistory["daily"] = [];
+  if (first && last) {
+    let start = range.from ?? dayOf(first);
+    let end = range.to ?? dayOf(last);
+    if (daysBetween(start, end) > MAX_FILL_DAYS) {
+      start = dayOf(first);
+      end = dayOf(last);
+    }
+    daily = datesBetween(start, end).map((date) => ({
+      date,
+      ...(buckets.get(date) ?? { spendUsd: 0, sessions: 0 }),
+    }));
+  }
 
   const roles = new Map<string, SessionLogEntry[]>();
   const issues = new Map<number, SessionLogEntry[]>();
   for (const e of inRange) {
-    roles.set(e.role, [...(roles.get(e.role) ?? []), e]);
-    issues.set(e.issue, [...(issues.get(e.issue) ?? []), e]);
+    roles.set(e.role, roles.get(e.role) ?? []);
+    roles.get(e.role)?.push(e);
+    issues.set(e.issue, issues.get(e.issue) ?? []);
+    issues.get(e.issue)?.push(e);
   }
   return {
     from: range.from,

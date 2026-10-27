@@ -71,6 +71,11 @@ export function applyOwnerActionToBoard(board: Board, epic: number, action: Owne
       action === "sign_off" || action === "approve_plan"
         ? board.waiting.filter((w) => w.subject !== subject)
         : board.waiting,
+    // The Board tab's epic header reads `paused`, so it flips with the label too.
+    groups:
+      action === "pause" || action === "unpause"
+        ? board.groups.map((g) => (g.epic === epic ? { ...g, paused: action === "pause" } : g))
+        : board.groups,
   };
 }
 

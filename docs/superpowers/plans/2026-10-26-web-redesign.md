@@ -221,8 +221,8 @@ Pairing rule (spec, Needs you): (1) an open epic's own comment matching `/^Phase
 
 - [ ] **Step 1: Write the failing tests** in `src/review-pairing.test.ts`:
   - `"pairs by the epic's Phase review comment"` — epic 514 comment `Phase review: #571` → `get(571) === 514`.
-  - `"pairs by title with the epic's Phase prefix removed"` — epic `Phase 10b: Services, tuition and enrollment`, review `Phase 10b review: Services, tuition and enrollment` → paired.
-  - `"pairs a review whose title repeats the epic's full title"` — epic `Phase 10c: Platform subscriptions`, review `Phase 10c review: Phase 10c: Platform subscriptions` → paired.
+  - `"pairs by title with the epic's Phase prefix removed"` — epic `Phase 10b: Reports and exports`, review `Phase 10b review: Reports and exports` → paired.
+  - `"pairs a review whose title repeats the epic's full title"` — epic `Phase 10c: Team plans`, review `Phase 10c review: Phase 10c: Team plans` → paired.
   - `"does not pair two epics that share a phase number by label"` — epics 10a/10b both `phase:10`, review titled for 10b → paired only with 10b.
   - `"leaves a review unpaired when no open epic matches"`.
 

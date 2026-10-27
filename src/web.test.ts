@@ -739,4 +739,28 @@ describe("web.html", () => {
     expect(html).toContain("GitHub budget");
     expect(html).toContain("launchd");
   });
+  it("bounds the custom range inputs and drops a stale history response", () => {
+    expect(html).toContain('min="2000-01-01" max="2099-12-31"');
+    expect(html).toContain("const seq = ++sessionSeq");
+    expect(html).toContain("if (seq !== sessionSeq) return");
+  });
+  it("keeps the daemon's state visible at phone width and when the page is offline", () => {
+    expect(html).not.toContain(".side .hd .psub, .side .hd .pill-state { display: none; }");
+    expect(html).toContain("the daemon is stopped");
+    expect(html).toContain("page offline: the daemon is not answering");
+    // The strip keeps its own height on a short page instead of sharing the viewport with main.
+    expect(html).toContain(
+      ".app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }",
+    );
+  });
+  it("keeps a long daily chart inside its card", () => {
+    expect(html).toContain(
+      ".plot { position: relative; height: 170px; margin-left: 44px; margin-top: 14px; overflow: hidden; }",
+    );
+    expect(html).toContain("weekly");
+  });
+  it("escapes clock times, which can come from issue comments", () => {
+    expect(html).toContain("const t = (iso) => (iso ? esc(");
+    expect(html).toContain("const hm = (iso) => (iso ? esc(");
+  });
 });

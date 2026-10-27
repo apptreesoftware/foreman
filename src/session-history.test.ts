@@ -127,4 +127,33 @@ describe("parseRange", () => {
     expect(parseRange(null, "yesterday")).toBeNull();
     expect(parseRange("2026-10-27", "2026-10-01")).toBeNull();
   });
+
+  it("rejects the partial years a date input sends while the year is typed", () => {
+    // A date input fires `change` once per year digit: 0002-…, 0020-…, 0202-…, then 2026-….
+    for (const partial of ["0002-10-26", "0020-10-26", "0202-10-26", "1999-12-31"])
+      expect(parseRange(partial, null)).toBeNull();
+    expect(parseRange(null, "2100-01-01")).toBeNull();
+    expect(parseRange("2000-01-01", "2099-12-31")).toEqual({
+      from: "2000-01-01",
+      to: "2099-12-31",
+    });
+  });
+});
+
+describe("describeSessionHistory on a wide range", () => {
+  it("draws only the days the log covers when the range spans more than ten years", () => {
+    const entries = [entry(), entry({ t: "2026-10-09T12:00:00.000Z" })];
+    const h = describeSessionHistory(entries, { from: "2000-01-01", to: "2099-12-31" }, new Map());
+    expect(h.daily.map((d) => d.date)).toEqual(["2026-10-07", "2026-10-08", "2026-10-09"]);
+  });
+
+  it("answers a wide range over a large log quickly", () => {
+    const entries = Array.from({ length: 2000 }, (_, i) =>
+      entry({ t: new Date(Date.parse("2026-01-01T12:00:00Z") + i * 3_600_000).toISOString() }),
+    );
+    const started = Date.now();
+    describeSessionHistory(entries, { from: "2000-01-01", to: "2099-12-31" }, new Map());
+    describeSessionHistory(entries, { from: "2026-01-01", to: "2026-12-31" }, new Map());
+    expect(Date.now() - started).toBeLessThan(500);
+  });
 });
