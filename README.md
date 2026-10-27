@@ -93,7 +93,9 @@ another instance already holds.
 2. Creates any missing label: `epic`, `agent-ready`, `blocked`, `needs-owner`, `decision`,
    `plan-approved`, `signed-off`, `foreman:pause`, `sandbox`, `reviewer:approved`,
    `reviewer:changes`, `validator:passed`, `validator:failed`, `validator:skipped`, `size:S`,
-   `size:M`, `size:L`, and `model:<m>` for each entry in `.foreman/config.json`'s `models`.
+   `size:M`, `size:L`, `model:<m>` for each entry in `.foreman/config.json`'s `models`, and
+   `effort:low`, `effort:medium`, `effort:xhigh`, `effort:max`. A repository that ran `init`
+   before effort labels existed gets them by running `init` again; it only adds what is missing.
    `phase:N` and `area:*` labels are created later, by `epic new` and by the planner.
 3. Creates a Projects v2 board, links it to the repository, sets the `Status` single-select
    options to exactly **Backlog, Ready, In Progress, In Review, Done**, and writes the project
@@ -206,7 +208,8 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
    `feat/<issue>-<slug>`, runs the repository's `setup` command, composes the role prompt and the
    headless settings from the worktree's `.foreman/` (§5), runs the `session-env` and
    `before-session` hooks, and invokes `claude -p` with the role prompt, the issue/PR/worktree/
-   branch context, `--max-turns <maxTurns>`, `--model <model>` and a `wallClockMinutes` timeout.
+   branch context, `--max-turns <maxTurns>`, `--model <model>`, `--effort <level>` (the issue's
+   `effort:<level>` label, else `high`) and a `wallClockMinutes` timeout.
    It posts `session <id> on <host> role=<role> attempt=<n>` before each attempt and runs
    `after-session` when the child ends, however it ends.
 8. **Outcome.** Parses the session's structured JSON outcome —
@@ -278,6 +281,7 @@ Fixed names; `foreman init` creates them all.
 | `reviewer:approved` / `reviewer:changes` | The reviewer's verdict, on the PR. |
 | `validator:passed` / `validator:failed` / `validator:skipped` | The validator's verdict, on the PR. |
 | `model:<name>` | Pins every session on that issue to one model, outranking the live override and `foreman.json`. |
+| `effort:<level>` | Runs every session on that issue at `low`, `medium`, `xhigh` or `max` effort (Claude Code's levels). No label means `high`. |
 | `sandbox` | A throwaway issue for exercising the pipeline. |
 
 ### Board statuses
@@ -386,8 +390,8 @@ Every key is optional; the file may be `{}`. These are the defaults:
 
 A strict schema: an unknown key is an error, not a warning. The daemon refuses to start on a bad
 file and names it on stderr (`foreman: /path/.foreman/config.json: <what is wrong>`, exit 2, so it
-lands in `logs/foreman.err.log`). `foreman status`, `stop`, `abort`, `go`, `next`, `model` and
-`cap` still work: they print that same line as a warning and carry on with the defaults, because
+lands in `logs/foreman.err.log`). `foreman status`, `stop`, `abort`, `go`, `next`, `model`,
+`effort` and `cap` still work: they print that same line as a warning and carry on with the defaults, because
 the controls are most needed when something is wrong.
 
 A repository with no application to install or run, for instance a docs repository:
@@ -583,6 +587,8 @@ An instance is a name. Its machine config and all of its state live under `~/.fo
 `workDir` absent means worktrees live at `<repoDir>/.worktrees/<issue>`, so a checkout is
 self-contained; add `.worktrees/` to the repository's `.gitignore`. `model` is always passed as
 `--model`, so a session never inherits whatever the interactive `claude` default happens to be.
+Effort is pinned the same way, as `--effort high`, and has no `foreman.json` key: any other level
+is chosen for one task, with its `effort:<level>` label.
 
 ### Reaching the page from outside this Mac
 
@@ -708,6 +714,16 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
 - **Pin one task to a model:** a `model:<name>` label on the issue runs every session on it —
   builder, reviewer, validator, fix rounds — as that model, outranking both the live override and
   `foreman.json`. The label is the source of truth, so it works from `gh issue edit` too.
+- **Change one task's effort:** every session runs at `high` effort. To run a task at a different
+  level, give it a label: `foreman -p widgets effort xhigh --issue 12`, or use the effort buttons
+  under the task on the page's **Phases** card. This covers builder, reviewer, validator and fix
+  rounds. The levels are Claude Code's own: `low`, `medium`, `high`, `xhigh`, `max`. Choosing
+  `high` or `default` removes the label. There is no global effort setting.
+  `foreman -p widgets effort` prints the default and every task with an effort label;
+  `effort --issue 12` prints that task's effort. With the daemon running, a change goes through
+  the page, which only accepts tasks listed on the board. With no daemon, it edits the label on
+  GitHub directly. A session already running keeps its effort; the issue's next session uses the
+  new one. `gh issue edit 12 --add-label effort:max` works the same way.
 - **Owner gates, from the page:** the **Owner** card lists every open epic with the label gates
   only a human can open — **Sign off**, **Approve plan**, **Start planning**, **Pause**/**Resume**.
   Each button confirms the exact label change and wakes the daemon. The same gates are just

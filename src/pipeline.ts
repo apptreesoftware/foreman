@@ -1,4 +1,4 @@
-import { modelOf } from "./github.ts";
+import { effortOf, modelOf } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
 import { mergeDecision } from "./merge.ts";
 import { issuePhase, validatorRequired } from "./pick.ts";
@@ -56,6 +56,7 @@ export function describePipeline(
       fixRound: fixRound(i.comments),
       blocked: i.labels.includes("blocked"),
       model: modelOf(i.labels),
+      effort: effortOf(i.labels),
     });
   }
   return rows.sort(

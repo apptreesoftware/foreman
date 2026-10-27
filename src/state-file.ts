@@ -53,6 +53,8 @@ export const PipelineRowSchema = z.object({
   blocked: z.boolean(),
   /** The issue's `model:<name>` label, so the row can say which model its sessions run as. */
   model: z.string().nullable().default(null),
+  /** The issue's `effort:<level>` label; older state.json rows predate it, hence the default. */
+  effort: z.string().nullable().default(null),
 });
 export type PipelineRow = z.infer<typeof PipelineRowSchema>;
 
@@ -94,6 +96,29 @@ export const MODEL_LABEL_PREFIX = "model:";
  */
 export const TaskModelChoiceSchema = z.union([ModelSchema, z.literal(MODEL_DEFAULT)]);
 export type TaskModelChoice = z.infer<typeof TaskModelChoiceSchema>;
+
+/**
+ * Claude Code's own effort levels, in order, exactly as `claude --effort` takes them. Unlike
+ * models this set is fixed by the CLI, so it is both the page's buttons and the allowlist: an
+ * effort reaches `claude` as argv, and nothing outside this list ever does.
+ */
+export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+export const EffortSchema = z.enum(EFFORT_LEVELS);
+export type EffortLevel = z.infer<typeof EffortSchema>;
+/**
+ * The effort every session runs at unless its issue says otherwise. Fixed on purpose: there is
+ * no global override and no foreman.json knob, so any other level is a choice made for one task.
+ */
+export const EFFORT_DEFAULT_LEVEL: EffortLevel = "high";
+/** Removes the issue's effort label, putting it back on `EFFORT_DEFAULT_LEVEL`. */
+export const EFFORT_DEFAULT = "default";
+/**
+ * The label that runs one issue's sessions at another effort. `init` creates one per level
+ * other than `EFFORT_DEFAULT_LEVEL`, so the page and `gh issue edit` can both add it.
+ */
+export const EFFORT_LABEL_PREFIX = "effort:";
+export const EffortChoiceSchema = z.union([EffortSchema, z.literal(EFFORT_DEFAULT)]);
+export type EffortChoice = z.infer<typeof EffortChoiceSchema>;
 
 /**
  * Daily session caps the page and `ctl cap` offer as one-click choices. As with
@@ -151,6 +176,8 @@ export const PhaseTaskSchema = z.object({
   closed: z.boolean(),
   /** The issue's `model:<name>` label, or null when the global model applies. */
   model: z.string().nullable(),
+  /** The issue's `effort:<level>` label, or null when the global effort applies. */
+  effort: z.string().nullable().default(null),
 });
 export type PhaseTask = z.infer<typeof PhaseTaskSchema>;
 

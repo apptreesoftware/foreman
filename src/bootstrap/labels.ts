@@ -1,4 +1,5 @@
 import type { BootstrapApi } from "../github.ts";
+import { EFFORT_DEFAULT_LEVEL, EFFORT_LABEL_PREFIX, EFFORT_LEVELS } from "../state-file.ts";
 
 export interface LabelSpec {
   name: string;
@@ -62,13 +63,25 @@ export function modelLabels(models: string[]): LabelSpec[] {
   }));
 }
 
+/**
+ * One `effort:<level>` per Claude Code level other than the default, which is what no label
+ * means. The set is Claude Code's, so it is not configurable.
+ */
+export function effortLabels(): LabelSpec[] {
+  return EFFORT_LEVELS.filter((e) => e !== EFFORT_DEFAULT_LEVEL).map((e) => ({
+    name: `${EFFORT_LABEL_PREFIX}${e}`,
+    color: "EDEDED",
+    description: `Run every session on this issue at ${e} effort`,
+  }));
+}
+
 export async function ensureLabels(
   gh: Pick<BootstrapApi, "listLabels" | "createLabel">,
   models: string[],
 ): Promise<{ created: string[] }> {
   const have = new Set(await gh.listLabels());
   const created: string[] = [];
-  for (const l of [...LABELS, ...modelLabels(models)]) {
+  for (const l of [...LABELS, ...modelLabels(models), ...effortLabels()]) {
     if (have.has(l.name)) continue;
     await gh.createLabel(l);
     created.push(l.name);

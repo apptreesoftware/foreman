@@ -5,6 +5,11 @@ import {
   CAP_CHOICES,
   CapSchema,
   type CurrentSession,
+  EFFORT_DEFAULT_LEVEL,
+  EFFORT_LABEL_PREFIX,
+  EFFORT_LEVELS,
+  type EffortChoice,
+  EffortChoiceSchema,
   MODEL_CHOICES,
   MODEL_DEFAULT,
   ModelSchema,
@@ -12,7 +17,8 @@ import {
   type StopMode,
   writeState,
 } from "./state-file.ts";
-import { phaseTasks } from "./task-model.ts";
+import { applyTaskEffort } from "./task-effort.ts";
+import { phaseTasks, type TaskModelGh } from "./task-model.ts";
 
 export interface CtlDeps {
   stateDir: string;
@@ -176,6 +182,71 @@ export async function ctlModel(d: CtlDeps, model: string | null): Promise<void> 
       ? `model set to ${next}; it applies when the daemon next starts`
       : `override cleared; foreman.json's ${d.configModel} applies when the daemon next starts`,
   );
+}
+
+/** What `ctl effort` needs: a way to the running daemon, and to GitHub when there is none. */
+export interface EffortCtlDeps extends Pick<CtlDeps, "stateDir" | "pidAlive" | "out"> {
+  /** POSTs /api/task-effort to a running daemon, which also updates the board it serves. */
+  postTaskEffort: (issue: number, effort: EffortChoice) => Promise<string>;
+  /** The issue's labels as GitHub has them now. */
+  issueLabels: (issue: number) => Promise<string[]>;
+  labels: TaskModelGh;
+}
+
+/**
+ * Reads or sets one task's effort. Every session runs at `EFFORT_DEFAULT_LEVEL`; there is no
+ * global override, so a level is only ever set with `--issue`. The label is the truth, so with no
+ * daemon running the swap goes straight to GitHub; with one, through its page, so the board it
+ * serves shows the change before the next tick.
+ */
+export async function ctlEffort(
+  d: EffortCtlDeps,
+  effort: string | null,
+  issue: number | null,
+): Promise<void> {
+  const levels = EFFORT_LEVELS.join(", ");
+  if (issue === null) {
+    if (effort !== null) {
+      d.out(
+        `effort is chosen per task: foreman effort ${effort} --issue <n>. Every other session runs at ${EFFORT_DEFAULT_LEVEL}.`,
+      );
+      return;
+    }
+    d.out(`effort ${EFFORT_DEFAULT_LEVEL} for every session, unless the task says otherwise`);
+    d.out(`levels: ${levels}   (foreman effort <level>|default --issue <n>)`);
+    const set = phaseTasks(readState(d.stateDir)?.board ?? null).filter((t) => t.effort);
+    if (set.length) {
+      d.out("set by label (from the page, foreman effort --issue, or effort:<level>):");
+      for (const t of set) d.out(`  #${t.issue} ${t.effort} ${t.title}`);
+    }
+    return;
+  }
+  if (!Number.isInteger(issue) || issue < 1) {
+    d.out(`--issue must be an issue number, got ${issue}`);
+    return;
+  }
+  // The level reaches `claude` as argv, so only Claude Code's own names get past here.
+  const parsed = effort === null ? null : EffortChoiceSchema.safeParse(effort);
+  if (parsed && !parsed.success) {
+    d.out(`${effort} is not an effort level; expected one of ${levels}, or default`);
+    return;
+  }
+  if (parsed === null) {
+    const label = (await d.issueLabels(issue)).find((l) => l.startsWith(EFFORT_LABEL_PREFIX));
+    const level = EFFORT_LEVELS.find((e) => label === EFFORT_LABEL_PREFIX + e);
+    d.out(
+      `#${issue} runs at ${level ?? EFFORT_DEFAULT_LEVEL} effort${level ? " (effort label)" : " (the default)"}`,
+    );
+    return;
+  }
+  const s = readState(d.stateDir);
+  if (s && d.pidAlive(s.pid)) {
+    d.out(await d.postTaskEffort(issue, parsed.data));
+    return;
+  }
+  const label = (await d.issueLabels(issue)).find((l) => l.startsWith(EFFORT_LABEL_PREFIX));
+  const current = label ? label.slice(EFFORT_LABEL_PREFIX.length) : null;
+  d.out(await applyTaskEffort(d.labels, { issue, current }, parsed.data));
 }
 
 /**

@@ -2,8 +2,9 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { EFFORT_LEVELS } from "../state-file.ts";
 import { ensureProject, STATUS_OPTIONS } from "./board.ts";
-import { ensureLabels, ensurePlanLabels, LABELS, modelLabels } from "./labels.ts";
+import { effortLabels, ensureLabels, ensurePlanLabels, LABELS, modelLabels } from "./labels.ts";
 import { ensureWorktreesIgnored, scaffoldRepoDir } from "./scaffold.ts";
 
 function api(over: Partial<Record<string, unknown>> = {}) {
@@ -45,10 +46,17 @@ describe("labels", () => {
     expect(calls).not.toContain("label epic");
     expect(calls).toContain("label agent-ready");
     expect(calls).toContain("label model:sonnet");
-    expect(r.created).toHaveLength(LABELS.length - 2 + 2);
+    expect(calls).toContain("label effort:xhigh");
+    // No label means high, so there is no effort:high to create.
+    expect(calls).not.toContain("label effort:high");
+    expect(r.created).toHaveLength(LABELS.length - 2 + 2 + EFFORT_LEVELS.length - 1);
   });
   it("is idempotent", async () => {
-    const all = [...LABELS.map((l) => l.name), ...modelLabels(["opus"]).map((l) => l.name)];
+    const all = [
+      ...LABELS.map((l) => l.name),
+      ...modelLabels(["opus"]).map((l) => l.name),
+      ...effortLabels().map((l) => l.name),
+    ];
     const { gh, calls } = api({ listLabels: async () => all });
     await ensureLabels(gh, ["opus"]);
     expect(calls).toEqual([]);

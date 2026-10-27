@@ -40,6 +40,55 @@ describe("state file", () => {
     writeFileSync(statePath(dir), JSON.stringify(old));
     expect(readState(dir)?.model).toBeNull();
   });
+  it("a stored board whose rows predate per-task effort parses with effort null", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tt-state-"));
+    const stages = {
+      build: "done",
+      review: "pending",
+      validate: "pending",
+      ci: "none",
+      merge: "pending",
+    };
+    const board = {
+      at: "2026-09-03T12:00:00.000Z",
+      waiting: [],
+      pipeline: [
+        {
+          issue: 1,
+          title: "t",
+          phase: 1,
+          status: null,
+          pr: null,
+          stages,
+          claim: null,
+          fixRound: 1,
+          blocked: false,
+          model: null,
+        },
+      ],
+      phases: [
+        {
+          epic: 9,
+          phase: 1,
+          title: "p",
+          tasksDone: 0,
+          tasksTotal: 1,
+          spendUsd: 0,
+          sessions: 0,
+          medianMergeMinutes: null,
+          mergedTasks: 0,
+          tasks: [{ issue: 1, title: "t", status: null, closed: false, model: null }],
+        },
+      ],
+      explain: [],
+      prs: [],
+    };
+    writeFileSync(statePath(dir), JSON.stringify({ ...base(), board }));
+    const s = readState(dir);
+    expect(s).not.toBeNull();
+    expect(s?.board?.pipeline[0]?.effort).toBeNull();
+    expect(s?.board?.phases[0]?.tasks[0]?.effort).toBeNull();
+  });
   it("StateStore.patch merges and persists", () => {
     const dir = mkdtempSync(join(tmpdir(), "tt-state-"));
     const store = new StateStore(dir, base());

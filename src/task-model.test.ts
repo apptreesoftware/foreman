@@ -28,9 +28,16 @@ const phase = (over: Partial<PhaseProgress> = {}): PhaseProgress => ({
   medianMergeMinutes: null,
   mergedTasks: 0,
   tasks: [
-    { issue: 101, title: "One", status: "Ready", closed: false, model: null },
-    { issue: 102, title: "Two", status: "In Progress", closed: false, model: "sonnet" },
-    { issue: 103, title: "#103", status: null, closed: true, model: null },
+    { issue: 101, title: "One", status: "Ready", closed: false, model: null, effort: null },
+    {
+      issue: 102,
+      title: "Two",
+      status: "In Progress",
+      closed: false,
+      model: "sonnet",
+      effort: null,
+    },
+    { issue: 103, title: "#103", status: null, closed: true, model: null, effort: null },
   ],
   ...over,
 });
@@ -46,6 +53,7 @@ const row = (over: Partial<PipelineRow> = {}): PipelineRow => ({
   fixRound: 1,
   blocked: false,
   model: "sonnet",
+  effort: null,
   ...over,
 });
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FeedEntry } from "./feed.ts";
 import type { NextReport } from "./next.ts";
-import { CAP_CHOICES, MODEL_CHOICES } from "./state-file.ts";
+import { CAP_CHOICES, EFFORT_LEVELS, MODEL_CHOICES } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
 import {
   basicAuthorization,
@@ -28,6 +28,7 @@ const report: StatusReport = {
   nowPhase: "idle",
   model: { current: "opus", configured: "opus", source: "config", choices: MODEL_CHOICES },
   cap: { current: 20, configured: 20, source: "config", choices: CAP_CHOICES },
+  effort: { default: "high", levels: EFFORT_LEVELS },
   tick: null,
   current: null,
   orphan: null,
@@ -53,6 +54,7 @@ describe("web server", () => {
   const caps: (number | null)[] = [];
   const unblocked: number[] = [];
   const taskModels: string[] = [];
+  const taskEfforts: string[] = [];
   let refreshes = 0;
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
@@ -111,14 +113,25 @@ describe("web server", () => {
       return "project re-read; tick requested";
     },
     phaseTasks: () => [
-      { issue: 101, title: "One", status: "Ready", closed: false, model: null },
-      { issue: 102, title: "Two", status: "In Progress", closed: false, model: "sonnet" },
+      { issue: 101, title: "One", status: "Ready", closed: false, model: null, effort: null },
+      {
+        issue: 102,
+        title: "Two",
+        status: "In Progress",
+        closed: false,
+        model: "sonnet",
+        effort: null,
+      },
     ],
     setTaskModel: async (issue, model) => {
       taskModels.push(`${issue} ${model}`);
       return `#${issue} runs as ${model}`;
     },
     modelChoices: () => [...MODEL_CHOICES],
+    setTaskEffort: async (issue, effort) => {
+      taskEfforts.push(`${issue} ${effort}`);
+      return `#${issue} runs at ${effort} effort`;
+    },
     html: "<title>Foreman</title>",
   });
   let base = "";
@@ -261,6 +274,22 @@ describe("web server", () => {
     expect((await fetch(`${base}/api/task-model`)).status).toBe(405);
     expect(taskModels).toEqual(["101 sonnet", "102 default"]);
   });
+  it("sets a task's effort when the board lists the task, and only Claude Code's levels", async () => {
+    const post = (body: unknown) =>
+      fetch(`${base}/api/task-effort`, { method: "POST", body: JSON.stringify(body) });
+    const ok = await post({ issue: 101, effort: "xhigh" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, message: "#101 runs at xhigh effort" });
+    expect((await post({ issue: 102, effort: "default" })).status).toBe(200);
+    // The effort reaches `claude` as argv: anything but a level is refused.
+    expect((await post({ issue: 101, effort: "ultra" })).status).toBe(400);
+    expect((await post({ issue: 101, effort: "--dangerously-skip-permissions" })).status).toBe(400);
+    // Not a task of any phase on the board: refused before it reaches GitHub.
+    expect((await post({ issue: 999, effort: "low" })).status).toBe(400);
+    expect((await post({ effort: "low" })).status).toBe(400);
+    expect((await fetch(`${base}/api/task-effort`)).status).toBe(405);
+    expect(taskEfforts).toEqual(["101 xhigh", "102 default"]);
+  });
   it("unblocks an issue the board lists as blocked", async () => {
     const r = await fetch(`${base}/api/unblock`, {
       method: "POST",
@@ -310,6 +339,7 @@ describe("web server with webAuth", () => {
     phaseTasks: () => [],
     setTaskModel: async () => "",
     modelChoices: () => [],
+    setTaskEffort: async () => "",
     html: "<title>Foreman</title>",
   });
   let base = "";
@@ -454,6 +484,7 @@ describe("web server with webHosts", () => {
     phaseTasks: () => [],
     setTaskModel: async () => "",
     modelChoices: () => [],
+    setTaskEffort: async () => "",
     html: "<title>Foreman</title>",
   };
 
@@ -559,6 +590,13 @@ describe("web.html", () => {
     expect(html).toContain('fetch("/api/task-model"');
     // Pipeline rows show the override when one is set.
     expect(html).toContain("p.model ?");
+  });
+  it("lists each phase's tasks with effort buttons and confirms before POSTing one", () => {
+    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+    expect(html).toContain('data-task-effort="');
+    expect(html).toContain("A session running now keeps the effort it started with");
+    expect(html).toContain('fetch("/api/task-effort"');
+    expect(html).toContain("p.effort ?");
   });
   it("renders the Now card from nowPhase, not from the absence of a session", () => {
     const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");

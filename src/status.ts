@@ -6,6 +6,9 @@ import {
   type BudgetReport,
   CAP_CHOICES,
   type CurrentSession,
+  EFFORT_DEFAULT_LEVEL,
+  EFFORT_LEVELS,
+  type EffortLevel,
   type ForemanState,
   type StopMode,
 } from "./state-file.ts";
@@ -60,6 +63,8 @@ export interface StatusReport {
     source: "config" | "override";
     choices: readonly string[];
   };
+  /** The effort every session runs at, and the levels a task's `effort:<level>` label may pick. */
+  effort: { default: EffortLevel; levels: readonly EffortLevel[] };
   tick: {
     lastAt: string | null;
     nextAt: string | null;
@@ -188,6 +193,7 @@ export function describeStatus(i: StatusInput): StatusReport {
       source: s?.model ? "override" : "config",
       choices: i.modelChoices,
     },
+    effort: { default: EFFORT_DEFAULT_LEVEL, levels: EFFORT_LEVELS },
     tick: s
       ? {
           lastAt: s.lastTickAt,
@@ -322,6 +328,7 @@ export function formatStatus(r: StatusReport): string {
       r.model.source === "override" ? ` (override; foreman.json says ${r.model.configured})` : ""
     }`,
   );
+  lines.push(`effort ${r.effort.default} (a task's effort:<level> label overrides)`);
   lines.push(`today  ${r.today.count} of ${r.today.cap} sessions, $${r.today.spendUsd.toFixed(2)}`);
   if (r.budget) lines.push(`budget ${formatBudget(r.budget)}`);
   return `${lines.join("\n")}\n`;

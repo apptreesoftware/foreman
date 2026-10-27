@@ -12,6 +12,13 @@ describe("parseCli", () => {
   it("reads --instance after the subcommand too", () => {
     expect(parseCli(["status", "--instance", "widgets"]).instance).toBe("widgets");
   });
+  it("effort takes a level and --issue", () => {
+    expect(parseCli(["effort", "xhigh", "--issue", "12"])).toMatchObject({
+      cmd: "effort",
+      positionals: ["xhigh"],
+      args: { issue: "12" },
+    });
+  });
   it("add takes name and flags", () => {
     expect(
       parseCli([

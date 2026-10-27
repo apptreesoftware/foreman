@@ -9,6 +9,7 @@ import type { FeedEntry } from "./feed.ts";
 import { log } from "./log.ts";
 import { FORBIDDEN_ENV } from "./preflight.ts";
 import { defaultRepoConfig } from "./repo-config.ts";
+import { EFFORT_DEFAULT_LEVEL, type EffortLevel } from "./state-file.ts";
 import { type Activity, emptyActivity, foldEvent } from "./stream.ts";
 import type { Role } from "./types.ts";
 
@@ -60,6 +61,8 @@ export interface DispatchRequest {
   settingsPath: string;
   /** A builder round that only merges origin/main into the PR branch. */
   rebase: boolean;
+  /** The issue's `effort:<level>` label; absent means `EFFORT_DEFAULT_LEVEL`. */
+  effort?: EffortLevel;
 }
 
 /**
@@ -173,6 +176,10 @@ export function buildArgs(req: DispatchRequest, cfg: ForemanConfig): string[] {
     // default on this Mac. `runRole` passes the live override through here when one is set.
     "--model",
     cfg.model,
+    // Pinned for the same reason as `--model`: the interactive CLI's effort setting on this Mac
+    // must not leak in. A task's `effort:<level>` label is the only way off the default.
+    "--effort",
+    req.effort ?? EFFORT_DEFAULT_LEVEL,
   ];
 }
 

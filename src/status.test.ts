@@ -87,6 +87,14 @@ describe("describeStatus", () => {
     expect(formatStatus(overridden)).toContain("model  sonnet (override; foreman.json says opus)");
     expect(formatStatus(fromConfig)).toContain("model  opus");
   });
+  it("reports the fixed default effort and the levels a task may pick", () => {
+    const r = describeStatus(input());
+    expect(r.effort).toEqual({
+      default: "high",
+      levels: ["low", "medium", "high", "xhigh", "max"],
+    });
+    expect(formatStatus(r)).toContain("effort high (a task's effort:<level> label overrides)");
+  });
   it("reports nowPhase: session, between_ticks, ticking, idle", () => {
     const sleeping = {
       ...state(),

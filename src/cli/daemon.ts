@@ -18,6 +18,7 @@ import { loadRepoConfigSafe } from "../repo-config.ts";
 import { readSessions } from "../sessions.ts";
 import { initialState, MODEL_DEFAULT, readState, StateStore } from "../state-file.ts";
 import { describeStatus } from "../status.ts";
+import { applyTaskEffort, applyTaskEffortToBoard } from "../task-effort.ts";
 import { applyTaskModel, applyTaskModelToBoard, phaseTasks } from "../task-model.ts";
 import { startWebServer } from "../web.ts";
 import { launchdLabel } from "./launchd.ts";
@@ -247,6 +248,16 @@ export async function runDaemon(
       return message;
     },
     modelChoices: () => repo.models,
+    setTaskEffort: async (issue, effort) => {
+      // Same shape as setTaskModel: the stored row names the label on the issue now, and
+      // runRole's effortFor() reads the label per dispatch, so a running session keeps its effort.
+      const current = phaseTasks(store.get().board).find((t) => t.issue === issue)?.effort ?? null;
+      const message = await applyTaskEffort(gh, { issue, current }, effort);
+      log("info", "task effort set", { issue, effort, was: current });
+      const board = store.get().board;
+      if (board) store.patch({ board: applyTaskEffortToBoard(board, issue, effort) });
+      return message;
+    },
     needsYouItems: () => store.get().board?.needsYou ?? [],
     unblock: async (issue) => {
       // The stored row carries the project item id the tick already read, so the gate costs one

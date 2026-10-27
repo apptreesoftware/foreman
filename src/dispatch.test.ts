@@ -93,6 +93,10 @@ describe("buildArgs / buildPrompt", () => {
     expect(a.join(" ")).toContain("--model opus");
     expect(buildArgs(req, { ...cfg, model: "sonnet" }).join(" ")).toContain("--model sonnet");
   });
+  it("always pins --effort: high unless the request names a task's own level", () => {
+    expect(buildArgs(req, cfg).join(" ")).toContain("--effort high");
+    expect(buildArgs({ ...req, effort: "xhigh" }, cfg).join(" ")).toContain("--effort xhigh");
+  });
   it("a rebase round says so instead of announcing a fix round", () => {
     const p = buildPrompt({ ...req, round: 2, rebase: true, notes: "merge main" }, cfg, CHECKS);
     expect(p).toContain("rebase round");
