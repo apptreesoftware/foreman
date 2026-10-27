@@ -3,6 +3,8 @@ import { comment, epic, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts
 import { fmt } from "./ledger.ts";
 import {
   applyPlanActions,
+  fillPlanBody,
+  hasPlanPlaceholder,
   nextUnplannedEpic,
   PlanIssuesSchema,
   parseDirectionCritical,
@@ -11,6 +13,7 @@ import {
   phaseComplete,
   planIssuesPath,
   planPhaseNumber,
+  planPlaceholderErrors,
 } from "./phase.ts";
 
 describe("parsers", () => {
@@ -44,6 +47,34 @@ describe("parsers", () => {
       "07",
     );
     expect(planPhaseNumber(["epic"], "docs/sandbox.md")).toBeNull();
+  });
+  it("fillPlanBody fills the task's own number and other tasks' numbers", () => {
+    const body =
+      "## Acceptance criteria\n- [ ] `e2e/{{issue}}-tab.spec.ts`\n## Depends on\n#{{task:1}}, #{{task:3}}, #50";
+    expect(fillPlanBody(body, 288, [286, 287, 288])).toBe(
+      "## Acceptance criteria\n- [ ] `e2e/288-tab.spec.ts`\n## Depends on\n#286, #288, #50",
+    );
+    expect(fillPlanBody("no placeholders {{other}}", 1, [1])).toBe("no placeholders {{other}}");
+  });
+  it("hasPlanPlaceholder", () => {
+    expect(hasPlanPlaceholder("#{{task:2}}")).toBe(true);
+    expect(hasPlanPlaceholder("x {{issue}}")).toBe(true);
+    expect(hasPlanPlaceholder("#12 {{other}}")).toBe(false);
+  });
+  it("planPlaceholderErrors names a {{task:K}} outside the plan", () => {
+    const plan = {
+      epic: 1,
+      tasks: [
+        { title: "a", body: "#{{task:2}} {{issue}}", labels: [] },
+        { title: "b", body: "#{{task:3}} #{{task:0}}", labels: [] },
+      ],
+    };
+    expect(planPlaceholderErrors(plan)).toEqual([
+      'task 2 ("b") names {{task:3}}; the plan has 2 tasks',
+      'task 2 ("b") names {{task:0}}; the plan has 2 tasks',
+    ]);
+    const fine = { title: "c", body: "#{{task:1}} #{{task:2}} {{issue}}", labels: [] };
+    expect(planPlaceholderErrors({ epic: 1, tasks: [fine, fine] })).toEqual([]);
   });
   it("PlanIssuesSchema", () => {
     expect(

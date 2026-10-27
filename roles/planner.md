@@ -9,10 +9,10 @@ The prompt's "task issue" is the **next phase's epic**, which has no approved pl
    ```json
    { "epic": <epic number>,
      "tasks": [ { "number": <existing issue number, omit to create>, "title": "<type>(<area>): …",
-                  "body": "## Goal\n…\n## Acceptance criteria\n- [ ] …\n## Touches\n…\n## Depends on\n#…, #… or None\n## Spec\n<path> § <section>\n\nParent epic: #<epic>",
+                  "body": "## Goal\n…\n## Acceptance criteria\n- [ ] … (`e2e/{{issue}}-<slug>.spec.ts`)\n## Touches\n…\n## Depends on\n#{{task:1}}, #{{task:2}} or None\n## Spec\n<path> § <section>\n\nParent epic: #<epic>",
                   "labels": ["phase:N", "area:…", "size:S|M|L"] } ] }
    ```
-   One entry per plan task, in dependency order. Every body ends with the `Parent epic: #<epic>` line; the foreman ignores a task without it. Existing sub-issues (`gh issue list --search "Parent epic: #<epic> in:body" --state all --limit 100 --json number,title,state`) are updated by number, not duplicated. Do **not** include `agent-ready` in labels; the foreman adds it after approval.
+   One entry per plan task, in dependency order. A task that is not created yet has no issue number, so never predict one: in a body, write `{{task:K}}` for the plan's K-th task (1-based, so a dependency reads `#{{task:3}}`) and `{{issue}}` for the task's own number (for example `e2e/{{issue}}-<slug>.spec.ts`). The foreman fills both with the real numbers when it creates the issues. Name an issue that already exists by its real number. In the plan's Markdown, call tasks "Task K", not by an issue number. Every body ends with the `Parent epic: #<epic>` line; the foreman ignores a task without it. Existing sub-issues (`gh issue list --search "Parent epic: #<epic> in:body" --state all --limit 100 --json number,title,state`) are updated by number, not duplicated. Do **not** include `agent-ready` in labels; the foreman adds it after approval.
 5. Commit on the given branch, push, open a PR titled `docs(plan): phase NN plan (#<epic>)` whose body starts with `Refs #<epic>` (not `Closes`) and summarises the assumptions. Comment on the epic: `Plan drafted: <pr url>. Label me plan-approved after review.`
 6. Return `plan_drafted` with the PR number. The foreman notifies the owner.
 
