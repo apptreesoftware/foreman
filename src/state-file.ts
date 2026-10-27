@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "node:path";
 import { z } from "zod";
 import { ActivitySchema } from "./stream.ts";
+import { type ThemeName, ThemeSchema } from "./theme.ts";
 
 export const StopModeSchema = z.enum(["stop", "abort"]);
 export type StopMode = z.infer<typeof StopModeSchema>;
@@ -145,6 +146,10 @@ export const OwnerItemSchema = z.object({
   phase: z.number(),
   detail: z.string(),
   actions: z.array(OwnerActionSchema),
+  /** The epic issue's `updatedAt`, so the page can say how long it has waited. */
+  since: z.string().nullable().default(null),
+  /** The phase review issue paired with this epic; set only when it offers `sign_off`. */
+  review: z.number().int().nullable().default(null),
 });
 export type OwnerItem = z.infer<typeof OwnerItemSchema>;
 
@@ -162,6 +167,10 @@ export const NeedsYouItemSchema = z.object({
   since: z.string(),
   /** Project item id, so Unblock can set Status Ready without another read; null when off board. */
   itemId: z.string().nullable(),
+  /** The open epic this phase review belongs to; its Sign off row shows it instead of a row here. */
+  reviewOf: z.number().int().nullable().default(null),
+  /** Titled like a phase review; with `reviewOf` null, its epic is no longer open. */
+  phaseReview: z.boolean().default(false),
 });
 export type NeedsYouItem = z.infer<typeof NeedsYouItemSchema>;
 
@@ -202,6 +211,57 @@ export const PhaseProgressSchema = z.object({
 });
 export type PhaseProgress = z.infer<typeof PhaseProgressSchema>;
 
+/**
+ * One open issue as the Board tab lists it: every open non-epic issue in the snapshot, on the
+ * project board or not (`status` null is "Off board"). Computed in the tick, so no extra reads.
+ */
+export const BoardIssueSchema = z.object({
+  issue: z.number().int(),
+  title: z.string(),
+  status: z.string().nullable(),
+  /** The labels worth showing on the row: `blocked`, `size:*`, `area:*`. */
+  labels: z.array(z.string()),
+  /** The `BoardGroup.key` this issue is listed under. */
+  group: z.string(),
+  /** The open non-draft PR that closes this issue, if any. */
+  pr: z.number().int().nullable(),
+  dependsOn: z.array(z.number().int()),
+  /** The subset of `dependsOn` still open in the snapshot. */
+  openDependsOn: z.array(z.number().int()),
+  blocked: z.boolean(),
+  /** The issue's `model:<name>` label, or null when the global model applies. */
+  model: z.string().nullable(),
+  /** The issue's `effort:<level>` label, or null when the default effort applies. */
+  effort: z.string().nullable(),
+});
+export type BoardIssue = z.infer<typeof BoardIssueSchema>;
+
+export const BOARD_GROUP_STATES = [
+  "planning",
+  "plan_waiting",
+  "building",
+  "signoff_waiting",
+  "not_started",
+] as const;
+
+/**
+ * A heading on the Board tab: an open epic, or — for issues no open epic claims — their phase
+ * (`unlinked` when several open epics share it, `closed` when none is open), or "No phase".
+ */
+export const BoardGroupSchema = z.object({
+  key: z.string(),
+  kind: z.enum(["epic", "unlinked", "closed", "none"]),
+  epic: z.number().int().nullable(),
+  phase: z.number().nullable(),
+  title: z.string(),
+  /** Where an epic stands, from its labels; null for the non-epic groups. */
+  state: z.enum(BOARD_GROUP_STATES).nullable(),
+  paused: z.boolean(),
+  /** Closed task numbers: closed issues have left the snapshot, so only their numbers remain. */
+  doneTasks: z.array(z.number().int()),
+});
+export type BoardGroup = z.infer<typeof BoardGroupSchema>;
+
 export const BoardSchema = z.object({
   at: z.string(),
   waiting: z.array(WaitItemSchema),
@@ -212,6 +272,9 @@ export const BoardSchema = z.object({
   needsYou: z.array(NeedsYouItemSchema).default([]),
   // Same.
   phases: z.array(PhaseProgressSchema).default([]),
+  // Same: the Board tab's rows and headings.
+  issues: z.array(BoardIssueSchema).default([]),
+  groups: z.array(BoardGroupSchema).default([]),
   explain: z.array(z.string()),
   prs: z.array(
     z.object({
@@ -273,6 +336,11 @@ export const ForemanStateSchema = z.object({
    *. Older state.json files predate this field; the default keeps them readable.
    */
   maxSessionsPerDay: z.number().int().nullable().default(null),
+  /**
+   * The page's color theme, picked once when the daemon first starts and changed from the page.
+   * Older state.json files predate this field; the default keeps them readable.
+   */
+  theme: ThemeSchema.nullable().default(null),
 });
 export type ForemanState = z.infer<typeof ForemanStateSchema>;
 
@@ -290,6 +358,8 @@ export function initialState(o: {
   model?: string | null;
   /** Carried over from the previous state.json, like `model`, so a restart keeps the override. */
   maxSessionsPerDay?: number | null;
+  /** Carried over from the previous state.json, or picked at first start; never reset. */
+  theme?: ThemeName | null;
 }): ForemanState {
   return {
     version: 1,
@@ -297,6 +367,7 @@ export function initialState(o: {
     // After the spread: an omitted override arrives as undefined, which the schema rejects.
     model: o.model ?? null,
     maxSessionsPerDay: o.maxSessionsPerDay ?? null,
+    theme: o.theme ?? null,
     exitedAt: null,
     lastTickAt: null,
     nextTickAt: null,

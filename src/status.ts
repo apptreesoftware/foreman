@@ -1,3 +1,4 @@
+import { type Attention, describeAttention } from "./attention.ts";
 import { overlayCurrent } from "./board.ts";
 import { formatBudget } from "./budget.ts";
 import { type SessionLogEntry, todayStats } from "./sessions.ts";
@@ -12,6 +13,7 @@ import {
   type ForemanState,
   type StopMode,
 } from "./state-file.ts";
+import { pickTheme, THEMES, type ThemeName } from "./theme.ts";
 import { liveWaits } from "./waiting.ts";
 
 export type DaemonState = "RUNNING" | "STOPPED" | "CRASHED" | "UNKNOWN";
@@ -42,6 +44,8 @@ export interface StatusInput {
   configModel: string;
   /** The repo's `models`; the page and `ctl status` offer these as one-click choices. */
   modelChoices: readonly string[];
+  /** The instance name (`foreman -p <name>`), for the page header and the derived theme. */
+  instance?: string;
 }
 
 export interface StatusReport {
@@ -86,6 +90,12 @@ export interface StatusReport {
   lastPlan: string[] | null;
   board: Board | null;
   budget: BudgetReport | null;
+  /** Badge counts, banners and the Waiting on rows, from the merged board. */
+  attention: Attention;
+  /** The instance name the page shows at the top of its sidebar. */
+  instance: string;
+  /** The page's color theme for this instance, and the ones it can switch to. */
+  theme: { current: ThemeName; choices: readonly ThemeName[] };
   recent: SessionLogEntry[];
   today: { count: number; cap: number; spendUsd: number };
   /** The daily session cap the next tick will enforce, and the page's one-click choices. */
@@ -156,6 +166,8 @@ export function describeStatus(i: StatusInput): StatusReport {
           owner: stored?.owner ?? [],
           needsYou: stored?.needsYou ?? [],
           phases: stored?.phases ?? [],
+          issues: stored?.issues ?? [],
+          groups: stored?.groups ?? [],
           explain: stored?.explain ?? [],
           prs: stored?.prs ?? [],
         }
@@ -220,6 +232,9 @@ export function describeStatus(i: StatusInput): StatusReport {
     lastPlan: s?.lastPlan ?? null,
     board,
     budget: s?.budget ?? null,
+    attention: describeAttention(board),
+    instance: i.instance ?? "",
+    theme: { current: s?.theme ?? pickTheme(i.instance ?? "", []), choices: THEMES },
     recent,
     today: { count: today.count, cap, spendUsd: today.spendUsd },
   };

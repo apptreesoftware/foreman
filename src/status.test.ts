@@ -3,6 +3,7 @@ import type { SessionLogEntry } from "./sessions.ts";
 import { CAP_CHOICES, initialState, MODEL_CHOICES } from "./state-file.ts";
 import { describeStatus, formatStatus, type StatusInput } from "./status.ts";
 import { emptyActivity } from "./stream.ts";
+import { pickTheme, THEMES } from "./theme.ts";
 
 const now = "2026-09-04T05:10:00.000Z";
 const session = (over: Partial<SessionLogEntry> = {}): SessionLogEntry => ({
@@ -63,6 +64,20 @@ function input(over: Partial<StatusInput> = {}): StatusInput {
     ...over,
   };
 }
+
+describe("describeStatus theme", () => {
+  it("echoes the instance and the saved theme", () => {
+    const r = describeStatus(
+      input({ instance: "widgets", state: { ...state(), theme: "violet" } }),
+    );
+    expect(r.instance).toBe("widgets");
+    expect(r.theme).toEqual({ current: "violet", choices: THEMES });
+  });
+  it("derives a stable theme when there is no state to read one from", () => {
+    const r = describeStatus(input({ instance: "widgets", state: null }));
+    expect(r.theme.current).toBe(pickTheme("widgets", []));
+  });
+});
 
 describe("describeStatus", () => {
   it("RUNNING with uptime and a current session", () => {
@@ -294,6 +309,50 @@ describe("live activity and board", () => {
     );
     expect(describeStatus(input()).tick?.blockedBySession).toBe(false);
   });
+  it("carries the stored board's issues and groups into the report", () => {
+    const groups = [
+      {
+        key: "none",
+        kind: "none" as const,
+        epic: null,
+        phase: null,
+        title: "No phase",
+        state: null,
+        paused: false,
+        doneTasks: [],
+      },
+    ];
+    const issues = [
+      {
+        issue: 7,
+        title: "t",
+        status: null,
+        labels: [],
+        group: "none",
+        pr: null,
+        dependsOn: [],
+        openDependsOn: [],
+        blocked: false,
+        model: null,
+        effort: null,
+      },
+    ];
+    const board = {
+      at: now,
+      waiting: [],
+      pipeline: [],
+      owner: [],
+      needsYou: [],
+      phases: [],
+      issues,
+      groups,
+      explain: [],
+      prs: [],
+    };
+    const r = describeStatus(input({ state: { ...state(), board } }));
+    expect(r.board?.issues).toEqual(issues);
+    expect(r.board?.groups).toEqual(groups);
+  });
   it("layers live STOP/preflight/cap waits over the stored board", () => {
     const board = {
       at: now,
@@ -304,13 +363,20 @@ describe("live activity and board", () => {
       owner: [],
       needsYou: [],
       phases: [],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };
     const r = describeStatus(input({ state: { ...state(), board }, stopPresent: true }));
     expect(r.board?.waiting.map((w) => w.kind)).toEqual(["stop", "ci"]);
+    // The page's banners and Waiting on rows come from the same merged board.
+    expect(r.attention.banners.map((w) => w.kind)).toEqual(["stop"]);
+    expect(r.attention.waitRows.map((w) => w.kind)).toEqual(["ci"]);
+    expect(r.attention.waiting).toBe(1);
     const noBoard = describeStatus(input({ stopPresent: true }));
     expect(noBoard.board?.waiting.map((w) => w.kind)).toEqual(["stop"]);
+    expect(describeStatus(input({ state: null })).attention.needsYou).toBe(0);
     const capped = describeStatus(
       input({
         state: {
@@ -338,6 +404,8 @@ describe("live activity and board", () => {
       owner: [],
       needsYou: [],
       phases: [],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };
@@ -365,6 +433,8 @@ describe("live activity and board", () => {
       owner: [],
       needsYou: [],
       phases: [],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };
@@ -403,6 +473,8 @@ describe("live activity and board", () => {
           // A week old: the case the card exists for, and the one a bare clock time cannot say.
           since: "2026-08-28T05:03:00.000Z",
           itemId: "PVTI_165",
+          reviewOf: null,
+          phaseReview: false,
         },
         {
           issue: 5,
@@ -410,9 +482,13 @@ describe("live activity and board", () => {
           labels: ["blocked"],
           since: "2026-09-04T04:00:00.000Z",
           itemId: null,
+          reviewOf: null,
+          phaseReview: false,
         },
       ],
       phases: [],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };
@@ -443,6 +519,8 @@ describe("live activity and board", () => {
           tasks: [],
         },
       ],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };

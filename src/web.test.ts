@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FeedEntry } from "./feed.ts";
 import type { NextReport } from "./next.ts";
+import type { SessionRange } from "./session-history.ts";
 import { CAP_CHOICES, EFFORT_LEVELS, MODEL_CHOICES } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
 import {
@@ -37,6 +38,9 @@ const report: StatusReport = {
   lastPlan: ["plan#10"],
   board: null,
   budget: null,
+  attention: { needsYou: 0, waiting: 0, banners: [], waitRows: [] },
+  instance: "widgets",
+  theme: { current: "indigo", choices: ["indigo", "violet", "teal", "mono"] },
   recent: [],
   today: { count: 0, cap: 20, spendUsd: 0 },
 };
@@ -55,6 +59,8 @@ describe("web server", () => {
   const unblocked: number[] = [];
   const taskModels: string[] = [];
   const taskEfforts: string[] = [];
+  const themes: string[] = [];
+  const ranges: SessionRange[] = [];
   let refreshes = 0;
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
@@ -78,7 +84,15 @@ describe("web server", () => {
       return `did ${action} on #${epic}`;
     },
     ownerItems: () => [
-      { epic: 124, title: "Phase 0.5", phase: 0, detail: "d", actions: ["sign_off", "pause"] },
+      {
+        epic: 124,
+        title: "Phase 0.5",
+        phase: 0,
+        detail: "d",
+        actions: ["sign_off", "pause"],
+        since: null,
+        review: null,
+      },
     ],
     needsYouItems: () => [
       {
@@ -87,6 +101,8 @@ describe("web server", () => {
         labels: ["blocked"],
         since: "2026-09-03T03:00:00Z",
         itemId: "PVTI_5",
+        reviewOf: null,
+        phaseReview: false,
       },
       {
         issue: 171,
@@ -94,6 +110,8 @@ describe("web server", () => {
         labels: ["needs-owner"],
         since: "2026-09-03T10:00:00Z",
         itemId: null,
+        reviewOf: null,
+        phaseReview: false,
       },
     ],
     unblock: async (issue) => {
@@ -104,6 +122,20 @@ describe("web server", () => {
       models.push(model);
       return `next session runs ${model}`;
     },
+    sessions: (range) => {
+      ranges.push(range);
+      return {
+        ...range,
+        totals: { spendUsd: 0, sessions: 0, issues: 0 },
+        daily: [],
+        byRole: [],
+        byIssue: [],
+      };
+    },
+    setTheme: async (theme) => {
+      themes.push(theme);
+      return `theme is now ${theme}`;
+    },
     setCap: async (cap) => {
       caps.push(cap);
       return `cap is now ${cap ?? "the configured value"}`;
@@ -112,16 +144,11 @@ describe("web server", () => {
       refreshes += 1;
       return "project re-read; tick requested";
     },
-    phaseTasks: () => [
-      { issue: 101, title: "One", status: "Ready", closed: false, model: null, effort: null },
-      {
-        issue: 102,
-        title: "Two",
-        status: "In Progress",
-        closed: false,
-        model: "sonnet",
-        effort: null,
-      },
+    pickerTasks: () => [
+      { issue: 101, model: null, effort: null },
+      { issue: 102, model: "sonnet", effort: null },
+      // On the Board tab but not on the project board: still a picker target.
+      { issue: 103, model: null, effort: null },
     ],
     setTaskModel: async (issue, model) => {
       taskModels.push(`${issue} ${model}`);
@@ -240,6 +267,33 @@ describe("web server", () => {
     expect((await fetch(`${base}/api/model`)).status).toBe(405);
     expect(models).toEqual(["sonnet", "claude-haiku-4-5-20251001"]);
   });
+  it("serves the session history for a valid range and refuses a bad one", async () => {
+    const all = await fetch(`${base}/api/sessions`);
+    expect(all.status).toBe(200);
+    expect((await all.json()).totals).toEqual({ spendUsd: 0, sessions: 0, issues: 0 });
+    expect((await fetch(`${base}/api/sessions?from=2026-10-01&to=2026-10-26`)).status).toBe(200);
+    const bad = await fetch(`${base}/api/sessions?from=nope`);
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ ok: false, error: "bad range" });
+    expect((await fetch(`${base}/api/sessions?from=2026-10-27&to=2026-10-01`)).status).toBe(400);
+    expect(ranges).toEqual([
+      { from: null, to: null },
+      { from: "2026-10-01", to: "2026-10-26" },
+    ]);
+  });
+  it("sets the page theme to one of the four, and nothing else", async () => {
+    const post = (body: unknown) =>
+      fetch(`${base}/api/theme`, { method: "POST", body: JSON.stringify(body) });
+    const ok = await post({ theme: "violet" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, message: "theme is now violet" });
+    const bad = await post({ theme: "pink" });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ ok: false, error: "bad theme" });
+    expect((await post({})).status).toBe(400);
+    expect((await fetch(`${base}/api/theme`)).status).toBe(405);
+    expect(themes).toEqual(["violet"]);
+  });
   it("raises the daily cap, and refuses anything that is not a sane session count", async () => {
     const post = (body: unknown) =>
       fetch(`${base}/api/cap`, { method: "POST", body: JSON.stringify(body) });
@@ -264,15 +318,18 @@ describe("web server", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ ok: true, message: "#101 runs as sonnet" });
     expect((await post({ issue: 102, model: "default" })).status).toBe(200);
+    expect((await post({ issue: 103, model: "haiku" })).status).toBe(200);
     // A label has to exist in the repo, so unlike /api/model only the one-click names pass.
     expect((await post({ issue: 101, model: "claude-haiku-4-5-20251001" })).status).toBe(400);
     expect((await post({ issue: 101, model: "--dangerously-skip-permissions" })).status).toBe(400);
     // Not a task of any phase on the board: refused before it reaches GitHub.
-    expect((await post({ issue: 999, model: "sonnet" })).status).toBe(400);
+    const absent = await post({ issue: 999, model: "sonnet" });
+    expect(absent.status).toBe(400);
+    expect(await absent.json()).toEqual({ ok: false, error: "#999 is not a task on the board" });
     expect((await post({ issue: "101", model: "sonnet" })).status).toBe(400);
     expect((await post({ model: "sonnet" })).status).toBe(400);
     expect((await fetch(`${base}/api/task-model`)).status).toBe(405);
-    expect(taskModels).toEqual(["101 sonnet", "102 default"]);
+    expect(taskModels).toEqual(["101 sonnet", "102 default", "103 haiku"]);
   });
   it("sets a task's effort when the board lists the task, and only Claude Code's levels", async () => {
     const post = (body: unknown) =>
@@ -281,6 +338,7 @@ describe("web server", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ ok: true, message: "#101 runs at xhigh effort" });
     expect((await post({ issue: 102, effort: "default" })).status).toBe(200);
+    expect((await post({ issue: 103, effort: "low" })).status).toBe(200);
     // The effort reaches `claude` as argv: anything but a level is refused.
     expect((await post({ issue: 101, effort: "ultra" })).status).toBe(400);
     expect((await post({ issue: 101, effort: "--dangerously-skip-permissions" })).status).toBe(400);
@@ -288,7 +346,7 @@ describe("web server", () => {
     expect((await post({ issue: 999, effort: "low" })).status).toBe(400);
     expect((await post({ effort: "low" })).status).toBe(400);
     expect((await fetch(`${base}/api/task-effort`)).status).toBe(405);
-    expect(taskEfforts).toEqual(["101 xhigh", "102 default"]);
+    expect(taskEfforts).toEqual(["101 xhigh", "102 default", "103 low"]);
   });
   it("unblocks an issue the board lists as blocked", async () => {
     const r = await fetch(`${base}/api/unblock`, {
@@ -334,9 +392,18 @@ describe("web server with webAuth", () => {
     needsYouItems: () => [],
     unblock: async () => "",
     setModel: async () => "",
+    sessions: () => ({
+      from: null,
+      to: null,
+      totals: { spendUsd: 0, sessions: 0, issues: 0 },
+      daily: [],
+      byRole: [],
+      byIssue: [],
+    }),
+    setTheme: async () => "",
     setCap: async () => "",
     refresh: async () => "",
-    phaseTasks: () => [],
+    pickerTasks: () => [],
     setTaskModel: async () => "",
     modelChoices: () => [],
     setTaskEffort: async () => "",
@@ -479,9 +546,18 @@ describe("web server with webHosts", () => {
     needsYouItems: () => [],
     unblock: async () => "",
     setModel: async () => "",
+    sessions: () => ({
+      from: null,
+      to: null,
+      totals: { spendUsd: 0, sessions: 0, issues: 0 },
+      daily: [],
+      byRole: [],
+      byIssue: [],
+    }),
+    setTheme: async () => "",
     setCap: async () => "",
     refresh: async () => "",
-    phaseTasks: () => [],
+    pickerTasks: () => [],
     setTaskModel: async () => "",
     modelChoices: () => [],
     setTaskEffort: async () => "",
@@ -550,75 +626,141 @@ describe("web server with webHosts", () => {
 });
 
 describe("web.html", () => {
-  it("has the five sections and escapes through esc()", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    for (const id of [
-      "now",
-      "waiting",
-      "owner",
-      "needsYou",
-      "phases",
-      "pipeline",
-      "feed",
-      "recent",
-      "tick",
-    ])
-      expect(html).toContain(`id="${id}"`);
+  const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+
+  it("routes five tabs by location.hash", () => {
+    for (const tab of ["dashboard", "needs-you", "waiting", "board", "session"]) {
+      expect(html).toContain(`data-tab="${tab}"`);
+      expect(html).toContain(`href="#${tab}"`);
+    }
+    expect(html).toContain("location.hash");
+  });
+  it("carries the four themes, light and dark, with readable buttons", () => {
+    for (const t of ["indigo", "violet", "teal", "mono"])
+      expect(html).toContain(`[data-theme="${t}"]`);
+    for (const hex of ["#4263EB", "#6E56CF", "#22B8CF", "#EDEDEF", "#3B5BDB", "#0B7285", "#5B8DEF"])
+      expect(html).toContain(hex);
+    expect(html).toContain("prefers-color-scheme");
+    expect(html).toContain("@container");
+    expect(html).toContain('post("/api/theme"');
+  });
+  it("renders the dashboard from the status report and escapes through esc()", () => {
     expect(html).toContain("const esc =");
-    expect(html).toContain("/api/feed?session=");
-  });
-  it("shows phase progress and puts model and turns next to each session's cost", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain("renderPhases(r.board?.phases ?? [])");
-    expect(html).toContain("claim→merge");
-    expect(html).toContain(">no approved phase in flight<");
-    expect(html).toContain("esc(family(e.model))");
-    expect(html).toContain("e.turns ?? 0");
-  });
-  it("offers the model choices and confirms before POSTing one", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain('rows.push(["model", modelControl(r.model)])');
-    expect(html).toContain("window.confirm(`Run foreman sessions as ");
-    expect(html).toContain('data-model="');
-    expect(html).toContain('fetch("/api/model"');
-  });
-  it("lists each phase's tasks with model buttons and confirms before POSTing one", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain("renderTasks(");
-    expect(html).toContain('data-task-model="');
-    expect(html).toContain("window.confirm(`Run every foreman session on #");
-    expect(html).toContain('fetch("/api/task-model"');
-    // Pipeline rows show the override when one is set.
-    expect(html).toContain("p.model ?");
-  });
-  it("lists each phase's tasks with effort buttons and confirms before POSTing one", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain('data-task-effort="');
-    expect(html).toContain("A session running now keeps the effort it started with");
-    expect(html).toContain('fetch("/api/task-effort"');
-    expect(html).toContain("p.effort ?");
-  });
-  it("renders the Now card from nowPhase, not from the absence of a session", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+    expect(html).toContain("r.attention");
+    expect(html).toContain("r.instance");
     expect(html).toContain('r.nowPhase === "between_ticks"');
     expect(html).toContain('label: "between ticks"');
-    expect(html).toContain(".tag.phase_gate");
-  });
-  it("lists the Needs you rows and confirms before POSTing an unblock", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain("renderNeedsYou(r.board?.needsYou ?? [])");
-    expect(html).toContain("window.confirm(`Unblock #");
-    expect(html).toContain('data-unblock="');
-    expect(html).toContain('fetch("/api/unblock"');
-    expect(html).toContain(">nothing<");
-  });
-  it("names the parked reason and offers the cap next to today's count", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
     expect(html).toContain('r.nowPhase === "parked"');
-    expect(html).toContain('label: "parked"');
-    expect(html).toContain("preflight?.reason");
-    expect(html).toContain("capControl(r.cap)");
-    expect(html).toContain('data-cap="');
-    expect(html).toContain('fetch("/api/cap"');
+    expect(html).toContain("/api/feed?session=");
+    expect(html).toContain('fetch("/api/next")');
+    expect(html).toContain('post("/api/refresh")');
+    expect(html).toContain(`Confirm $${"{cmd}"}?`);
+    expect(html).toContain("Back to live");
+  });
+  it("puts every reason the foreman is idle in a banner", () => {
+    expect(html).toContain("no state.json: restart the daemon");
+    expect(html).toContain("run ctl abort");
+    expect(html).toContain("no output for");
+    expect(html).toContain("r.attention?.banners");
+  });
+  it("no longer has the old right-hand cards", () => {
+    for (const id of ["tick", "recent", "phases", "owner"])
+      expect(html).not.toContain(`id="${id}"`);
+  });
+  it("groups Needs you by the action the owner takes, in order", () => {
+    const at = [
+      "Approve a plan",
+      "Sign off a phase",
+      "Ready to plan",
+      "Unblock",
+      "Answer or close",
+    ].map((g) => html.indexOf(`"${g}"`));
+    expect(at.every((i) => i > 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(html).toContain("epic already closed");
+    expect(html).toContain("#287A3A");
+    expect(html).toContain("button.approve");
+    expect(html).toContain("button.signoff");
+    expect(html).toContain("button.plan");
+  });
+  it("keeps every owner gate's confirm text and endpoint", () => {
+    expect(html).toContain(`Sign off #$${"{n}"}?`);
+    expect(html).toContain("Approve the plan on #");
+    expect(html).toContain(`Start planning #$${"{n}"}?`);
+    expect(html).toContain("window.confirm(`Unblock #");
+    expect(html).toContain('post("/api/owner"');
+    expect(html).toContain('post("/api/unblock"');
+  });
+  it("lists Waiting on rows by kind and points human waits at Needs you", () => {
+    expect(html).toContain("Nothing stops new claims");
+    expect(html).toContain("Fix on GitHub");
+    expect(html).toContain("r.attention?.waitRows");
+    expect(html).toContain('href="#needs-you"');
+  });
+  it("lists every board issue by group with a status filter, off board included", () => {
+    expect(html).toContain("r.board?.groups");
+    expect(html).toContain("r.board?.issues");
+    expect(html).toContain("Off board");
+    expect(html).toContain("Show done");
+    // Group titles come from the server and are escaped like everything else.
+    expect(html).toContain("esc(g.title)");
+  });
+  it("offers model and effort pickers that confirm before POSTing", () => {
+    expect(html).toContain("window.confirm(`Run every foreman session on #");
+    expect(html).toContain("A session running now keeps the effort it started with");
+    expect(html).toContain('post("/api/task-model"');
+    expect(html).toContain('post("/api/task-effort"');
+    expect(html).toContain('ownerButton(g.epic, g.paused ? "unpause" : "pause")');
+  });
+  it("keeps Board UI state across the 3 s re-render", () => {
+    for (const v of [
+      "let boardQuery",
+      "let boardFilter",
+      "let showDone",
+      "const openPicker",
+      "const openDone",
+    ])
+      expect(html).toContain(v);
+  });
+  it("loads the Session tab's history by range and offers each session's feed", () => {
+    expect(html).toContain("fetch(`/api/sessions");
+    for (const label of [">Today<", ">7 days<", ">30 days<", ">All<", ">Custom<"])
+      expect(html).toContain(label);
+    expect(html).toContain("View feed");
+    expect(html).toContain("pinFeed(");
+    expect(html).toContain("Show all");
+    expect(html).toContain("const openSessionRows");
+  });
+  it("keeps the model and cap controls, with their confirm texts, on the Session tab", () => {
+    expect(html).toContain(`window.confirm(\`Run foreman sessions as $${"{model}"}?`);
+    expect(html).toContain("Set the daily session cap to");
+    expect(html).toContain('post("/api/model"');
+    expect(html).toContain('post("/api/cap"');
+    expect(html).toContain("GitHub budget");
+    expect(html).toContain("launchd");
+  });
+  it("bounds the custom range inputs and drops a stale history response", () => {
+    expect(html).toContain('min="2000-01-01" max="2099-12-31"');
+    expect(html).toContain("const seq = ++sessionSeq");
+    expect(html).toContain("if (seq !== sessionSeq) return");
+  });
+  it("keeps the daemon's state visible at phone width and when the page is offline", () => {
+    expect(html).not.toContain(".side .hd .psub, .side .hd .pill-state { display: none; }");
+    expect(html).toContain("the daemon is stopped");
+    expect(html).toContain("page offline: the daemon is not answering");
+    // The strip keeps its own height on a short page instead of sharing the viewport with main.
+    expect(html).toContain(
+      ".app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }",
+    );
+  });
+  it("keeps a long daily chart inside its card", () => {
+    expect(html).toContain(
+      ".plot { position: relative; height: 170px; margin-left: 44px; margin-top: 14px; overflow: hidden; }",
+    );
+    expect(html).toContain("weekly");
+  });
+  it("escapes clock times, which can come from issue comments", () => {
+    expect(html).toContain("const t = (iso) => (iso ? esc(");
+    expect(html).toContain("const hm = (iso) => (iso ? esc(");
   });
 });

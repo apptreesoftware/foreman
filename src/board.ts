@@ -1,3 +1,4 @@
+import { describeBoardIssues } from "./board-issues.ts";
 import { needsYouItems } from "./needs-you.ts";
 import { describeNext } from "./next.ts";
 import { ownerItems } from "./owner.ts";
@@ -30,6 +31,7 @@ export function describeBoard(
     owner: ownerItems(s),
     needsYou: needsYouItems(s),
     phases: phaseProgress(s, logs.sessions, logs.merges),
+    ...describeBoardIssues(s),
     explain: next.explain,
     prs: next.prs,
   };

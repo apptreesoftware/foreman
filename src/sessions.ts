@@ -19,6 +19,11 @@ export interface SessionLogEntry {
   denials: number;
   /** The CLI's own result subtype (`success`, `error_max_turns`, …), kept next to the outcome. */
   subtype: string;
+  /**
+   * The issue's title when the session ran, so the page's cost history can name a task after it
+   * has closed and left the snapshot. Absent on lines written before titles were recorded.
+   */
+  title?: string;
 }
 
 /**
@@ -64,6 +69,7 @@ export function readSessions(stateDir: string): SessionLogEntry[] {
           durationMinutes: Number(j.durationMinutes ?? 0),
           denials: Number(j.denials ?? 0),
           subtype: String(j.subtype ?? ""),
+          ...(typeof j.title === "string" ? { title: j.title } : {}),
         });
     } catch {
       /* skip a torn line */

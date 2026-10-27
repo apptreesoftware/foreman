@@ -80,6 +80,16 @@ describe("state file", () => {
           tasks: [{ issue: 1, title: "t", status: null, closed: false, model: null }],
         },
       ],
+      owner: [{ epic: 9, title: "p", phase: 1, detail: "", actions: ["pause"] }],
+      needsYou: [
+        {
+          issue: 2,
+          title: "n",
+          labels: ["needs-owner"],
+          since: "2026-09-01T00:00:00Z",
+          itemId: null,
+        },
+      ],
       explain: [],
       prs: [],
     };
@@ -88,6 +98,29 @@ describe("state file", () => {
     expect(s).not.toBeNull();
     expect(s?.board?.pipeline[0]?.effort).toBeNull();
     expect(s?.board?.phases[0]?.tasks[0]?.effort).toBeNull();
+    // Written before the Needs you tab: owner rows without since/review, needs-you rows unpaired.
+    expect(s?.board?.owner[0]).toMatchObject({ since: null, review: null });
+    expect(s?.board?.needsYou[0]).toMatchObject({ reviewOf: null, phaseReview: false });
+    // Written before the Board tab: no issues or groups, which read as empty.
+    expect(s?.board?.issues).toEqual([]);
+    expect(s?.board?.groups).toEqual([]);
+  });
+  it("a state file written before themes parses with theme null; initialState carries one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tt-state-"));
+    const { theme: _absent, ...old } = base();
+    writeFileSync(statePath(dir), JSON.stringify(old));
+    expect(readState(dir)?.theme).toBeNull();
+    expect(base().theme).toBeNull();
+    expect(
+      initialState({
+        pid: 1,
+        host: "h",
+        configPath: "/c",
+        dryRun: false,
+        startedAt: "2026-09-03T12:00:00.000Z",
+        theme: "teal",
+      }).theme,
+    ).toBe("teal");
   });
   it("StateStore.patch merges and persists", () => {
     const dir = mkdtempSync(join(tmpdir(), "tt-state-"));

@@ -29,6 +29,15 @@ const entry = (over: Partial<SessionLogEntry> = {}): SessionLogEntry => ({
 });
 
 describe("appendSession", () => {
+  it("reads a title when present and leaves it undefined on older lines", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tt-"));
+    appendSession(dir, entry({ title: "feat: a grid" }));
+    appendSession(dir, entry({ sessionId: "t" }));
+    const [withTitle, without] = readSessions(dir);
+    expect(withTitle?.title).toBe("feat: a grid");
+    expect(without?.title).toBeUndefined();
+  });
+
   it("appends one JSON line per session", () => {
     const dir = mkdtempSync(join(tmpdir(), "tt-"));
     appendSession(dir, entry());

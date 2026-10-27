@@ -8,6 +8,7 @@ import type { WebAuth } from "./config.ts";
 import { FEED_LIMIT_DEFAULT, type FeedEntry, isSessionId } from "./feed.ts";
 import { log } from "./log.ts";
 import type { NextReport } from "./next.ts";
+import { parseRange, type SessionHistory, type SessionRange } from "./session-history.ts";
 import {
   CapSchema,
   type EffortChoice,
@@ -18,11 +19,12 @@ import {
   type OwnerAction,
   OwnerActionSchema,
   type OwnerItem,
-  type PhaseTask,
   type TaskModelChoice,
   TaskModelChoiceSchema,
 } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
+import type { PickerTask } from "./task-model.ts";
+import { type ThemeName, ThemeSchema } from "./theme.ts";
 
 export type WebCommand = "stop" | "abort" | "go";
 
@@ -52,17 +54,21 @@ export interface WebDeps {
   unblock: (issue: number) => Promise<string>;
   /** Sets the model the next dispatch uses; the name has already passed `ModelSchema`. */
   setModel: (model: string) => Promise<string>;
+  /** Spend and sessions from `sessions.log` over a range already checked by `parseRange`. */
+  sessions: (range: SessionRange) => SessionHistory;
+  /** Saves the page's color theme for this instance; the name has already passed `ThemeSchema`. */
+  setTheme: (theme: ThemeName) => Promise<string>;
   /** Sets the daily session cap the next tick enforces; null clears the override. */
   setCap: (maxSessionsPerDay: number | null) => Promise<string>;
   /** Drops the cached project board and wakes the loop, so the page shows the board as it is now. */
   refresh: () => Promise<string>;
-  /** The open tasks of every phase on the board, as of the last tick; the task-model allowlist. */
-  phaseTasks: () => PhaseTask[];
-  /** Swaps the issue's `model:<name>` label; only called for a task `phaseTasks` lists. */
+  /** Every open issue the Board tab lists, as of the last tick; the model/effort allowlist. */
+  pickerTasks: () => PickerTask[];
+  /** Swaps the issue's `model:<name>` label; only called for an issue `pickerTasks` lists. */
   setTaskModel: (issue: number, model: TaskModelChoice) => Promise<string>;
   /** The repo's configured `models`; the task-model allowlist beyond `MODEL_DEFAULT`. */
   modelChoices: () => string[];
-  /** Swaps the issue's `effort:<level>` label; only called for a task `phaseTasks` lists. */
+  /** Swaps the issue's `effort:<level>` label; only called for an issue `pickerTasks` lists. */
   setTaskEffort: (issue: number, effort: EffortChoice) => Promise<string>;
   /** Page HTML; defaults to src/web.html. Injectable for tests. */
   html?: string;
@@ -133,6 +139,8 @@ const TaskEffortRequestSchema = z.object({
 // fat-fingered 100000 cannot quietly uncap the Mac's daily spend.
 const CapRequestSchema = z.object({ maxSessionsPerDay: CapSchema.nullable() });
 
+const ThemeRequestSchema = z.object({ theme: ThemeSchema });
+
 /** Reads a small JSON body; anything unparsable (or over 8 KB) resolves to null. */
 async function readJson(req: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -189,6 +197,11 @@ export function createWebServer(d: WebDeps): http.Server {
           Number(u.searchParams.get("limit") ?? FEED_LIMIT_DEFAULT) || FEED_LIMIT_DEFAULT;
         return json(res, 200, { session, entries: d.feed(session, limit) });
       }
+      if (req.method === "GET" && url === "/api/sessions") {
+        const range = parseRange(u.searchParams.get("from"), u.searchParams.get("to"));
+        if (!range) return json(res, 400, { ok: false, error: "bad range" });
+        return json(res, 200, d.sessions(range));
+      }
       if (url === "/api/owner") {
         if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
         const parsed = OwnerRequestSchema.safeParse(await readJson(req));
@@ -227,7 +240,7 @@ export function createWebServer(d: WebDeps): http.Server {
         if (!parsed.success) return json(res, 400, { ok: false, error: "bad request" });
         const { issue, model } = parsed.data;
         // Same allowlist pattern as /api/owner: only a task the board lists under a phase.
-        if (!d.phaseTasks().some((t) => t.issue === issue))
+        if (!d.pickerTasks().some((t) => t.issue === issue))
           return json(res, 400, { ok: false, error: `#${issue} is not a task on the board` });
         // TaskModelChoiceSchema now accepts any well-formed name; the repo's configured models
         // are the actual allowlist, checked here so a typo'd model does not reach a label.
@@ -241,9 +254,15 @@ export function createWebServer(d: WebDeps): http.Server {
         // An effort reaches `claude` as argv, so only Claude Code's own levels get past here.
         if (!parsed.success) return json(res, 400, { ok: false, error: "bad request" });
         const { issue, effort } = parsed.data;
-        if (!d.phaseTasks().some((t) => t.issue === issue))
+        if (!d.pickerTasks().some((t) => t.issue === issue))
           return json(res, 400, { ok: false, error: `#${issue} is not a task on the board` });
         return json(res, 200, { ok: true, message: await d.setTaskEffort(issue, effort) });
+      }
+      if (url === "/api/theme") {
+        if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
+        const parsed = ThemeRequestSchema.safeParse(await readJson(req));
+        if (!parsed.success) return json(res, 400, { ok: false, error: "bad theme" });
+        return json(res, 200, { ok: true, message: await d.setTheme(parsed.data.theme) });
       }
       if (url === "/api/cap") {
         if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });

@@ -1160,7 +1160,7 @@ describe("operator interrupt", () => {
     expect(st.get().unfinished).toBeNull();
   });
   it("abort: releases, unassigns, resets Ready; sessions.log records aborted", async () => {
-    const i = issue({ number: 1, status: "In Progress" });
+    const i = issue({ number: 1, title: "feat: a grid", status: "In Progress" });
     const { gh, calls } = fakeGh([i]);
     const ac = new AbortController();
     ac.abort();
@@ -1180,6 +1180,7 @@ describe("operator interrupt", () => {
     expect(calls).toContain("setStatus PVTI_1 Ready");
     const line = readFileSync(join(dir, "sessions.log"), "utf8").trim();
     expect(JSON.parse(line)).toMatchObject({
+      title: "feat: a grid",
       outcome: "aborted",
       // Recorded on an interrupt too, so an aborted session's spend is still comparable.
       model: "opus",
@@ -1188,7 +1189,7 @@ describe("operator interrupt", () => {
     });
   });
   it("sessions.log records the model, turns, duration, denials and subtype", async () => {
-    const i = issue({ number: 1 });
+    const i = issue({ number: 1, title: "feat: a grid" });
     const { gh } = fakeGh([i]);
     const dir = mkdtempSync(join(tmpdir(), "tt-loop-"));
     await execute(
@@ -1207,6 +1208,7 @@ describe("operator interrupt", () => {
     );
     // No stream events reach the fake spawner, so `model` falls back to the dispatched name.
     expect(JSON.parse(readFileSync(join(dir, "sessions.log"), "utf8").trim())).toMatchObject({
+      title: "feat: a grid",
       model: "opus",
       turns: 2,
       durationMinutes: 3.7,

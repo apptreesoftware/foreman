@@ -1,3 +1,4 @@
+import { pairReviews } from "./review-pairing.ts";
 import type { Board, OwnerAction, OwnerItem } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
 
@@ -22,6 +23,7 @@ const DETAIL: Record<OwnerAction, string> = {
  */
 export function ownerItems(s: Snapshot): OwnerItem[] {
   const titleOf = (n: number) => s.issues.find((i) => i.number === n)?.title ?? `#${n}`;
+  const reviewOf = new Map([...pairReviews(s)].map(([review, epic]) => [epic, review]));
   return [...s.epics]
     .filter((e) => e.state === "OPEN")
     .sort((a, b) => a.phase - b.phase)
@@ -38,6 +40,8 @@ export function ownerItems(s: Snapshot): OwnerItem[] {
         phase: e.phase,
         detail: DETAIL[actions[0] as OwnerAction],
         actions,
+        since: s.issues.find((i) => i.number === e.number)?.updatedAt ?? null,
+        review: actions.includes("sign_off") ? (reviewOf.get(e.number) ?? null) : null,
       };
     });
 }
@@ -67,6 +71,17 @@ export function applyOwnerActionToBoard(board: Board, epic: number, action: Owne
       action === "sign_off" || action === "approve_plan"
         ? board.waiting.filter((w) => w.subject !== subject)
         : board.waiting,
+    // A signed-off epic's row is gone, so its paired review needs its own row again until the
+    // next tick; otherwise a `needs-owner` issue would sit on no tab at all.
+    needsYou:
+      action === "sign_off"
+        ? board.needsYou.map((n) => (n.reviewOf === epic ? { ...n, reviewOf: null } : n))
+        : board.needsYou,
+    // The Board tab's epic header reads `paused`, so it flips with the label too.
+    groups:
+      action === "pause" || action === "unpause"
+        ? board.groups.map((g) => (g.epic === epic ? { ...g, paused: action === "pause" } : g))
+        : board.groups,
   };
 }
 

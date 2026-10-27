@@ -6,7 +6,7 @@ import { realExec } from "../exec.ts";
 import { readFeed } from "../feed.ts";
 import { GitHub } from "../github.ts";
 import { fileHookLog } from "../hooks.ts";
-import type { Instance } from "../instance.ts";
+import { type Instance, listInstances } from "../instance.ts";
 import { launchdInstalled } from "../launchd-status.ts";
 import { log } from "../log.ts";
 import { buildSnapshot, ensureLogin, realCtx, runForever, runOnce } from "../loop.ts";
@@ -15,11 +15,13 @@ import { describeNext } from "../next.ts";
 import { applyOwnerAction, applyOwnerActionToBoard } from "../owner.ts";
 import { checkEnv, preflight } from "../preflight.ts";
 import { loadRepoConfigSafe } from "../repo-config.ts";
+import { boardTitles, describeSessionHistory } from "../session-history.ts";
 import { readSessions } from "../sessions.ts";
 import { initialState, MODEL_DEFAULT, readState, StateStore } from "../state-file.ts";
 import { describeStatus } from "../status.ts";
 import { applyTaskEffort, applyTaskEffortToBoard } from "../task-effort.ts";
-import { applyTaskModel, applyTaskModelToBoard, phaseTasks } from "../task-model.ts";
+import { applyTaskModel, applyTaskModelToBoard, pickerTasks } from "../task-model.ts";
+import { pickTheme, type ThemeName } from "../theme.ts";
 import { startWebServer } from "../web.ts";
 import { launchdLabel } from "./launchd.ts";
 
@@ -139,6 +141,11 @@ export async function runDaemon(
 
   // Long-running daemon: owns state.json, the web page, and the signal handlers.
   const previous = readState(STATE_DIR);
+  // Picked once and saved, so it never shifts: the theme the other instances here use least.
+  const others = listInstances()
+    .filter((i) => i.name !== instance.name)
+    .map((i) => readState(i.dir)?.theme ?? null)
+    .filter((t): t is ThemeName => t !== null);
   const store = new StateStore(
     STATE_DIR,
     initialState({
@@ -150,6 +157,7 @@ export async function runDaemon(
       // A restart must not silently revert the owner's overrides back to foreman.json.
       model: previous?.model ?? null,
       maxSessionsPerDay: previous?.maxSessionsPerDay ?? null,
+      theme: previous?.theme ?? pickTheme(instance.name, others),
     }),
   );
   const controller = new Controller((mode) => {
@@ -197,6 +205,7 @@ export async function runDaemon(
         repo: cfg.repo,
         configModel: cfg.model,
         modelChoices: repo.models,
+        instance: instance.name,
       }),
     next: () => lock.run(async () => describeNext(await buildSnapshot(ctx), repo)),
     act: async (cmd) => {
@@ -218,6 +227,13 @@ export async function runDaemon(
       log("info", "model set", { model: next, configured: cfg.model });
       return `next session runs ${next ?? cfg.model}`;
     },
+    sessions: (range) =>
+      describeSessionHistory(readSessions(STATE_DIR), range, boardTitles(store.get().board)),
+    setTheme: async (theme) => {
+      store.patch({ theme });
+      log("info", "theme set", { theme });
+      return `theme is now ${theme}`;
+    },
     setCap: async (maxSessionsPerDay) => {
       // Read per tick by runOnce's capFor(), so raising it while parked on the cap lets the very
       // next tick run — no restart, and the sleep is cut short so it happens now.
@@ -235,12 +251,12 @@ export async function runDaemon(
       return "project re-read; tick requested";
     },
     ownerItems: () => store.get().board?.owner ?? [],
-    phaseTasks: () => phaseTasks(store.get().board),
+    pickerTasks: () => pickerTasks(store.get().board),
     setTaskModel: async (issue, model) => {
       // The stored task row says which label is on the issue now, so the swap costs at most two
       // label edits and no GitHub read. Read per dispatch by runRole's modelFor(), so it applies
       // to the issue's next session and never to one already running.
-      const current = phaseTasks(store.get().board).find((t) => t.issue === issue)?.model ?? null;
+      const current = pickerTasks(store.get().board).find((t) => t.issue === issue)?.model ?? null;
       const message = await applyTaskModel(gh, { issue, current }, model);
       log("info", "task model set", { issue, model, was: current });
       const board = store.get().board;
@@ -251,7 +267,7 @@ export async function runDaemon(
     setTaskEffort: async (issue, effort) => {
       // Same shape as setTaskModel: the stored row names the label on the issue now, and
       // runRole's effortFor() reads the label per dispatch, so a running session keeps its effort.
-      const current = phaseTasks(store.get().board).find((t) => t.issue === issue)?.effort ?? null;
+      const current = pickerTasks(store.get().board).find((t) => t.issue === issue)?.effort ?? null;
       const message = await applyTaskEffort(gh, { issue, current }, effort);
       log("info", "task effort set", { issue, effort, was: current });
       const board = store.get().board;

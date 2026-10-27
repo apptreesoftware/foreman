@@ -1,5 +1,6 @@
 import type { GitHubApi } from "./github.ts";
 import { fmt } from "./ledger.ts";
+import { PHASE_REVIEW_TITLE, pairReviews } from "./review-pairing.ts";
 import { type Board, NEEDS_YOU_LABELS, type NeedsYouItem } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
 
@@ -9,6 +10,7 @@ import type { Snapshot } from "./types.ts";
  * are excluded here. Oldest first — the point of the card is the issue that has been waiting a week.
  */
 export function needsYouItems(s: Snapshot): NeedsYouItem[] {
+  const pairs = pairReviews(s);
   return s.issues
     .filter((x) => x.state === "OPEN" && !x.labels.includes("epic"))
     .map((x) => ({
@@ -17,6 +19,8 @@ export function needsYouItems(s: Snapshot): NeedsYouItem[] {
       labels: NEEDS_YOU_LABELS.filter((l) => x.labels.includes(l)) as string[],
       since: x.updatedAt,
       itemId: x.itemId,
+      reviewOf: pairs.get(x.number) ?? null,
+      phaseReview: PHASE_REVIEW_TITLE.test(x.title),
     }))
     .filter((x) => x.labels.length > 0)
     .sort((a, b) => a.since.localeCompare(b.since) || a.issue - b.issue);

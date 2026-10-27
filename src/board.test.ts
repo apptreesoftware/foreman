@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { epic, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
 import { describeBoard, overlayCurrent } from "./board.ts";
+import { describeBoardIssues } from "./board-issues.ts";
 import type { Board, CurrentSession } from "./state-file.ts";
 
 describe("describeBoard", () => {
@@ -23,6 +24,7 @@ describe("describeBoard", () => {
     expect(b.explain.length).toBeGreaterThan(0);
     // No logs passed: the phase card still lists the approved epic, at zero spend.
     expect(b.phases).toMatchObject([{ tasksTotal: 0, spendUsd: 0, medianMergeMinutes: null }]);
+    expect({ issues: b.issues, groups: b.groups }).toEqual(describeBoardIssues(s));
   });
 
   it("folds the local session and merge logs into the phase card", () => {
@@ -106,6 +108,8 @@ describe("overlayCurrent", () => {
     owner: [],
     needsYou: [],
     phases: [],
+    issues: [],
+    groups: [],
     explain: [],
     prs: [],
   };
