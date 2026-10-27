@@ -626,75 +626,45 @@ describe("web server with webHosts", () => {
 });
 
 describe("web.html", () => {
-  it("has the five sections and escapes through esc()", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    for (const id of [
-      "now",
-      "waiting",
-      "owner",
-      "needsYou",
-      "phases",
-      "pipeline",
-      "feed",
-      "recent",
-      "tick",
-    ])
-      expect(html).toContain(`id="${id}"`);
+  const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+
+  it("routes five tabs by location.hash", () => {
+    for (const tab of ["dashboard", "needs-you", "waiting", "board", "session"]) {
+      expect(html).toContain(`data-tab="${tab}"`);
+      expect(html).toContain(`href="#${tab}"`);
+    }
+    expect(html).toContain("location.hash");
+  });
+  it("carries the four themes, light and dark, with readable buttons", () => {
+    for (const t of ["indigo", "violet", "teal", "mono"])
+      expect(html).toContain(`[data-theme="${t}"]`);
+    for (const hex of ["#4263EB", "#6E56CF", "#22B8CF", "#EDEDEF", "#3B5BDB", "#0B7285", "#5B8DEF"])
+      expect(html).toContain(hex);
+    expect(html).toContain("prefers-color-scheme");
+    expect(html).toContain("@container");
+    expect(html).toContain('post("/api/theme"');
+  });
+  it("renders the dashboard from the status report and escapes through esc()", () => {
     expect(html).toContain("const esc =");
-    expect(html).toContain("/api/feed?session=");
-  });
-  it("shows phase progress and puts model and turns next to each session's cost", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain("renderPhases(r.board?.phases ?? [])");
-    expect(html).toContain("claim→merge");
-    expect(html).toContain(">no approved phase in flight<");
-    expect(html).toContain("esc(family(e.model))");
-    expect(html).toContain("e.turns ?? 0");
-  });
-  it("offers the model choices and confirms before POSTing one", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain('rows.push(["model", modelControl(r.model)])');
-    expect(html).toContain("window.confirm(`Run foreman sessions as ");
-    expect(html).toContain('data-model="');
-    expect(html).toContain('fetch("/api/model"');
-  });
-  it("lists each phase's tasks with model buttons and confirms before POSTing one", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain("renderTasks(");
-    expect(html).toContain('data-task-model="');
-    expect(html).toContain("window.confirm(`Run every foreman session on #");
-    expect(html).toContain('fetch("/api/task-model"');
-    // Pipeline rows show the override when one is set.
-    expect(html).toContain("p.model ?");
-  });
-  it("lists each phase's tasks with effort buttons and confirms before POSTing one", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain('data-task-effort="');
-    expect(html).toContain("A session running now keeps the effort it started with");
-    expect(html).toContain('fetch("/api/task-effort"');
-    expect(html).toContain("p.effort ?");
-  });
-  it("renders the Now card from nowPhase, not from the absence of a session", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
+    expect(html).toContain("r.attention");
+    expect(html).toContain("r.instance");
     expect(html).toContain('r.nowPhase === "between_ticks"');
     expect(html).toContain('label: "between ticks"');
-    expect(html).toContain(".tag.phase_gate");
-  });
-  it("lists the Needs you rows and confirms before POSTing an unblock", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
-    expect(html).toContain("renderNeedsYou(r.board?.needsYou ?? [])");
-    expect(html).toContain("window.confirm(`Unblock #");
-    expect(html).toContain('data-unblock="');
-    expect(html).toContain('fetch("/api/unblock"');
-    expect(html).toContain(">nothing<");
-  });
-  it("names the parked reason and offers the cap next to today's count", () => {
-    const html = readFileSync(join(import.meta.dirname, "web.html"), "utf8");
     expect(html).toContain('r.nowPhase === "parked"');
-    expect(html).toContain('label: "parked"');
-    expect(html).toContain("preflight?.reason");
-    expect(html).toContain("capControl(r.cap)");
-    expect(html).toContain('data-cap="');
-    expect(html).toContain('fetch("/api/cap"');
+    expect(html).toContain("/api/feed?session=");
+    expect(html).toContain('fetch("/api/next")');
+    expect(html).toContain('post("/api/refresh")');
+    expect(html).toContain(`Confirm $${"{cmd}"}?`);
+    expect(html).toContain("Back to live");
+  });
+  it("puts every reason the foreman is idle in a banner", () => {
+    expect(html).toContain("no state.json: restart the daemon");
+    expect(html).toContain("run ctl abort");
+    expect(html).toContain("no output for");
+    expect(html).toContain("r.attention?.banners");
+  });
+  it("no longer has the old right-hand cards", () => {
+    for (const id of ["tick", "recent", "phases", "owner"])
+      expect(html).not.toContain(`id="${id}"`);
   });
 });
