@@ -67,13 +67,15 @@ function input(over: Partial<StatusInput> = {}): StatusInput {
 
 describe("describeStatus theme", () => {
   it("echoes the instance and the saved theme", () => {
-    const r = describeStatus(input({ instance: "litart", state: { ...state(), theme: "violet" } }));
-    expect(r.instance).toBe("litart");
+    const r = describeStatus(
+      input({ instance: "widgets", state: { ...state(), theme: "violet" } }),
+    );
+    expect(r.instance).toBe("widgets");
     expect(r.theme).toEqual({ current: "violet", choices: THEMES });
   });
   it("derives a stable theme when there is no state to read one from", () => {
-    const r = describeStatus(input({ instance: "litart", state: null }));
-    expect(r.theme.current).toBe(pickTheme("litart", []));
+    const r = describeStatus(input({ instance: "widgets", state: null }));
+    expect(r.theme.current).toBe(pickTheme("widgets", []));
   });
 });
 

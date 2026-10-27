@@ -3,8 +3,8 @@ import { pickTheme, THEMES, type ThemeName } from "./theme.ts";
 
 describe("pickTheme", () => {
   it("is stable for a name", () => {
-    expect(pickTheme("litart", [])).toBe(pickTheme("litart", []));
-    expect(THEMES).toContain(pickTheme("litart", []));
+    expect(pickTheme("widgets", [])).toBe(pickTheme("widgets", []));
+    expect(THEMES).toContain(pickTheme("widgets", []));
   });
 
   it("takes the only unused theme", () => {
@@ -14,7 +14,7 @@ describe("pickTheme", () => {
 
   it("four instances in turn get four different themes", () => {
     const taken: ThemeName[] = [];
-    for (const name of ["apptrade", "fishcity", "litart", "tone_tonic"])
+    for (const name of ["gadgets", "gizmos", "sprockets", "widgets"])
       taken.push(pickTheme(name, taken));
     expect(new Set(taken).size).toBe(4);
   });
