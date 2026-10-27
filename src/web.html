@@ -160,6 +160,35 @@
   .fr:last-child { background: var(--accent-soft); }
   .chip { font: 600 12px/1 var(--sans); padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--accent); cursor: pointer; }
 
+  /* Needs you and Waiting on: groups of rows, oldest first, the wait time large on the left. */
+  .grp { margin-top: 20px; }
+  .grp:first-child { margin-top: 4px; }
+  .gh { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 600; font-size: 14.5px; flex-wrap: wrap; }
+  .gh .c { font: 600 11.5px/1 var(--sans); padding: 3px 7px; border-radius: 999px; background: var(--sunk); color: var(--ink-2); }
+  .gh small { color: var(--ink-3); font-weight: 500; font-size: 12.5px; }
+  .gh .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .list { overflow: hidden; }
+  .it { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 11px 16px; }
+  .it + .it { border-top: 1px solid var(--line); }
+  .age { font: 650 17px/1 var(--sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  .age small { display: block; font: 500 11px var(--sans); color: var(--ink-3); margin-top: 3px; }
+  .age.old { color: var(--warn); }
+  .it .t, .wt .t { font-weight: 600; } .it .t .num, .wt .t .num { color: var(--ink-3); font-weight: 500; margin-right: 6px; }
+  .it .s, .wt .s { color: var(--ink-2); font-size: 13px; margin-top: 2px; display: flex; gap: 4px 8px; flex-wrap: wrap; align-items: center; }
+  .it .acts { display: flex; gap: 6px; margin-left: 0; }
+  .mini { display: inline-flex; align-items: center; gap: 6px; }
+  .mini .b { width: 60px; height: 5px; background: var(--sunk); border-radius: 99px; overflow: hidden; }
+  .mini .b i { display: block; height: 100%; background: var(--ok); border-radius: 99px; }
+  button.approve { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+  button.signoff { background: var(--signoff); border-color: var(--signoff); color: #fff; }
+  button.plan { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); color: var(--warn); }
+  .wt { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 11px 16px; }
+  .wt + .wt { border-top: 1px solid var(--line); }
+  .wt .k { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .wt .since { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; }
+  .linkrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-radius: 12px; border: 1px dashed var(--line); color: var(--ink-2); margin-top: 20px; flex-wrap: wrap; }
+  .linkrow a { font-weight: 600; }
+
   /* Toasts */
   #toasts { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; z-index: 20; max-width: min(420px, calc(100vw - 36px)); }
   .toast { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: 10px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); font-size: 13.5px; display: flex; gap: 10px; align-items: start; }
@@ -429,9 +458,89 @@
     $("nextText").textContent = [`plan   ${lines.join(", ")}`, ...j.explain.map((e) => `       ${e}`), "", ...j.prs.map((p) => `PR #${p.pr} → ${p.issue == null ? "?" : `#${p.issue}`}  status ${p.status}  checks ${p.checks}  labels [${p.labels.join(",")}]   ${p.reason === "eligible to merge" ? p.reason : `not eligible: ${p.reason}`}`)].join("\n");
   };
 
+  // ---- Needs you: grouped by the action the owner takes ----
+  const waitDays = (iso) => (iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86_400_000)) : null);
+  const subjectLink = (subject) => { const m = /^(PR |epic )?#(\d+)$/.exec(subject); return m ? link(m[1] === "PR " ? "pull" : "issues", m[2], subject) : esc(subject); };
+  const oldestFirst = (a, b) => (a.since ?? "9999").localeCompare(b.since ?? "9999");
+  // Label gates a human owns. The confirm text spells out the exact label change, because a
+  // mis-click here closes a phase or starts a $5 planning session.
+  const OWNER = {
+    sign_off:       { label: "Sign off",       cls: "signoff", ask: (n) => `Sign off #${n}?\n\nAdds signed-off, removes needs-owner, and closes the epic.` },
+    approve_plan:   { label: "Approve plan",   cls: "approve", ask: (n) => `Approve the plan on #${n}?\n\nAdds plan-approved. The foreman then creates the task issues and starts building.` },
+    start_planning: { label: "Start planning", cls: "plan",    ask: (n) => `Start planning #${n}?\n\nAdds agent-ready. A planner session costs roughly $5.` },
+    pause:          { label: "Pause",          cls: "",        ask: (n) => `Pause #${n}?\n\nAdds foreman:pause. No new claims under this phase on any Mac.` },
+    unpause:        { label: "Resume",         cls: "",        ask: (n) => `Resume #${n}?\n\nRemoves foreman:pause.` },
+  };
+  function ownerAct(epic, action) {
+    if (!window.confirm((OWNER[action]?.ask ?? ((n) => `${action} #${n}?`))(epic))) return;
+    post("/api/owner", { epic, action });
+  }
+  function unblock(issue) {
+    if (!window.confirm(`Unblock #${issue}?\n\nRemoves the blocked label, sets Status Ready, and comments on the issue. The foreman may claim it on the next tick — fix whatever blocked it first.`)) return;
+    post("/api/unblock", { issue });
+  }
+  const ageCell = (since) => {
+    const d = waitDays(since);
+    return d === null ? '<div class="age">–</div>' : `<div class="age${d > 30 ? " old" : ""}">${d}d<small>waiting</small></div>`;
+  };
+  const ownerButton = (epic, action) => `<button type="button" class="${OWNER[action].cls}" data-owner="${esc(action)}" data-epic="${esc(epic)}">${OWNER[action].label}</button>`;
+  function group(title, dot, note, rows) {
+    if (!rows.length) return "";
+    return `<div class="grp"><div class="gh">${dot ? `<span class="dot" style="background:${dot}"></span>` : ""}${esc(title)} <span class="c">${rows.length}</span><small>${note}</small></div><div class="card list">${rows.join("")}</div></div>`;
+  }
+  function renderNeedsYou(r) {
+    const owner = r.board?.owner ?? [];
+    const needs = (r.board?.needsYou ?? []).filter((n) => n.reviewOf === null).sort(oldestFirst);
+    const phases = new Map((r.board?.phases ?? []).map((p) => [p.epic, p]));
+    const waits = r.board?.waiting ?? [];
+    const by = (action) => owner.filter((o) => o.actions.includes(action)).sort(oldestFirst);
+    const row = (age, title, sub, acts) => `<div class="it">${age}<div><div class="t">${title}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div><div class="acts">${acts}</div></div>`;
+    const approve = by("approve_plan").map((o) => row(ageCell(o.since), `<span class="num">${link("issues", o.epic)}</span>${esc(o.title)}`, `plan drafted · ${link("issues", o.epic, "read the plan")}`, ownerButton(o.epic, "approve_plan")));
+    const signOff = by("sign_off").map((o) => {
+      const p = phases.get(o.epic);
+      const progress = p ? `<span class="mini"><span class="b"><i style="width:${p.tasksTotal ? Math.round((p.tasksDone / p.tasksTotal) * 100) : 0}%"></i></span>${p.tasksDone}/${p.tasksTotal} tasks</span><span>${usd(p.spendUsd)}</span>` : "";
+      return row(ageCell(o.since), `<span class="num">${link("issues", o.epic)}</span>${esc(o.title)}`, `${progress}${o.review ? `<span>review ${link("issues", o.review)}</span>` : ""}`, ownerButton(o.epic, "sign_off"));
+    });
+    const plan = by("start_planning").map((o) => row('<div class="age">–</div>', `<span class="num">${link("issues", o.epic)}</span>${esc(o.title)}`, "", ownerButton(o.epic, "start_planning")));
+    const tags = (n) => n.labels.map((l) => `<span class="tag${l === "blocked" ? " bad" : ""}">${esc(l)}</span>`).join("");
+    const blocked = needs.filter((n) => n.labels.includes("blocked")).map((n) => {
+      const why = waits.find((w) => w.subject === `#${n.issue}` && w.detail.startsWith(`#${n.issue} blocked`))?.detail.replace(`#${n.issue} blocked`, "").replace(/^:\s*/, "");
+      return row(ageCell(n.since), `<span class="num">${link("issues", n.issue)}</span>${esc(n.title)}`, `${tags(n)}${why ? `<span>${esc(why)}</span>` : ""}`, `<button type="button" data-unblock="${esc(n.issue)}">Unblock</button>`);
+    });
+    const answer = needs.filter((n) => !n.labels.includes("blocked")).map((n) => row(ageCell(n.since), `<span class="num">${link("issues", n.issue)}</span>${esc(n.title)}`, `${tags(n)}${n.phaseReview ? "<span>epic already closed</span>" : ""}`, repo ? `<a class="tag" href="${gh("issues", n.issue)}" target="_blank" rel="noopener">Open ↗</a>` : ""));
+    const counted = approve.length + signOff.length + blocked.length + answer.length;
+    $("needsMeta").textContent = counted ? `${counted} waiting on you · oldest first in each group` : "";
+    const html = [
+      group("Approve a plan", "var(--primary)", "the planner drafted these; building starts after approval", approve),
+      group("Sign off a phase", "var(--signoff)", "phase review is done; signing off closes the epic", signOff),
+      group("Ready to plan", "var(--warn)", "not counted in the badge · a planner session costs about $5", plan),
+      group("Unblock", "", "fix the cause first; Unblock moves it back to Ready", blocked),
+      group("Answer or close", "", "decisions and owner tasks; answer on GitHub", answer),
+    ].join("");
+    const el = $("needsBody");
+    el.innerHTML = html || '<div class="card empty">nothing is waiting on you</div>';
+    for (const b of el.querySelectorAll("button[data-owner]")) b.onclick = () => ownerAct(Number(b.dataset.epic), b.dataset.owner);
+    for (const b of el.querySelectorAll("button[data-unblock]")) b.onclick = () => unblock(Number(b.dataset.unblock));
+  }
+
+  // ---- Waiting on: what the foreman resolves by itself, grouped by kind ----
+  const WAIT_GROUPS = [["ci", "CI"], ["review_cycle", "Review cycle"], ["dependency", "Dependencies"], ["other_host", "Another Mac"], ["phase_gate", "Phase gate"], ["human", "Fix on GitHub"]];
+  function renderWaiting(r) {
+    const rows = r.attention?.waitRows ?? [];
+    const issues = new Map((r.board?.issues ?? []).map((i) => [i.issue, i]));
+    const banners = bannerRows(r);
+    const clear = `<div class="banner ok"><span>Nothing stops new claims: no STOP file, preflight ok, ${esc(r.today?.count ?? 0)} of ${esc(r.today?.cap ?? 0)} sessions today</span></div>`;
+    const depState = (w) => {
+      const deps = [...w.detail.replace(/^.*waits on /, "").matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+      return deps.map((d) => `#${d} ${esc(issues.get(d)?.status ?? (issues.has(d) ? "off board" : "not open"))}`).join(" · ");
+    };
+    const row = (w) => `<div class="wt"><span class="k"></span><div><div class="t">${w.detail.startsWith(w.subject) ? `${subjectLink(w.subject)}${esc(w.detail.slice(w.subject.length))}` : esc(w.detail)}</div>${w.kind === "dependency" ? `<div class="s">${depState(w)}</div>` : ""}</div><span class="since">${w.since ? `since ${t(w.since)}` : ""}</span></div>`;
+    const groups = WAIT_GROUPS.map(([kind, title]) => group(title, "", "", rows.filter((w) => w.kind === kind).map(row))).join("");
+    const needs = r.attention?.needsYou ?? 0;
+    $("waitBody").innerHTML = `<div class="banners">${banners.length ? bannerHtml(banners) : clear}</div>${groups || '<div class="card empty">nothing else is pending</div>'}<div class="linkrow"><span>Items waiting on you are on the Needs you tab, not repeated here.</span><a href="#needs-you">Needs you · ${needs} →</a></div>`;
+  }
+
   // ---- tabs filled in by later sections ----
-  function renderNeedsYou(r) {}
-  function renderWaiting(r) {}
   function renderBoard(r) {}
   function loadSessions() {}
 

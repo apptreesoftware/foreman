@@ -667,4 +667,34 @@ describe("web.html", () => {
     for (const id of ["tick", "recent", "phases", "owner"])
       expect(html).not.toContain(`id="${id}"`);
   });
+  it("groups Needs you by the action the owner takes, in order", () => {
+    const at = [
+      "Approve a plan",
+      "Sign off a phase",
+      "Ready to plan",
+      "Unblock",
+      "Answer or close",
+    ].map((g) => html.indexOf(`"${g}"`));
+    expect(at.every((i) => i > 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(html).toContain("epic already closed");
+    expect(html).toContain("#287A3A");
+    expect(html).toContain("button.approve");
+    expect(html).toContain("button.signoff");
+    expect(html).toContain("button.plan");
+  });
+  it("keeps every owner gate's confirm text and endpoint", () => {
+    expect(html).toContain(`Sign off #$${"{n}"}?`);
+    expect(html).toContain("Approve the plan on #");
+    expect(html).toContain(`Start planning #$${"{n}"}?`);
+    expect(html).toContain("window.confirm(`Unblock #");
+    expect(html).toContain('post("/api/owner"');
+    expect(html).toContain('post("/api/unblock"');
+  });
+  it("lists Waiting on rows by kind and points human waits at Needs you", () => {
+    expect(html).toContain("Nothing stops new claims");
+    expect(html).toContain("Fix on GitHub");
+    expect(html).toContain("r.attention?.waitRows");
+    expect(html).toContain('href="#needs-you"');
+  });
 });
