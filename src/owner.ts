@@ -71,6 +71,12 @@ export function applyOwnerActionToBoard(board: Board, epic: number, action: Owne
       action === "sign_off" || action === "approve_plan"
         ? board.waiting.filter((w) => w.subject !== subject)
         : board.waiting,
+    // A signed-off epic's row is gone, so its paired review needs its own row again until the
+    // next tick; otherwise a `needs-owner` issue would sit on no tab at all.
+    needsYou:
+      action === "sign_off"
+        ? board.needsYou.map((n) => (n.reviewOf === epic ? { ...n, reviewOf: null } : n))
+        : board.needsYou,
     // The Board tab's epic header reads `paused`, so it flips with the label too.
     groups:
       action === "pause" || action === "unpause"

@@ -174,6 +174,19 @@ describe("applyOwnerActionToBoard", () => {
     const resumed = applyOwnerActionToBoard(paused, 26, "unpause");
     expect(resumed.owner.find((o) => o.epic === 26)?.actions).toContain("pause");
   });
+  it("unpairs the epic's review on sign-off, so it stays on Needs you until the next tick", () => {
+    const review = {
+      issue: 300,
+      title: "Phase 0.5 review: Setup",
+      labels: ["needs-owner"],
+      since: "2026-09-01T00:00:00Z",
+      itemId: null,
+      reviewOf: 124,
+      phaseReview: true,
+    };
+    const b = applyOwnerActionToBoard({ ...board, needsYou: [review] }, 124, "sign_off");
+    expect(b.needsYou[0]?.reviewOf).toBeNull();
+  });
   it("flips the Board group's paused flag, so its Pause/Resume button follows the click", () => {
     const group = {
       key: "epic:26",
