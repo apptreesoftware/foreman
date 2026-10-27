@@ -112,16 +112,11 @@ describe("web server", () => {
       refreshes += 1;
       return "project re-read; tick requested";
     },
-    phaseTasks: () => [
-      { issue: 101, title: "One", status: "Ready", closed: false, model: null, effort: null },
-      {
-        issue: 102,
-        title: "Two",
-        status: "In Progress",
-        closed: false,
-        model: "sonnet",
-        effort: null,
-      },
+    pickerTasks: () => [
+      { issue: 101, model: null, effort: null },
+      { issue: 102, model: "sonnet", effort: null },
+      // On the Board tab but not on the project board: still a picker target.
+      { issue: 103, model: null, effort: null },
     ],
     setTaskModel: async (issue, model) => {
       taskModels.push(`${issue} ${model}`);
@@ -264,15 +259,18 @@ describe("web server", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ ok: true, message: "#101 runs as sonnet" });
     expect((await post({ issue: 102, model: "default" })).status).toBe(200);
+    expect((await post({ issue: 103, model: "haiku" })).status).toBe(200);
     // A label has to exist in the repo, so unlike /api/model only the one-click names pass.
     expect((await post({ issue: 101, model: "claude-haiku-4-5-20251001" })).status).toBe(400);
     expect((await post({ issue: 101, model: "--dangerously-skip-permissions" })).status).toBe(400);
     // Not a task of any phase on the board: refused before it reaches GitHub.
-    expect((await post({ issue: 999, model: "sonnet" })).status).toBe(400);
+    const absent = await post({ issue: 999, model: "sonnet" });
+    expect(absent.status).toBe(400);
+    expect(await absent.json()).toEqual({ ok: false, error: "#999 is not a task on the board" });
     expect((await post({ issue: "101", model: "sonnet" })).status).toBe(400);
     expect((await post({ model: "sonnet" })).status).toBe(400);
     expect((await fetch(`${base}/api/task-model`)).status).toBe(405);
-    expect(taskModels).toEqual(["101 sonnet", "102 default"]);
+    expect(taskModels).toEqual(["101 sonnet", "102 default", "103 haiku"]);
   });
   it("sets a task's effort when the board lists the task, and only Claude Code's levels", async () => {
     const post = (body: unknown) =>
@@ -281,6 +279,7 @@ describe("web server", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ ok: true, message: "#101 runs at xhigh effort" });
     expect((await post({ issue: 102, effort: "default" })).status).toBe(200);
+    expect((await post({ issue: 103, effort: "low" })).status).toBe(200);
     // The effort reaches `claude` as argv: anything but a level is refused.
     expect((await post({ issue: 101, effort: "ultra" })).status).toBe(400);
     expect((await post({ issue: 101, effort: "--dangerously-skip-permissions" })).status).toBe(400);
@@ -288,7 +287,7 @@ describe("web server", () => {
     expect((await post({ issue: 999, effort: "low" })).status).toBe(400);
     expect((await post({ effort: "low" })).status).toBe(400);
     expect((await fetch(`${base}/api/task-effort`)).status).toBe(405);
-    expect(taskEfforts).toEqual(["101 xhigh", "102 default"]);
+    expect(taskEfforts).toEqual(["101 xhigh", "102 default", "103 low"]);
   });
   it("unblocks an issue the board lists as blocked", async () => {
     const r = await fetch(`${base}/api/unblock`, {
@@ -336,7 +335,7 @@ describe("web server with webAuth", () => {
     setModel: async () => "",
     setCap: async () => "",
     refresh: async () => "",
-    phaseTasks: () => [],
+    pickerTasks: () => [],
     setTaskModel: async () => "",
     modelChoices: () => [],
     setTaskEffort: async () => "",
@@ -481,7 +480,7 @@ describe("web server with webHosts", () => {
     setModel: async () => "",
     setCap: async () => "",
     refresh: async () => "",
-    phaseTasks: () => [],
+    pickerTasks: () => [],
     setTaskModel: async () => "",
     modelChoices: () => [],
     setTaskEffort: async () => "",

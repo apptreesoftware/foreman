@@ -19,7 +19,7 @@ import { readSessions } from "../sessions.ts";
 import { initialState, MODEL_DEFAULT, readState, StateStore } from "../state-file.ts";
 import { describeStatus } from "../status.ts";
 import { applyTaskEffort, applyTaskEffortToBoard } from "../task-effort.ts";
-import { applyTaskModel, applyTaskModelToBoard, phaseTasks } from "../task-model.ts";
+import { applyTaskModel, applyTaskModelToBoard, pickerTasks } from "../task-model.ts";
 import { startWebServer } from "../web.ts";
 import { launchdLabel } from "./launchd.ts";
 
@@ -235,12 +235,12 @@ export async function runDaemon(
       return "project re-read; tick requested";
     },
     ownerItems: () => store.get().board?.owner ?? [],
-    phaseTasks: () => phaseTasks(store.get().board),
+    pickerTasks: () => pickerTasks(store.get().board),
     setTaskModel: async (issue, model) => {
       // The stored task row says which label is on the issue now, so the swap costs at most two
       // label edits and no GitHub read. Read per dispatch by runRole's modelFor(), so it applies
       // to the issue's next session and never to one already running.
-      const current = phaseTasks(store.get().board).find((t) => t.issue === issue)?.model ?? null;
+      const current = pickerTasks(store.get().board).find((t) => t.issue === issue)?.model ?? null;
       const message = await applyTaskModel(gh, { issue, current }, model);
       log("info", "task model set", { issue, model, was: current });
       const board = store.get().board;
@@ -251,7 +251,7 @@ export async function runDaemon(
     setTaskEffort: async (issue, effort) => {
       // Same shape as setTaskModel: the stored row names the label on the issue now, and
       // runRole's effortFor() reads the label per dispatch, so a running session keeps its effort.
-      const current = phaseTasks(store.get().board).find((t) => t.issue === issue)?.effort ?? null;
+      const current = pickerTasks(store.get().board).find((t) => t.issue === issue)?.effort ?? null;
       const message = await applyTaskEffort(gh, { issue, current }, effort);
       log("info", "task effort set", { issue, effort, was: current });
       const board = store.get().board;

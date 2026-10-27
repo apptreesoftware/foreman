@@ -112,6 +112,24 @@ describe("applyTaskEffortToBoard", () => {
     expect(b.pipeline[0]?.effort).toBe("max");
     expect(b.phases[0]?.tasks.find((t) => t.issue === 101)?.effort).toBeNull();
   });
+  it("updates board.issues too", () => {
+    const issue = {
+      issue: 201,
+      title: "Off-board follow-up",
+      status: null,
+      labels: [],
+      group: "none",
+      pr: null,
+      dependsOn: [],
+      openDependsOn: [],
+      blocked: false,
+      model: null,
+      effort: null,
+    };
+    const b = applyTaskEffortToBoard(board({ issues: [issue] }), 201, "xhigh");
+    expect(b.issues[0]?.effort).toBe("xhigh");
+    expect(applyTaskEffortToBoard(b, 201, "default").issues[0]?.effort).toBeNull();
+  });
   it("high clears the label too, since no label means high", () => {
     const b = applyTaskEffortToBoard(board(), 102, "high");
     expect(b.phases[0]?.tasks.find((t) => t.issue === 102)?.effort).toBeNull();

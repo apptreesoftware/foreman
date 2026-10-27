@@ -18,11 +18,11 @@ import {
   type OwnerAction,
   OwnerActionSchema,
   type OwnerItem,
-  type PhaseTask,
   type TaskModelChoice,
   TaskModelChoiceSchema,
 } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
+import type { PickerTask } from "./task-model.ts";
 
 export type WebCommand = "stop" | "abort" | "go";
 
@@ -56,13 +56,13 @@ export interface WebDeps {
   setCap: (maxSessionsPerDay: number | null) => Promise<string>;
   /** Drops the cached project board and wakes the loop, so the page shows the board as it is now. */
   refresh: () => Promise<string>;
-  /** The open tasks of every phase on the board, as of the last tick; the task-model allowlist. */
-  phaseTasks: () => PhaseTask[];
-  /** Swaps the issue's `model:<name>` label; only called for a task `phaseTasks` lists. */
+  /** Every open issue the Board tab lists, as of the last tick; the model/effort allowlist. */
+  pickerTasks: () => PickerTask[];
+  /** Swaps the issue's `model:<name>` label; only called for an issue `pickerTasks` lists. */
   setTaskModel: (issue: number, model: TaskModelChoice) => Promise<string>;
   /** The repo's configured `models`; the task-model allowlist beyond `MODEL_DEFAULT`. */
   modelChoices: () => string[];
-  /** Swaps the issue's `effort:<level>` label; only called for a task `phaseTasks` lists. */
+  /** Swaps the issue's `effort:<level>` label; only called for an issue `pickerTasks` lists. */
   setTaskEffort: (issue: number, effort: EffortChoice) => Promise<string>;
   /** Page HTML; defaults to src/web.html. Injectable for tests. */
   html?: string;
@@ -227,7 +227,7 @@ export function createWebServer(d: WebDeps): http.Server {
         if (!parsed.success) return json(res, 400, { ok: false, error: "bad request" });
         const { issue, model } = parsed.data;
         // Same allowlist pattern as /api/owner: only a task the board lists under a phase.
-        if (!d.phaseTasks().some((t) => t.issue === issue))
+        if (!d.pickerTasks().some((t) => t.issue === issue))
           return json(res, 400, { ok: false, error: `#${issue} is not a task on the board` });
         // TaskModelChoiceSchema now accepts any well-formed name; the repo's configured models
         // are the actual allowlist, checked here so a typo'd model does not reach a label.
@@ -241,7 +241,7 @@ export function createWebServer(d: WebDeps): http.Server {
         // An effort reaches `claude` as argv, so only Claude Code's own levels get past here.
         if (!parsed.success) return json(res, 400, { ok: false, error: "bad request" });
         const { issue, effort } = parsed.data;
-        if (!d.phaseTasks().some((t) => t.issue === issue))
+        if (!d.pickerTasks().some((t) => t.issue === issue))
           return json(res, 400, { ok: false, error: `#${issue} is not a task on the board` });
         return json(res, 200, { ok: true, message: await d.setTaskEffort(issue, effort) });
       }

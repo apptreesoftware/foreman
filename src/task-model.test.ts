@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Board, PhaseProgress, PipelineRow } from "./state-file.ts";
-import { applyTaskModel, applyTaskModelToBoard, phaseTasks } from "./task-model.ts";
+import type { Board, BoardIssue, PhaseProgress, PipelineRow } from "./state-file.ts";
+import { applyTaskModel, applyTaskModelToBoard, phaseTasks, pickerTasks } from "./task-model.ts";
 
 function fakeGh() {
   const calls: string[] = [];
@@ -71,6 +71,40 @@ const board = (over: Partial<Board> = {}): Board => ({
   ...over,
 });
 
+const boardIssue = (over: Partial<BoardIssue> = {}): BoardIssue => ({
+  issue: 201,
+  title: "Off-board follow-up",
+  status: null,
+  labels: [],
+  group: "none",
+  pr: null,
+  dependsOn: [],
+  openDependsOn: [],
+  blocked: false,
+  model: null,
+  effort: null,
+  ...over,
+});
+
+describe("pickerTasks", () => {
+  it("lists every board issue, off-board included", () => {
+    const b = board({
+      issues: [boardIssue(), boardIssue({ issue: 101, status: "Ready", model: "haiku" })],
+    });
+    expect(pickerTasks(b)).toEqual([
+      { issue: 201, model: null, effort: null },
+      { issue: 101, model: "haiku", effort: null },
+    ]);
+  });
+  it("falls back to open phase tasks when issues is empty", () => {
+    expect(pickerTasks(board())).toEqual([
+      { issue: 101, model: null, effort: null },
+      { issue: 102, model: "sonnet", effort: null },
+    ]);
+    expect(pickerTasks(null)).toEqual([]);
+  });
+});
+
 describe("phaseTasks", () => {
   it("flattens the open tasks of every phase on the board; a closed task takes no label", () => {
     expect(phaseTasks(board()).map((t) => t.issue)).toEqual([101, 102]);
@@ -111,6 +145,11 @@ describe("applyTaskModelToBoard", () => {
     expect(b.pipeline[0]?.model).toBe("haiku");
     // Other rows are untouched.
     expect(b.phases[0]?.tasks.find((t) => t.issue === 101)?.model).toBeNull();
+  });
+  it("updates board.issues too", () => {
+    const b = applyTaskModelToBoard(board({ issues: [boardIssue()] }), 201, "haiku");
+    expect(b.issues[0]?.model).toBe("haiku");
+    expect(applyTaskModelToBoard(b, 201, "default").issues[0]?.model).toBeNull();
   });
   it("`default` clears the override", () => {
     const b = applyTaskModelToBoard(board(), 102, "default");

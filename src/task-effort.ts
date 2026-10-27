@@ -39,5 +39,6 @@ export function applyTaskEffortToBoard(board: Board, issue: number, effort: Effo
       tasks: p.tasks.map((t) => (t.issue === issue ? { ...t, effort: next } : t)),
     })),
     pipeline: board.pipeline.map((r) => (r.issue === issue ? { ...r, effort: next } : r)),
+    issues: board.issues.map((i) => (i.issue === issue ? { ...i, effort: next } : i)),
   };
 }
