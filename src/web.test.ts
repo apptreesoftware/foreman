@@ -37,6 +37,7 @@ const report: StatusReport = {
   lastPlan: ["plan#10"],
   board: null,
   budget: null,
+  attention: { needsYou: 0, waiting: 0, banners: [], waitRows: [] },
   recent: [],
   today: { count: 0, cap: 20, spendUsd: 0 },
 };

@@ -355,8 +355,13 @@ describe("live activity and board", () => {
     };
     const r = describeStatus(input({ state: { ...state(), board }, stopPresent: true }));
     expect(r.board?.waiting.map((w) => w.kind)).toEqual(["stop", "ci"]);
+    // The page's banners and Waiting on rows come from the same merged board.
+    expect(r.attention.banners.map((w) => w.kind)).toEqual(["stop"]);
+    expect(r.attention.waitRows.map((w) => w.kind)).toEqual(["ci"]);
+    expect(r.attention.waiting).toBe(1);
     const noBoard = describeStatus(input({ stopPresent: true }));
     expect(noBoard.board?.waiting.map((w) => w.kind)).toEqual(["stop"]);
+    expect(describeStatus(input({ state: null })).attention.needsYou).toBe(0);
     const capped = describeStatus(
       input({
         state: {

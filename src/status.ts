@@ -1,3 +1,4 @@
+import { type Attention, describeAttention } from "./attention.ts";
 import { overlayCurrent } from "./board.ts";
 import { formatBudget } from "./budget.ts";
 import { type SessionLogEntry, todayStats } from "./sessions.ts";
@@ -86,6 +87,8 @@ export interface StatusReport {
   lastPlan: string[] | null;
   board: Board | null;
   budget: BudgetReport | null;
+  /** Badge counts, banners and the Waiting on rows, from the merged board. */
+  attention: Attention;
   recent: SessionLogEntry[];
   today: { count: number; cap: number; spendUsd: number };
   /** The daily session cap the next tick will enforce, and the page's one-click choices. */
@@ -222,6 +225,7 @@ export function describeStatus(i: StatusInput): StatusReport {
     lastPlan: s?.lastPlan ?? null,
     board,
     budget: s?.budget ?? null,
+    attention: describeAttention(board),
     recent,
     today: { count: today.count, cap, spendUsd: today.spendUsd },
   };
