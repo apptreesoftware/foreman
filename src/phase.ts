@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { openClaim, planApplied } from "./ledger.ts";
-import type { Action, Epic, Issue, Snapshot } from "./types.ts";
+import { openClaim, planApplied, planPrStuckReported } from "./ledger.ts";
+import type { Action, Epic, Issue, PullRequest, Snapshot } from "./types.ts";
 
 export const PlanIssuesSchema = z.object({
   epic: z.number().int(),
@@ -112,20 +112,84 @@ export function nextUnplannedEpic(epics: Epic[]): Epic | null {
   );
 }
 
+/** An epic the owner approved whose plan has not been turned into task issues yet. */
+export function planUnapplied(e: Epic, issues: Issue[]): boolean {
+  const ei = epicIssue(e, issues);
+  return (
+    e.state === "OPEN" && e.labels.includes("plan-approved") && !!ei && !planApplied(ei.comments)
+  );
+}
+
+/**
+ * The open PR the planner opened for this epic, by the title `planner.md` prescribes:
+ * `docs(plan): phase NN plan (#<epic>)`. The newest wins when a re-plan left two open.
+ */
+export function planPR(s: Snapshot, epic: number): PullRequest | null {
+  return (
+    s.prs
+      .filter((p) => p.title.startsWith("docs(plan):") && p.title.includes(`(#${epic})`))
+      .sort((a, b) => b.number - a.number)[0] ?? null
+  );
+}
+
+export type PlanPrState =
+  | { state: "ready" }
+  | { state: "pending" }
+  | { state: "stuck"; reason: string };
+
+/**
+ * Whether an approved plan's PR can be merged now. The owner's approval is the review, so only
+ * GitHub's own verdicts gate it: green or absent checks merge, running checks wait a tick, and red
+ * checks or a conflict need the owner.
+ */
+export function planPrState(pr: PullRequest): PlanPrState {
+  if (pr.mergeable === "CONFLICTING") return { state: "stuck", reason: "conflicts with main" };
+  if (pr.checks === "failure") return { state: "stuck", reason: "checks failed" };
+  if (pr.checks === "pending") return { state: "pending" };
+  return { state: "ready" };
+}
+
+/**
+ * Approved plans: merge the plan PR if one is open, then create the tasks. These cost no session,
+ * so `plan()` runs them ahead of the pick — an approved plan once waited behind every review and
+ * validation that could be claimed, and the owner's approval did nothing visible for an hour.
+ */
+export function applyPlanActions(s: Snapshot): Action[] {
+  const out: Action[] = [];
+  for (const e of [...s.epics].sort((a, b) => a.phase - b.phase)) {
+    const ei = epicIssue(e, s.issues);
+    if (!ei || openClaim(ei.comments) || !planUnapplied(e, s.issues)) continue;
+    const p = planPR(s, e.number);
+    if (!p) {
+      // Merged already, by hand or on an earlier tick; apply_plan reads the file from origin.
+      out.push({ type: "apply_plan", epic: e.number });
+      continue;
+    }
+    const st = planPrState(p);
+    if (st.state === "ready")
+      out.push(
+        { type: "merge_plan", epic: e.number, pr: p.number },
+        { type: "apply_plan", epic: e.number },
+      );
+    else if (st.state === "stuck" && !planPrStuckReported(ei.comments, p.number, p.headSha))
+      out.push({
+        type: "plan_pr_stuck",
+        epic: e.number,
+        pr: p.number,
+        sha: p.headSha,
+        reason: st.reason,
+      });
+  }
+  return out;
+}
+
 export function phaseActions(s: Snapshot): Action[] {
   const out: Action[] = [];
   for (const e of [...s.epics].sort((a, b) => a.phase - b.phase)) {
     const ei = epicIssue(e, s.issues);
     if (ei && openClaim(ei.comments)) continue;
-    if (
-      e.state === "OPEN" &&
-      e.labels.includes("plan-approved") &&
-      ei &&
-      !planApplied(ei.comments)
-    ) {
-      out.push({ type: "apply_plan", epic: e.number });
-      continue;
-    }
+    // applyPlanActions owns an approved epic until its plan is applied.
+    if (planUnapplied(e, s.issues)) continue;
     if (
       e.state === "OPEN" &&
       e.status !== "In Review" &&

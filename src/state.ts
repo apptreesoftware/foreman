@@ -1,7 +1,7 @@
 import { ciActions } from "./ci.ts";
 import { reclaimActions, resumeAction } from "./claim.ts";
 import { blockActions, mergeActions, skipValidatorActions } from "./merge.ts";
-import { phaseActions } from "./phase.ts";
+import { applyPlanActions, phaseActions } from "./phase.ts";
 import { type Kind, pick } from "./pick.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { Action, Role, Snapshot } from "./types.ts";
@@ -22,6 +22,9 @@ export function plan(s: Snapshot, repo: RepoConfig = defaultRepoConfig()): Actio
     ...skipValidatorActions(s, repo),
     ...reclaimActions(s, repo.limits.staleHours),
     ...blockActions(s, repo),
+    // Ahead of the pick: merging and applying an approved plan starts no session, and the claim
+    // after it would otherwise end the tick for the length of a review or a build.
+    ...applyPlanActions(s),
   ];
   const c = pick(s, repo);
   if (c)

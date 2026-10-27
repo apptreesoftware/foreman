@@ -572,7 +572,7 @@
   // mis-click here closes a phase or starts a $5 planning session.
   const OWNER = {
     sign_off:       { label: "Sign off",       cls: "signoff", ask: (n) => `Sign off #${n}?\n\nAdds signed-off, removes needs-owner, and closes the epic.` },
-    approve_plan:   { label: "Approve plan",   cls: "approve", ask: (n) => `Approve the plan on #${n}?\n\nAdds plan-approved. The foreman then creates the task issues and starts building.` },
+    approve_plan:   { label: "Approve plan",   cls: "approve", ask: (n) => `Approve the plan on #${n}?\n\nAdds plan-approved. The foreman then merges the plan PR, creates the task issues and starts building.` },
     start_planning: { label: "Start planning", cls: "plan",    ask: (n) => `Start planning #${n}?\n\nAdds agent-ready. A planner session costs roughly $5.` },
     pause:          { label: "Pause",          cls: "",        ask: (n) => `Pause #${n}?\n\nAdds foreman:pause. No new claims under this phase on any Mac.` },
     unpause:        { label: "Resume",         cls: "",        ask: (n) => `Resume #${n}?\n\nRemoves foreman:pause.` },
@@ -602,6 +602,9 @@
     const by = (action) => owner.filter((o) => o.actions.includes(action)).sort(oldestFirst);
     const row = (age, title, sub, acts) => `<div class="it">${age}<div><div class="t">${title}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div><div class="acts">${acts}</div></div>`;
     const approve = by("approve_plan").map((o) => row(ageCell(o.since), `<span class="num">${link("issues", o.epic)}</span>${esc(o.title)}`, `plan drafted · ${link("issues", o.epic, "read the plan")}`, ownerButton(o.epic, "approve_plan")));
+    // An approved plan whose PR cannot merge (red checks, a conflict) has no button: the fix is on
+    // the PR, so the row links there.
+    const stuck = owner.filter((o) => o.planPr != null).sort(oldestFirst).map((o) => row(ageCell(o.since), `<span class="num">${link("issues", o.epic)}</span>${esc(o.title)}`, `<span>${esc(o.detail)}</span>`, repo ? `<a class="tag" href="${gh("pull", o.planPr)}" target="_blank" rel="noopener">Open PR ↗</a>` : ""));
     const signOff = by("sign_off").map((o) => {
       const p = phases.get(o.epic);
       const progress = p ? `<span class="mini"><span class="b"><i style="width:${p.tasksTotal ? Math.round((p.tasksDone / p.tasksTotal) * 100) : 0}%"></i></span>${p.tasksDone}/${p.tasksTotal} tasks</span><span>${usd(p.spendUsd)}</span>` : "";
@@ -614,10 +617,11 @@
       return row(ageCell(n.since), `<span class="num">${link("issues", n.issue)}</span>${esc(n.title)}`, `${tags(n)}${why ? `<span>${esc(why)}</span>` : ""}`, `<button type="button" data-unblock="${esc(n.issue)}">Unblock</button>`);
     });
     const answer = needs.filter((n) => !n.labels.includes("blocked")).map((n) => row(ageCell(n.since), `<span class="num">${link("issues", n.issue)}</span>${esc(n.title)}`, `${tags(n)}${n.phaseReview ? "<span>epic already closed</span>" : ""}`, repo ? `<a class="tag" href="${gh("issues", n.issue)}" target="_blank" rel="noopener">Open ↗</a>` : ""));
-    const counted = approve.length + signOff.length + blocked.length + answer.length;
+    const counted = approve.length + stuck.length + signOff.length + blocked.length + answer.length;
     $("needsMeta").textContent = counted ? `${counted} waiting on you · oldest first in each group` : "";
     const html = [
       group("Approve a plan", "var(--primary)", "the planner drafted these; building starts after approval", approve),
+      group("Fix a plan PR", "var(--bad)", "approved, but the plan PR cannot merge; fix it or merge it by hand", stuck),
       group("Sign off a phase", "var(--signoff)", "phase review is done; signing off closes the epic", signOff),
       group("Ready to plan", "var(--warn)", "not counted in the badge · a planner session costs about $5", plan),
       group("Unblock", "", "fix the cause first; Unblock moves it back to Ready", blocked),

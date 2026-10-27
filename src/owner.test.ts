@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { comment, epic, issue, snapshot } from "../test/helpers.ts";
+import { comment, epic, issue, pr, snapshot } from "../test/helpers.ts";
+import { fmt } from "./ledger.ts";
 import { applyOwnerAction, applyOwnerActionToBoard, ownerItems } from "./owner.ts";
 
 const e = (over = {}) => epic({ number: 200, phase: 2, labels: ["epic", "phase:2"], ...over });
-const snap = (epics: ReturnType<typeof epic>[]) =>
+const applied = [comment(fmt.planApplied("mac-a"))];
+const snap = (epics: ReturnType<typeof epic>[], comments = applied) =>
   snapshot({
     epics,
     issues: epics.map((x) =>
-      issue({ number: x.number, title: `Phase ${x.phase}`, labels: x.labels }),
+      issue({ number: x.number, title: `Phase ${x.phase}`, labels: x.labels, comments }),
     ),
   });
 
@@ -19,6 +21,28 @@ describe("ownerItems", () => {
     expect(items).toHaveLength(1);
     expect(items[0]?.actions).toEqual(["sign_off", "pause"]);
     expect(items[0]?.detail).toContain("sign-off");
+  });
+  it("never offers sign-off on an approved plan that is not applied yet", () => {
+    // `needs-owner` stays on the epic until the plan is applied, so without this an approved plan
+    // still waiting on its PR offered Sign off, which closes the epic before it has any tasks.
+    const approved = e({ labels: ["epic", "phase:2", "plan-approved", "needs-owner"] });
+    const items = ownerItems(snap([approved], []));
+    expect(items[0]?.actions).toEqual(["pause"]);
+    expect(items[0]?.detail).toBe("plan approved; the tasks are created on the next tick");
+    expect(items[0]?.planPr).toBeNull();
+  });
+  it("names an approved plan's PR while its checks run, and asks the owner when it is stuck", () => {
+    const approved = e({ labels: ["epic", "phase:2", "plan-approved", "needs-owner"] });
+    const planPr = (over = {}) =>
+      pr({ number: 279, title: "docs(plan): phase 02 plan (#200)", issue: null, ...over });
+    const withPr = (p: ReturnType<typeof pr>) => ({ ...snap([approved], []), prs: [p] });
+    const pending = ownerItems(withPr(planPr({ checks: "pending" })))[0];
+    expect(pending?.detail).toBe("plan approved; plan PR #279 merges when its checks pass");
+    expect(pending?.planPr).toBeNull();
+    const red = ownerItems(withPr(planPr({ checks: "failure" })))[0];
+    expect(red?.detail).toBe("plan PR #279 cannot merge: checks failed");
+    expect(red?.planPr).toBe(279);
+    expect(red?.actions).toEqual(["pause"]);
   });
   it("offers plan approval on a drafted plan", () => {
     const items = ownerItems(snap([e({ labels: ["epic", "phase:2", "needs-owner"] })]));
@@ -46,7 +70,7 @@ describe("ownerItems", () => {
           title: "Phase 2: Things",
           labels: signOff.labels,
           updatedAt: "2026-09-01T00:00:00Z",
-          comments: [comment("Phase review: #250")],
+          comments: [...applied, comment("Phase review: #250")],
         }),
         issue({ number: 250, title: "Phase 2 review: Things", labels: ["phase:2", "needs-owner"] }),
       ],
@@ -140,6 +164,7 @@ describe("applyOwnerActionToBoard", () => {
         actions: ["sign_off" as const, "pause" as const],
         since: null,
         review: null,
+        planPr: null,
       },
       {
         epic: 26,
@@ -149,6 +174,7 @@ describe("applyOwnerActionToBoard", () => {
         actions: ["start_planning" as const, "pause" as const],
         since: null,
         review: null,
+        planPr: null,
       },
     ],
     needsYou: [],

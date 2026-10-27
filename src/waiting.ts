@@ -1,6 +1,6 @@
 import { parentEpicOf, parseDependsOn } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
-import { buildingEpic, planAwaitingOwner } from "./phase.ts";
+import { buildingEpic, planAwaitingOwner, planPR, planPrState, planUnapplied } from "./phase.ts";
 import { heldPhases, issuePhase } from "./pick.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import { WAIT_KINDS, type WaitItem } from "./state-file.ts";
@@ -76,6 +76,27 @@ export function describeWaiting(
   for (const e of [...s.epics].sort((a, b) => a.phase - b.phase)) {
     if (e.state !== "OPEN") continue;
     const ei = byNumber.get(e.number);
+    // An approved plan waits on its PR, not on the owner — unless that PR cannot merge. With no
+    // plan PR open, or a green one, the next tick applies it and nothing is waiting.
+    if (planUnapplied(e, s.issues)) {
+      const p = planPR(s, e.number);
+      const st = p ? planPrState(p) : null;
+      if (p && st?.state === "stuck")
+        out.push({
+          kind: "human",
+          subject: `epic #${e.number}`,
+          detail: `epic #${e.number} plan PR #${p.number} cannot merge: ${st.reason}`,
+          since: p.updatedAt,
+        });
+      else if (p && st?.state === "pending")
+        out.push({
+          kind: "ci",
+          subject: `epic #${e.number}`,
+          detail: `epic #${e.number} plan PR #${p.number} merges when its checks pass`,
+          since: p.updatedAt,
+        });
+      continue;
+    }
     // A drafted plan and a closed phase both park the epic on `needs-owner`; `plan-approved`
     // is what tells them apart, and the plan case also holds every other epic.
     if (e.labels.includes("needs-owner"))

@@ -28,14 +28,14 @@ const list = (ns: string[]) =>
  */
 export function describeAttention(board: Board | null): Attention {
   if (!board) return { needsYou: 0, waiting: 0, banners: [], waitRows: [] };
-  const gated = board.owner.filter((o) =>
-    o.actions.some((a) => a === "approve_plan" || a === "sign_off"),
+  const gated = board.owner.filter(
+    (o) => o.planPr !== null || o.actions.some((a) => a === "approve_plan" || a === "sign_off"),
   );
   const needsYou = gated.length + board.needsYou.filter((n) => n.reviewOf === null).length;
   // Every issue or epic that has a row of its own on Needs you, Ready to plan included.
   const onNeedsYou = new Set([
     ...board.owner
-      .filter((o) => o.actions.some((a) => a !== "pause" && a !== "unpause"))
+      .filter((o) => o.planPr !== null || o.actions.some((a) => a !== "pause" && a !== "unpause"))
       .map((o) => o.epic),
     ...board.needsYou.map((n) => n.issue),
   ]);

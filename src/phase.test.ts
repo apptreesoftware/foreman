@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { comment, epic, hoursAgo, issue, snapshot } from "../test/helpers.ts";
+import { comment, epic, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
 import { fmt } from "./ledger.ts";
 import {
+  applyPlanActions,
   nextUnplannedEpic,
   PlanIssuesSchema,
   parseDirectionCritical,
@@ -104,7 +105,7 @@ describe("phaseActions", () => {
     expect(nextUnplannedEpic([next])).toBeNull();
     expect(phaseActions(snapshot({ epics: [next], issues: [] }))).toEqual([]);
   });
-  it("applies an approved plan once", () => {
+  it("leaves an approved plan to applyPlanActions", () => {
     const approved = epic({
       number: 200,
       phase: 2,
@@ -112,7 +113,7 @@ describe("phaseActions", () => {
       status: "Backlog",
     });
     expect(
-      phaseActions(
+      applyPlanActions(
         snapshot({
           epics: [approved],
           issues: [issue({ number: 200, labels: ["epic", "phase:2", "plan-approved"] })],
@@ -124,7 +125,91 @@ describe("phaseActions", () => {
       labels: ["epic", "phase:2", "plan-approved"],
       comments: [comment(fmt.planApplied("mac-a"))],
     });
-    expect(phaseActions(snapshot({ epics: [approved], issues: [applied] }))).toEqual([]);
+    expect(applyPlanActions(snapshot({ epics: [approved], issues: [applied] }))).toEqual([]);
+    // phaseActions never offers anything else for an approved epic still waiting on its plan.
+    expect(
+      phaseActions(
+        snapshot({
+          epics: [approved],
+          issues: [issue({ number: 200, labels: ["epic", "phase:2", "plan-approved"] })],
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("applyPlanActions", () => {
+  const approved = epic({
+    number: 200,
+    phase: 9,
+    labels: ["epic", "phase:9", "plan-approved", "needs-owner"],
+    status: "In Review",
+  });
+  const epicIssue = issue({ number: 200, labels: ["epic", "phase:9", "plan-approved"] });
+  const planPr = (over = {}) =>
+    pr({
+      number: 279,
+      title: "docs(plan): phase 09 plan (#200)",
+      body: "Refs #200",
+      issue: null,
+      ...over,
+    });
+  const run = (prs: ReturnType<typeof pr>[], issues = [epicIssue]) =>
+    applyPlanActions(snapshot({ epics: [approved], issues, prs }));
+
+  it("merges the plan PR and applies the plan in the same tick when its checks are green", () => {
+    expect(run([planPr()])).toEqual([
+      { type: "merge_plan", epic: 200, pr: 279 },
+      { type: "apply_plan", epic: 200 },
+    ]);
+  });
+  it("merges a plan PR on a repository with no CI at all", () => {
+    expect(run([planPr({ checks: "none" })])[0]).toEqual({
+      type: "merge_plan",
+      epic: 200,
+      pr: 279,
+    });
+  });
+  it("waits while the plan PR's checks are pending", () => {
+    expect(run([planPr({ checks: "pending" })])).toEqual([]);
+  });
+  it("reports a red plan PR on the epic once per head commit", () => {
+    const red = planPr({ checks: "failure" });
+    expect(run([red])).toEqual([
+      { type: "plan_pr_stuck", epic: 200, pr: 279, sha: red.headSha, reason: "checks failed" },
+    ]);
+    const reported = issue({
+      ...epicIssue,
+      comments: [comment(fmt.planPrStuck("mac-a", 279, red.headSha, "checks failed"))],
+    });
+    expect(run([red], [reported])).toEqual([]);
+    // A new push is a new chance, and a new report if it is red too.
+    expect(run([planPr({ checks: "failure", headSha: "f".repeat(40) })], [reported])).toHaveLength(
+      1,
+    );
+  });
+  it("reports a plan PR that conflicts with main", () => {
+    expect(run([planPr({ mergeable: "CONFLICTING" })])[0]).toMatchObject({
+      type: "plan_pr_stuck",
+      reason: "conflicts with main",
+    });
+  });
+  it("applies straight away when no plan PR is open, as when it was merged by hand", () => {
+    expect(run([pr({ number: 300, issue: 201 })])).toEqual([{ type: "apply_plan", epic: 200 }]);
+  });
+  it("ignores another epic's plan PR", () => {
+    expect(run([planPr({ title: "docs(plan): phase 10 plan (#201)" })])).toEqual([
+      { type: "apply_plan", epic: 200 },
+    ]);
+  });
+  it("does nothing once the plan is applied or while the epic is claimed", () => {
+    const applied = issue({ ...epicIssue, comments: [comment(fmt.planApplied("mac-a"))] });
+    expect(run([planPr()], [applied])).toEqual([]);
+    const claimed = issue({
+      ...epicIssue,
+      comments: [comment(fmt.claimed("mac-a", hoursAgo(1), "planner", 1))],
+    });
+    expect(run([planPr()], [claimed])).toEqual([]);
   });
 });
 

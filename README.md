@@ -186,7 +186,16 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
    most failures are flakes, and a rerun costs runner time and no model tokens. The expensive half
    is in the pick — a red PR whose rerun is spent gets a builder **fix** round, ahead of review and
    validation, bounded by `limits.fixRounds` like any other, and `blocked` after that.
-5. **Pick.** Candidates are issues with Status Ready, label `agent-ready`, a `Parent epic: #N`
+5. **Approved plans.** For every open epic labelled `plan-approved` whose plan is not applied yet
+   (no `plan applied by foreman@<host>` comment), the foreman looks for its open plan PR, titled
+   `docs(plan): phase NN plan (#<epic>)`. Green checks, or none at all: it squash-merges the PR
+   and applies the plan in the same tick. Checks still running: it waits for the next tick. Red
+   checks or a conflict with the default branch: it comments
+   `plan PR #<pr> cannot merge at <sha>: <reason>. Fix it or merge it by hand (foreman@<host>)` on
+   the epic once per head commit, and the epic shows on **Needs you** until the PR is fixed or
+   merged. With no plan PR open, it applies the plan straight away. None of this starts a session,
+   so it runs ahead of the pick and an approval never waits behind a review.
+6. **Pick.** Candidates are issues with Status Ready, label `agent-ready`, a `Parent epic: #N`
    line in the body, no open claim, every "Depends on" issue closed, and a phase epic that is not
    `foreman:pause`d. Open PRs needing review or validation are candidates too, and so is an
    approved PR whose branch GitHub reports as `CONFLICTING`: that gets a **rebase** round — a
@@ -198,12 +207,12 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
    or more open `blocked` tasks starts **no new builds** until the owner unblocks one — review,
    fix, validate and rebase jobs still run there — because every blocked task is owner work and
    stacking more branches on the same files only breeds conflicts.
-6. **Claim.** The foreman comments `claimed by <host> at <iso> role=<role> round=<n>`, assigns
+7. **Claim.** The foreman comments `claimed by <host> at <iso> role=<role> round=<n>`, assigns
    itself, and (for a first-round build) sets Status In Progress. If another host's claim comment
    landed in the same window, the alphabetically first host keeps it; the others comment `released
    by <host>: conflict` and unassign. The ledger — issue comments, not the GitHub assignee — is
    authoritative, so two Macs can share one GitHub login.
-7. **Dispatch.** Creates or reuses a git worktree at `<workDir>/<issue>` — by default
+8. **Dispatch.** Creates or reuses a git worktree at `<workDir>/<issue>` — by default
    `<repoDir>/.worktrees/<issue>`, so worktrees stay inside the clone — on branch
    `feat/<issue>-<slug>`, runs the repository's `setup` command, composes the role prompt and the
    headless settings from the worktree's `.foreman/` (§5), runs the `session-env` and
@@ -212,23 +221,23 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
    `effort:<level>` label, else `high`) and a `wallClockMinutes` timeout.
    It posts `session <id> on <host> role=<role> attempt=<n>` before each attempt and runs
    `after-session` when the child ends, however it ends.
-8. **Outcome.** Parses the session's structured JSON outcome —
+9. **Outcome.** Parses the session's structured JSON outcome —
    `{"outcome": ..., "pr": <number|null>, "notes": "..."}` — and applies the labels and Status in
    the table below. On a validator `passed`/`failed` it first copies
    `<worktree>/.validation-artifacts/<pr>/` to `~/.foreman/<name>/artifacts/<pr>/`, because a
    headless session cannot write outside its worktree and the worktree is removed at merge. A
    session that ends without a valid outcome is retried up to `limits.attempts` (3) times; if all
    fail, the issue is labelled `blocked` with a log excerpt and unassigned.
-9. **Phase check.** If every task under a phase epic is closed, the phase-closer is dispatched.
+10. **Phase check.** If every task under a phase epic is closed, the phase-closer is dispatched.
    Then the planner, which is gated three ways: the epic must carry **`agent-ready`** (the owner's
    go-ahead — without it the foreman never plans anything), no approved phase may still be
    building, and no other epic's drafted plan may be waiting on the owner. When it dispatches, the
    epic is assigned and set In Progress so the hour-long session is visible on the board;
    `plan_drafted` then sets the epic In Review, adds `needs-owner`, removes `agent-ready` and
-   unassigns. Labelling the epic `plan-approved` applies the plan, clears `needs-owner` and puts
-   the epic back In Progress. Re-adding `agent-ready` asks for a re-plan. Applying a plan reads
-   `<plans.dir>/<date>-phase-NN-plan.issues.json` from the default branch on `origin`, so merging
-   the plan PR is enough — the clone never has to be pulled by hand. If the file is not there yet,
+   unassigns. Labelling the epic `plan-approved` merges the plan PR and applies the plan (step 5),
+   clears `needs-owner` and puts the epic back In Progress. Re-adding `agent-ready` asks for a
+   re-plan. Applying a plan reads `<plans.dir>/<date>-phase-NN-plan.issues.json` from the default
+   branch on `origin`, so the clone never has to be pulled by hand. If the file is not there yet,
    the foreman logs and retries next tick rather than recording the plan as applied.
 
 These run in order and stop after the first action that would start a `claude -p` session, so at
@@ -260,7 +269,7 @@ plan on retry instead of duplicating it.
 | (foreman) red CI, rerun budget unspent | rerun the failed jobs, `ci rerun by foreman@<host> for <sha>` (no session) |
 | (foreman) red CI, rerun spent | builder fix round; `blocked` once `limits.fixRounds` are gone |
 | phase-closer `phase_closed` | epic → In Review, `needs-owner` |
-| planner `plan_drafted` | epic → In Review, `needs-owner`, `agent-ready` removed, unassigned; nothing else until `plan-approved`, which applies the plan (tasks `agent-ready` + Ready), clears `needs-owner` and returns the epic to In Progress |
+| planner `plan_drafted` | epic → In Review, `needs-owner`, `agent-ready` removed, unassigned; nothing else until `plan-approved`, which merges the plan PR, applies the plan (tasks `agent-ready` + Ready), clears `needs-owner` and returns the epic to In Progress |
 
 ### Labels
 
@@ -275,7 +284,7 @@ Fixed names; `foreman init` creates them all.
 | `blocked` | Cannot proceed; the reason is a comment. Owner work. |
 | `needs-owner` | Waiting on the owner. |
 | `decision` | A question a role session could not answer. |
-| `plan-approved` | The owner approved the drafted plan; the next tick applies it. |
+| `plan-approved` | The owner approved the drafted plan; the next tick merges the plan PR and applies it. |
 | `signed-off` | The owner signed the phase off. |
 | `foreman:pause` | On an epic: no new claims under that phase, on any Mac. |
 | `reviewer:approved` / `reviewer:changes` | The reviewer's verdict, on the PR. |
@@ -330,6 +339,7 @@ reclaimed from <host> by <host> at <iso>
 merged by foreman@<host>
 ci rerun by foreman@<host> for <sha>
 unblocked by owner via foreman@<host>
+plan PR #<pr> cannot merge at <sha>: <reason>. Fix it or merge it by hand (foreman@<host>)
 ```
 
 `session … finished`, `released by`, `reclaimed from` and `merged by` are terminal: they close an
@@ -684,7 +694,8 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
     bookkeeping), the running session, the in-flight pipeline (build → review → validate → CI →
     merge per issue) and the live event feed.
   - **Needs you** — every decision only the owner can make, grouped by the action: approve a
-    plan, sign off a phase, ready to plan, unblock, answer or close. The sidebar badge counts them,
+    plan, fix a plan PR that cannot merge, sign off a phase, ready to plan, unblock, answer or
+    close. The sidebar badge counts them,
     Ready to plan excepted.
   - **Waiting on** — what the foreman is waiting for by itself: CI, review rounds, dependencies,
     another Mac's claim, the phase gate, and setup problems to fix on GitHub.
@@ -906,7 +917,8 @@ branch.
   ever produce one. Add any CI workflow. `checks none` is not `checks failure`: it earns no rerun
   and no fix round either, so the PR simply sits there.
 - **`approved plan file not on origin/main; retrying next tick`, for ever.** The plan PR really is
-  not merged yet, or the plan file's `NN` does not match the epic's `phase:N` label. The foreman
+  not merged yet — its title is not `docs(plan): phase NN plan (#<epic>)`, so the foreman did not
+  find it to merge — or the plan file's `NN` does not match the epic's `phase:N` label. The foreman
   looks for `<plans.dir>/<date>-phase-NN-plan.issues.json` where `NN` is that label, zero-padded;
   the planner is told the same rule, so a mismatch means the plan was hand-edited.
 - **`~/.foreman/<name>/artifacts/<pr>/` is empty after a validation run.** The foreman only copies
@@ -984,12 +996,11 @@ foreman -p sandbox run --once        # the planner claims the epic and drafts a 
 ```
 
 Expect `claimed by <host> … role=planner`, then a plan PR against the sandbox and the epic at
-**In Review** with `needs-owner`. Merge the plan PR, approve the plan, and let the loop apply it:
+**In Review** with `needs-owner`. Approve the plan and let the loop merge the plan PR and apply it:
 
 ```bash
-gh pr merge <plan pr> --squash --repo acme/foreman-sandbox
 gh issue edit 1 --repo acme/foreman-sandbox --add-label plan-approved
-foreman -p sandbox run --once        # applies the plan: task issues at Ready, agent-ready
+foreman -p sandbox run --once        # merges the plan PR, then task issues at Ready, agent-ready
 foreman -p sandbox run --once        # claims the first task for a builder
 foreman -p sandbox start
 foreman -p sandbox status --watch    # or: foreman -p sandbox logs -f
