@@ -294,6 +294,50 @@ describe("live activity and board", () => {
     );
     expect(describeStatus(input()).tick?.blockedBySession).toBe(false);
   });
+  it("carries the stored board's issues and groups into the report", () => {
+    const groups = [
+      {
+        key: "none",
+        kind: "none" as const,
+        epic: null,
+        phase: null,
+        title: "No phase",
+        state: null,
+        paused: false,
+        doneTasks: [],
+      },
+    ];
+    const issues = [
+      {
+        issue: 7,
+        title: "t",
+        status: null,
+        labels: [],
+        group: "none",
+        pr: null,
+        dependsOn: [],
+        openDependsOn: [],
+        blocked: false,
+        model: null,
+        effort: null,
+      },
+    ];
+    const board = {
+      at: now,
+      waiting: [],
+      pipeline: [],
+      owner: [],
+      needsYou: [],
+      phases: [],
+      issues,
+      groups,
+      explain: [],
+      prs: [],
+    };
+    const r = describeStatus(input({ state: { ...state(), board } }));
+    expect(r.board?.issues).toEqual(issues);
+    expect(r.board?.groups).toEqual(groups);
+  });
   it("layers live STOP/preflight/cap waits over the stored board", () => {
     const board = {
       at: now,
@@ -304,6 +348,8 @@ describe("live activity and board", () => {
       owner: [],
       needsYou: [],
       phases: [],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };
@@ -338,6 +384,8 @@ describe("live activity and board", () => {
       owner: [],
       needsYou: [],
       phases: [],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };
@@ -365,6 +413,8 @@ describe("live activity and board", () => {
       owner: [],
       needsYou: [],
       phases: [],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };
@@ -413,6 +463,8 @@ describe("live activity and board", () => {
         },
       ],
       phases: [],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };
@@ -443,6 +495,8 @@ describe("live activity and board", () => {
           tasks: [],
         },
       ],
+      issues: [],
+      groups: [],
       explain: [],
       prs: [],
     };

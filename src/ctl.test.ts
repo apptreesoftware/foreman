@@ -168,6 +168,8 @@ describe("ctlModel", () => {
         pipeline: [],
         owner: [],
         needsYou: [],
+        issues: [],
+        groups: [],
         explain: [],
         prs: [],
         phases: [

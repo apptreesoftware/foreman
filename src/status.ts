@@ -156,6 +156,8 @@ export function describeStatus(i: StatusInput): StatusReport {
           owner: stored?.owner ?? [],
           needsYou: stored?.needsYou ?? [],
           phases: stored?.phases ?? [],
+          issues: stored?.issues ?? [],
+          groups: stored?.groups ?? [],
           explain: stored?.explain ?? [],
           prs: stored?.prs ?? [],
         }

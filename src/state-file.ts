@@ -202,6 +202,57 @@ export const PhaseProgressSchema = z.object({
 });
 export type PhaseProgress = z.infer<typeof PhaseProgressSchema>;
 
+/**
+ * One open issue as the Board tab lists it: every open non-epic issue in the snapshot, on the
+ * project board or not (`status` null is "Off board"). Computed in the tick, so no extra reads.
+ */
+export const BoardIssueSchema = z.object({
+  issue: z.number().int(),
+  title: z.string(),
+  status: z.string().nullable(),
+  /** The labels worth showing on the row: `blocked`, `size:*`, `area:*`. */
+  labels: z.array(z.string()),
+  /** The `BoardGroup.key` this issue is listed under. */
+  group: z.string(),
+  /** The open non-draft PR that closes this issue, if any. */
+  pr: z.number().int().nullable(),
+  dependsOn: z.array(z.number().int()),
+  /** The subset of `dependsOn` still open in the snapshot. */
+  openDependsOn: z.array(z.number().int()),
+  blocked: z.boolean(),
+  /** The issue's `model:<name>` label, or null when the global model applies. */
+  model: z.string().nullable(),
+  /** The issue's `effort:<level>` label, or null when the default effort applies. */
+  effort: z.string().nullable(),
+});
+export type BoardIssue = z.infer<typeof BoardIssueSchema>;
+
+export const BOARD_GROUP_STATES = [
+  "planning",
+  "plan_waiting",
+  "building",
+  "signoff_waiting",
+  "not_started",
+] as const;
+
+/**
+ * A heading on the Board tab: an open epic, or — for issues no open epic claims — their phase
+ * (`unlinked` when several open epics share it, `closed` when none is open), or "No phase".
+ */
+export const BoardGroupSchema = z.object({
+  key: z.string(),
+  kind: z.enum(["epic", "unlinked", "closed", "none"]),
+  epic: z.number().int().nullable(),
+  phase: z.number().nullable(),
+  title: z.string(),
+  /** Where an epic stands, from its labels; null for the non-epic groups. */
+  state: z.enum(BOARD_GROUP_STATES).nullable(),
+  paused: z.boolean(),
+  /** Closed task numbers: closed issues have left the snapshot, so only their numbers remain. */
+  doneTasks: z.array(z.number().int()),
+});
+export type BoardGroup = z.infer<typeof BoardGroupSchema>;
+
 export const BoardSchema = z.object({
   at: z.string(),
   waiting: z.array(WaitItemSchema),
@@ -212,6 +263,9 @@ export const BoardSchema = z.object({
   needsYou: z.array(NeedsYouItemSchema).default([]),
   // Same.
   phases: z.array(PhaseProgressSchema).default([]),
+  // Same: the Board tab's rows and headings.
+  issues: z.array(BoardIssueSchema).default([]),
+  groups: z.array(BoardGroupSchema).default([]),
   explain: z.array(z.string()),
   prs: z.array(
     z.object({

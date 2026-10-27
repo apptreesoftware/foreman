@@ -129,6 +129,8 @@ describe("applyOwnerActionToBoard", () => {
     ],
     needsYou: [],
     phases: [],
+    issues: [],
+    groups: [],
     explain: [],
     prs: [],
   };

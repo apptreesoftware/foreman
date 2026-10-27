@@ -88,6 +88,9 @@ describe("state file", () => {
     expect(s).not.toBeNull();
     expect(s?.board?.pipeline[0]?.effort).toBeNull();
     expect(s?.board?.phases[0]?.tasks[0]?.effort).toBeNull();
+    // Written before the Board tab: no issues or groups, which read as empty.
+    expect(s?.board?.issues).toEqual([]);
+    expect(s?.board?.groups).toEqual([]);
   });
   it("StateStore.patch merges and persists", () => {
     const dir = mkdtempSync(join(tmpdir(), "tt-state-"));

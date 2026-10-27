@@ -56,6 +56,8 @@ const board = (over: Partial<Board> = {}): Board => ({
   owner: [],
   needsYou: [],
   phases: [phase()],
+  issues: [],
+  groups: [],
   explain: [],
   prs: [],
   ...over,
