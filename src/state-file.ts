@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "node:path";
 import { z } from "zod";
 import { ActivitySchema } from "./stream.ts";
+import { type ThemeName, ThemeSchema } from "./theme.ts";
 
 export const StopModeSchema = z.enum(["stop", "abort"]);
 export type StopMode = z.infer<typeof StopModeSchema>;
@@ -335,6 +336,11 @@ export const ForemanStateSchema = z.object({
    *. Older state.json files predate this field; the default keeps them readable.
    */
   maxSessionsPerDay: z.number().int().nullable().default(null),
+  /**
+   * The page's color theme, picked once when the daemon first starts and changed from the page.
+   * Older state.json files predate this field; the default keeps them readable.
+   */
+  theme: ThemeSchema.nullable().default(null),
 });
 export type ForemanState = z.infer<typeof ForemanStateSchema>;
 
@@ -352,6 +358,8 @@ export function initialState(o: {
   model?: string | null;
   /** Carried over from the previous state.json, like `model`, so a restart keeps the override. */
   maxSessionsPerDay?: number | null;
+  /** Carried over from the previous state.json, or picked at first start; never reset. */
+  theme?: ThemeName | null;
 }): ForemanState {
   return {
     version: 1,
@@ -359,6 +367,7 @@ export function initialState(o: {
     // After the spread: an omitted override arrives as undefined, which the schema rejects.
     model: o.model ?? null,
     maxSessionsPerDay: o.maxSessionsPerDay ?? null,
+    theme: o.theme ?? null,
     exitedAt: null,
     lastTickAt: null,
     nextTickAt: null,

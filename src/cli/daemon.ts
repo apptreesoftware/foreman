@@ -6,7 +6,7 @@ import { realExec } from "../exec.ts";
 import { readFeed } from "../feed.ts";
 import { GitHub } from "../github.ts";
 import { fileHookLog } from "../hooks.ts";
-import type { Instance } from "../instance.ts";
+import { type Instance, listInstances } from "../instance.ts";
 import { launchdInstalled } from "../launchd-status.ts";
 import { log } from "../log.ts";
 import { buildSnapshot, ensureLogin, realCtx, runForever, runOnce } from "../loop.ts";
@@ -20,6 +20,7 @@ import { initialState, MODEL_DEFAULT, readState, StateStore } from "../state-fil
 import { describeStatus } from "../status.ts";
 import { applyTaskEffort, applyTaskEffortToBoard } from "../task-effort.ts";
 import { applyTaskModel, applyTaskModelToBoard, pickerTasks } from "../task-model.ts";
+import { pickTheme, type ThemeName } from "../theme.ts";
 import { startWebServer } from "../web.ts";
 import { launchdLabel } from "./launchd.ts";
 
@@ -139,6 +140,11 @@ export async function runDaemon(
 
   // Long-running daemon: owns state.json, the web page, and the signal handlers.
   const previous = readState(STATE_DIR);
+  // Picked once and saved, so it never shifts: the theme the other instances here use least.
+  const others = listInstances()
+    .filter((i) => i.name !== instance.name)
+    .map((i) => readState(i.dir)?.theme ?? null)
+    .filter((t): t is ThemeName => t !== null);
   const store = new StateStore(
     STATE_DIR,
     initialState({
@@ -150,6 +156,7 @@ export async function runDaemon(
       // A restart must not silently revert the owner's overrides back to foreman.json.
       model: previous?.model ?? null,
       maxSessionsPerDay: previous?.maxSessionsPerDay ?? null,
+      theme: previous?.theme ?? pickTheme(instance.name, others),
     }),
   );
   const controller = new Controller((mode) => {
@@ -197,6 +204,7 @@ export async function runDaemon(
         repo: cfg.repo,
         configModel: cfg.model,
         modelChoices: repo.models,
+        instance: instance.name,
       }),
     next: () => lock.run(async () => describeNext(await buildSnapshot(ctx), repo)),
     act: async (cmd) => {
@@ -217,6 +225,11 @@ export async function runDaemon(
       store.patch({ model: next });
       log("info", "model set", { model: next, configured: cfg.model });
       return `next session runs ${next ?? cfg.model}`;
+    },
+    setTheme: async (theme) => {
+      store.patch({ theme });
+      log("info", "theme set", { theme });
+      return `theme is now ${theme}`;
     },
     setCap: async (maxSessionsPerDay) => {
       // Read per tick by runOnce's capFor(), so raising it while parked on the cap lets the very

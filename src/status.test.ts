@@ -3,6 +3,7 @@ import type { SessionLogEntry } from "./sessions.ts";
 import { CAP_CHOICES, initialState, MODEL_CHOICES } from "./state-file.ts";
 import { describeStatus, formatStatus, type StatusInput } from "./status.ts";
 import { emptyActivity } from "./stream.ts";
+import { pickTheme, THEMES } from "./theme.ts";
 
 const now = "2026-09-04T05:10:00.000Z";
 const session = (over: Partial<SessionLogEntry> = {}): SessionLogEntry => ({
@@ -63,6 +64,18 @@ function input(over: Partial<StatusInput> = {}): StatusInput {
     ...over,
   };
 }
+
+describe("describeStatus theme", () => {
+  it("echoes the instance and the saved theme", () => {
+    const r = describeStatus(input({ instance: "litart", state: { ...state(), theme: "violet" } }));
+    expect(r.instance).toBe("litart");
+    expect(r.theme).toEqual({ current: "violet", choices: THEMES });
+  });
+  it("derives a stable theme when there is no state to read one from", () => {
+    const r = describeStatus(input({ instance: "litart", state: null }));
+    expect(r.theme.current).toBe(pickTheme("litart", []));
+  });
+});
 
 describe("describeStatus", () => {
   it("RUNNING with uptime and a current session", () => {

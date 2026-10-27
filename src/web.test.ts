@@ -38,6 +38,8 @@ const report: StatusReport = {
   board: null,
   budget: null,
   attention: { needsYou: 0, waiting: 0, banners: [], waitRows: [] },
+  instance: "widgets",
+  theme: { current: "indigo", choices: ["indigo", "violet", "teal", "mono"] },
   recent: [],
   today: { count: 0, cap: 20, spendUsd: 0 },
 };
@@ -56,6 +58,7 @@ describe("web server", () => {
   const unblocked: number[] = [];
   const taskModels: string[] = [];
   const taskEfforts: string[] = [];
+  const themes: string[] = [];
   let refreshes = 0;
   const sid = "144ba520-6c0f-4195-ae18-c67de1443b31";
   const entries: FeedEntry[] = Array.from({ length: 5 }, (_, i) => ({
@@ -116,6 +119,10 @@ describe("web server", () => {
     setModel: async (model) => {
       models.push(model);
       return `next session runs ${model}`;
+    },
+    setTheme: async (theme) => {
+      themes.push(theme);
+      return `theme is now ${theme}`;
     },
     setCap: async (cap) => {
       caps.push(cap);
@@ -248,6 +255,19 @@ describe("web server", () => {
     expect((await fetch(`${base}/api/model`)).status).toBe(405);
     expect(models).toEqual(["sonnet", "claude-haiku-4-5-20251001"]);
   });
+  it("sets the page theme to one of the four, and nothing else", async () => {
+    const post = (body: unknown) =>
+      fetch(`${base}/api/theme`, { method: "POST", body: JSON.stringify(body) });
+    const ok = await post({ theme: "violet" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, message: "theme is now violet" });
+    const bad = await post({ theme: "pink" });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ ok: false, error: "bad theme" });
+    expect((await post({})).status).toBe(400);
+    expect((await fetch(`${base}/api/theme`)).status).toBe(405);
+    expect(themes).toEqual(["violet"]);
+  });
   it("raises the daily cap, and refuses anything that is not a sane session count", async () => {
     const post = (body: unknown) =>
       fetch(`${base}/api/cap`, { method: "POST", body: JSON.stringify(body) });
@@ -346,6 +366,7 @@ describe("web server with webAuth", () => {
     needsYouItems: () => [],
     unblock: async () => "",
     setModel: async () => "",
+    setTheme: async () => "",
     setCap: async () => "",
     refresh: async () => "",
     pickerTasks: () => [],
@@ -491,6 +512,7 @@ describe("web server with webHosts", () => {
     needsYouItems: () => [],
     unblock: async () => "",
     setModel: async () => "",
+    setTheme: async () => "",
     setCap: async () => "",
     refresh: async () => "",
     pickerTasks: () => [],

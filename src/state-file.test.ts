@@ -105,6 +105,23 @@ describe("state file", () => {
     expect(s?.board?.issues).toEqual([]);
     expect(s?.board?.groups).toEqual([]);
   });
+  it("a state file written before themes parses with theme null; initialState carries one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tt-state-"));
+    const { theme: _absent, ...old } = base();
+    writeFileSync(statePath(dir), JSON.stringify(old));
+    expect(readState(dir)?.theme).toBeNull();
+    expect(base().theme).toBeNull();
+    expect(
+      initialState({
+        pid: 1,
+        host: "h",
+        configPath: "/c",
+        dryRun: false,
+        startedAt: "2026-09-03T12:00:00.000Z",
+        theme: "teal",
+      }).theme,
+    ).toBe("teal");
+  });
   it("StateStore.patch merges and persists", () => {
     const dir = mkdtempSync(join(tmpdir(), "tt-state-"));
     const store = new StateStore(dir, base());

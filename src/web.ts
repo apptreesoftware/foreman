@@ -23,6 +23,7 @@ import {
 } from "./state-file.ts";
 import type { StatusReport } from "./status.ts";
 import type { PickerTask } from "./task-model.ts";
+import { type ThemeName, ThemeSchema } from "./theme.ts";
 
 export type WebCommand = "stop" | "abort" | "go";
 
@@ -52,6 +53,8 @@ export interface WebDeps {
   unblock: (issue: number) => Promise<string>;
   /** Sets the model the next dispatch uses; the name has already passed `ModelSchema`. */
   setModel: (model: string) => Promise<string>;
+  /** Saves the page's color theme for this instance; the name has already passed `ThemeSchema`. */
+  setTheme: (theme: ThemeName) => Promise<string>;
   /** Sets the daily session cap the next tick enforces; null clears the override. */
   setCap: (maxSessionsPerDay: number | null) => Promise<string>;
   /** Drops the cached project board and wakes the loop, so the page shows the board as it is now. */
@@ -132,6 +135,8 @@ const TaskEffortRequestSchema = z.object({
 // `null` is the clear-the-override case; everything else must be a sane session count, so a
 // fat-fingered 100000 cannot quietly uncap the Mac's daily spend.
 const CapRequestSchema = z.object({ maxSessionsPerDay: CapSchema.nullable() });
+
+const ThemeRequestSchema = z.object({ theme: ThemeSchema });
 
 /** Reads a small JSON body; anything unparsable (or over 8 KB) resolves to null. */
 async function readJson(req: http.IncomingMessage): Promise<unknown> {
@@ -244,6 +249,12 @@ export function createWebServer(d: WebDeps): http.Server {
         if (!d.pickerTasks().some((t) => t.issue === issue))
           return json(res, 400, { ok: false, error: `#${issue} is not a task on the board` });
         return json(res, 200, { ok: true, message: await d.setTaskEffort(issue, effort) });
+      }
+      if (url === "/api/theme") {
+        if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
+        const parsed = ThemeRequestSchema.safeParse(await readJson(req));
+        if (!parsed.success) return json(res, 400, { ok: false, error: "bad theme" });
+        return json(res, 200, { ok: true, message: await d.setTheme(parsed.data.theme) });
       }
       if (url === "/api/cap") {
         if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST only" });
