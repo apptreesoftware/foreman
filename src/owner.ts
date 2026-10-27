@@ -1,3 +1,4 @@
+import { planPR, planPrState, planUnapplied } from "./phase.ts";
 import { pairReviews } from "./review-pairing.ts";
 import type { Board, OwnerAction, OwnerItem } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
@@ -30,18 +31,31 @@ export function ownerItems(s: Snapshot): OwnerItem[] {
     .map((e) => {
       const has = (l: string) => e.labels.includes(l);
       const actions: OwnerAction[] = [];
+      // An approved plan keeps needs-owner until it is applied; it is not a sign-off, which
+      // would close the epic before it has a single task.
+      const unapplied = planUnapplied(e, s.issues);
       // needs-owner means two different things; plan-approved is what tells them apart.
-      if (has("needs-owner")) actions.push(has("plan-approved") ? "sign_off" : "approve_plan");
+      if (has("needs-owner") && !unapplied)
+        actions.push(has("plan-approved") ? "sign_off" : "approve_plan");
       else if (!has("plan-approved") && !has("agent-ready")) actions.push("start_planning");
       actions.push(has("foreman:pause") ? "unpause" : "pause");
+      const p = unapplied ? planPR(s, e.number) : null;
+      const st = p ? planPrState(p) : null;
       return {
         epic: e.number,
         title: titleOf(e.number),
         phase: e.phase,
-        detail: DETAIL[actions[0] as OwnerAction],
+        detail: !unapplied
+          ? DETAIL[actions[0] as OwnerAction]
+          : p && st?.state === "stuck"
+            ? `plan PR #${p.number} cannot merge: ${st.reason}`
+            : p && st?.state === "pending"
+              ? `plan approved; plan PR #${p.number} merges when its checks pass`
+              : "plan approved; the tasks are created on the next tick",
         actions,
         since: s.issues.find((i) => i.number === e.number)?.updatedAt ?? null,
         review: actions.includes("sign_off") ? (reviewOf.get(e.number) ?? null) : null,
+        planPr: p && st?.state === "stuck" ? p.number : null,
       };
     });
 }
@@ -97,9 +111,9 @@ export async function applyOwnerAction(
       await gh.closeIssue(epic);
       return `#${epic} signed off and closed`;
     case "approve_plan":
-      // Only the label: the foreman's apply_plan creates the task issues on its next tick.
+      // Only the label: on its next tick the foreman merges the plan PR and creates the tasks.
       await gh.addLabels("issue", epic, ["plan-approved"]);
-      return `#${epic} labelled plan-approved; the plan is applied on the next tick`;
+      return `#${epic} labelled plan-approved; the plan PR is merged and applied on the next tick`;
     case "start_planning":
       await gh.addLabels("issue", epic, ["agent-ready"]);
       return `#${epic} labelled agent-ready; the planner runs when nothing else is in flight`;

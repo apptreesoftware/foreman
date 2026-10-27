@@ -659,6 +659,27 @@ describe("execute", () => {
     expect(calls).toContain("setStatus PVTI_200 In Review");
     expect(calls).toContain("addLabels issue 200 needs-owner");
   });
+  it("merge_plan squash-merges the plan PR and goes on to apply it in the same tick", async () => {
+    const { gh, calls } = fakeGh([
+      issue({ number: 200, labels: ["epic", "phase:2", "plan-approved"] }),
+    ]);
+    const r = await execute({ type: "merge_plan", epic: 200, pr: 279 }, ctx({ gh }));
+    expect(r).toBe("continue");
+    expect(calls).toEqual(["mergePR 279"]);
+  });
+  it("plan_pr_stuck tells the owner on the epic why the plan PR cannot merge", async () => {
+    const { gh, calls } = fakeGh([
+      issue({ number: 200, labels: ["epic", "phase:2", "plan-approved"] }),
+    ]);
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    await execute(
+      { type: "plan_pr_stuck", epic: 200, pr: 279, sha, reason: "checks failed" },
+      ctx({ gh }),
+    );
+    expect(calls).toEqual([
+      `comment issue 200 ${fmt.planPrStuck("mac-a", 279, sha, "checks failed")}`,
+    ]);
+  });
   it("apply_plan leaves the epic alone when the plan is not on origin/main yet", async () => {
     const { gh, calls } = fakeGh([
       issue({ number: 200, labels: ["epic", "phase:2", "plan-approved"] }),

@@ -150,6 +150,8 @@ export const OwnerItemSchema = z.object({
   since: z.string().nullable().default(null),
   /** The phase review issue paired with this epic; set only when it offers `sign_off`. */
   review: z.number().int().nullable().default(null),
+  /** An approved plan's PR that cannot merge without the owner (red checks or a conflict). */
+  planPr: z.number().int().nullable().default(null),
 });
 export type OwnerItem = z.infer<typeof OwnerItemSchema>;
 

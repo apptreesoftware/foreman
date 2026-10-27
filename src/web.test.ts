@@ -92,6 +92,7 @@ describe("web server", () => {
         actions: ["sign_off", "pause"],
         since: null,
         review: null,
+        planPr: null,
       },
     ],
     needsYouItems: () => [

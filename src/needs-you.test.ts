@@ -128,7 +128,7 @@ describe("applyUnblock", () => {
 
   it("drops the label, sets Status Ready and leaves a ledger comment", async () => {
     const { gh, calls } = fakeGh();
-    const message = await applyUnblock(gh, { issue: 5, itemId: "PVTI_5", host: "mac-a" });
+    const message = await applyUnblock(gh, { issue: 5, itemId: "PVTI_5", host: "mac-a", pr: null });
     expect(calls).toEqual([
       "removeLabels issue 5 blocked",
       "setStatus PVTI_5 Ready",
@@ -138,9 +138,16 @@ describe("applyUnblock", () => {
   });
   it("adds an off-board issue to the project first", async () => {
     const { gh, calls } = fakeGh();
-    await applyUnblock(gh, { issue: 8, itemId: null, host: "mac-a" });
+    await applyUnblock(gh, { issue: 8, itemId: null, host: "mac-a", pr: null });
     expect(calls).toContain("addToProject 8");
     expect(calls).toContain("setStatus PVTI_new_8 Ready");
+  });
+  it("clears the failing verdicts on the issue's PR so the block does not fire again", async () => {
+    // Without this, the builder's push returns the issue to In Review with `validator:failed`
+    // still on the PR and the fix-round count spent, and blockActions re-blocks it at once.
+    const { gh, calls } = fakeGh();
+    await applyUnblock(gh, { issue: 5, itemId: "PVTI_5", host: "mac-a", pr: 12 });
+    expect(calls).toContain("removeLabels pr 12 reviewer:changes,validator:failed");
   });
 });
 

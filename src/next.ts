@@ -34,6 +34,10 @@ function explain(a: Action, s: Snapshot, repo: RepoConfig): string {
       return `${actionName(a)}: phase-closer on epic #${a.epic} "${title(a.epic)}" (every task closed)`;
     case "apply_plan":
       return `${actionName(a)}: create/update task issues from the approved plan of epic #${a.epic}`;
+    case "merge_plan":
+      return `${actionName(a)}: squash-merge plan PR #${a.pr} of approved epic #${a.epic}`;
+    case "plan_pr_stuck":
+      return `${actionName(a)}: tell the owner plan PR #${a.pr} cannot merge (${a.reason})`;
     case "claim":
       return `${actionName(a)}: ${a.role} on #${a.issue} "${title(a.issue)}" ${a.rebase ? "rebase" : `round ${a.round}`}${a.pr ? ` (PR #${a.pr})` : ""}`;
     case "resume":

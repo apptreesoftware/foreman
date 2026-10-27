@@ -122,6 +122,7 @@ describe("describeWaiting", () => {
     const e12 = issue({
       number: 12,
       labels: ["epic", "phase:0", "plan-approved", "needs-owner"],
+      comments: [comment("plan applied by foreman@mac-a")],
     });
     const b = issue({
       number: 5,
@@ -149,6 +150,25 @@ describe("describeWaiting", () => {
       "epic #12 awaits owner sign-off",
       "epic #10 awaits plan-approved",
       "#5 blocked: migration conflicts",
+    ]);
+  });
+  it("an approved plan waits on its plan PR, and on the owner only when the PR is stuck", () => {
+    const approved = epic({
+      number: 12,
+      phase: 0,
+      labels: ["epic", "phase:0", "plan-approved", "needs-owner"],
+    });
+    const s = (checks: "pending" | "failure") =>
+      snapshot({
+        issues: [issue({ number: 12, labels: approved.labels })],
+        epics: [approved],
+        prs: [pr({ number: 279, title: "docs(plan): phase 00 plan (#12)", issue: null, checks })],
+      });
+    expect(describeWaiting(s("pending"), base).map((x) => [x.kind, x.detail])).toEqual([
+      ["ci", "epic #12 plan PR #279 merges when its checks pass"],
+    ]);
+    expect(describeWaiting(s("failure"), base).map((x) => [x.kind, x.detail])).toEqual([
+      ["human", "epic #12 plan PR #279 cannot merge: checks failed"],
     ]);
   });
   it("human: a non-epic needs-owner or decision issue, with its title", () => {

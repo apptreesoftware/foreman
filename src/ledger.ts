@@ -30,6 +30,8 @@ export const fmt = {
     `session ${id} interrupted on ${host}: stopped by operator after ${minutes}m`,
   aborted: (host: string) => `released by ${host}: aborted by operator`,
   unblocked: (host: string) => `unblocked by owner via foreman@${host}`,
+  planPrStuck: (host: string, pr: number, sha: string, reason: string) =>
+    `plan PR #${pr} cannot merge at ${sha}: ${reason}. Fix it or merge it by hand (foreman@${host})`,
 };
 
 const CLAIM =
@@ -88,6 +90,16 @@ export function fixRound(comments: Comment[]): number {
 export function ciRerunCount(comments: Comment[], sha: string): number {
   if (!sha) return 0;
   return comments.filter((c) => CI_RERUN.exec(c.body.trim())?.[1] === sha).length;
+}
+
+const PLAN_PR_STUCK = /^plan PR #(\d+) cannot merge at ([0-9a-f]{7,40}):/;
+
+/** Whether the owner was already told this plan PR head cannot merge; one comment per push. */
+export function planPrStuckReported(comments: Comment[], pr: number, sha: string): boolean {
+  return comments.some((c) => {
+    const m = PLAN_PR_STUCK.exec(c.body.trim());
+    return m?.[1] === String(pr) && m[2] === sha;
+  });
 }
 
 export function lastActivityAt(comments: Comment[]): string | null {

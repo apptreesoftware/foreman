@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { comment, hoursAgo } from "../test/helpers.ts";
-import { ciRerunCount, fixRound, fmt, lastActivityAt, openClaim, parseClaim } from "./ledger.ts";
+import {
+  ciRerunCount,
+  fixRound,
+  fmt,
+  lastActivityAt,
+  openClaim,
+  parseClaim,
+  planPrStuckReported,
+} from "./ledger.ts";
 
 describe("ledger", () => {
   it("round-trips a claim", () => {
@@ -92,5 +100,26 @@ describe("ci rerun ledger", () => {
       comment(fmt.ciRerun("mac-a", sha)),
     ];
     expect(openClaim(cs)?.claim.role).toBe("builder");
+  });
+});
+
+describe("plan PR stuck ledger", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  it("formats the line and finds it again by PR and head commit", () => {
+    const line = fmt.planPrStuck("mac-a", 279, sha, "checks failed");
+    expect(line).toBe(
+      `plan PR #279 cannot merge at ${sha}: checks failed. Fix it or merge it by hand (foreman@mac-a)`,
+    );
+    const cs = [comment(line)];
+    expect(planPrStuckReported(cs, 279, sha)).toBe(true);
+    expect(planPrStuckReported(cs, 279, "f".repeat(40))).toBe(false);
+    expect(planPrStuckReported(cs, 280, sha)).toBe(false);
+  });
+  it("does not close an open claim", () => {
+    const cs = [
+      comment(fmt.claimed("mac-a", hoursAgo(2), "planner", 1), hoursAgo(2)),
+      comment(fmt.planPrStuck("mac-a", 279, sha, "checks failed"), hoursAgo(1)),
+    ];
+    expect(openClaim(cs)).not.toBeNull();
   });
 });

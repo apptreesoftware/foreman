@@ -24,6 +24,7 @@ const owner = (epic: number, actions: OwnerItem["actions"]): OwnerItem => ({
   actions,
   since: null,
   review: null,
+  planPr: null,
 });
 
 const needs = (issue: number, over: Partial<NeedsYouItem> = {}): NeedsYouItem => ({
@@ -50,6 +51,15 @@ const wait = (
 });
 
 describe("describeAttention", () => {
+  it("counts an approved plan whose PR cannot merge, and lists its wait only on Needs you", () => {
+    const b = board({
+      owner: [{ ...owner(9, ["pause"]), planPr: 279, detail: "plan PR #279 cannot merge" }],
+      waiting: [wait("human", "epic #9", "epic #9 plan PR #279 cannot merge: checks failed")],
+    });
+    const a = describeAttention(b);
+    expect(a.needsYou).toBe(1);
+    expect(a.waitRows).toEqual([]);
+  });
   it("counts approve and sign-off epics and unpaired needs-you issues, not start_planning", () => {
     const b = board({
       owner: [

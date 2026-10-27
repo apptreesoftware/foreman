@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comment, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
+import { comment, epic, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
 import { fmt } from "./ledger.ts";
 import { defaultRepoConfig } from "./repo-config.ts";
 import { plan } from "./state.ts";
@@ -19,6 +19,25 @@ describe("plan", () => {
     );
     expect(actions).toHaveLength(1);
     expect(actions[0]?.type).toBe("resume");
+  });
+  it("applies an approved plan before claiming a session, not after", () => {
+    // Applying costs no session, so it must not wait behind a review that runs for 20 minutes.
+    const approved = epic({
+      number: 200,
+      phase: 2,
+      labels: ["epic", "phase:2", "plan-approved", "needs-owner"],
+      status: "In Review",
+    });
+    const actions = plan(
+      snapshot({
+        epics: [approved],
+        issues: [
+          issue({ number: 200, labels: ["epic", "phase:2", "plan-approved"] }),
+          issue({ number: 2 }),
+        ],
+      }),
+    );
+    expect(actions.map((a) => a.type)).toEqual(["apply_plan", "claim"]);
   });
   it("emits one claim for the best candidate", () => {
     const actions = plan(

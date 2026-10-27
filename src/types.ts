@@ -85,4 +85,8 @@ export type Action =
   | { type: "phase_close"; epic: number }
   | { type: "plan"; epic: number }
   | { type: "apply_plan"; epic: number }
+  /** Squash-merge an approved epic's plan PR so the apply_plan after it finds the plan file. */
+  | { type: "merge_plan"; epic: number; pr: number }
+  /** Tell the owner, once per head commit, that an approved plan's PR cannot merge. */
+  | { type: "plan_pr_stuck"; epic: number; pr: number; sha: string; reason: string }
   | { type: "idle"; reason: string };

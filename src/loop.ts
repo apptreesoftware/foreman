@@ -1011,6 +1011,24 @@ export async function execute(
       await runRole(ctx, { issue, role, pr: null, round: 1, resumeSessionId: null, notes: "" });
       return "stop";
     }
+    case "merge_plan":
+      // The owner's approval is the review; the apply_plan queued after this one fetches origin
+      // and finds the plan file in the same tick.
+      await gh.mergePR(action.pr);
+      log("info", "plan PR merged", { epic: action.epic, pr: action.pr });
+      return "continue";
+    case "plan_pr_stuck":
+      await gh.comment(
+        "issue",
+        action.epic,
+        fmt.planPrStuck(cfg.host, action.pr, action.sha, action.reason),
+      );
+      log("warn", "plan PR cannot merge", {
+        epic: action.epic,
+        pr: action.pr,
+        reason: action.reason,
+      });
+      return "continue";
     case "apply_plan":
       // A plan whose file is not on origin/main yet is left for the next tick, and that is not
       // work: counting it would make the loop hot until the plan PR merges.

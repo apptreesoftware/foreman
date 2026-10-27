@@ -276,13 +276,15 @@ export async function runDaemon(
     },
     needsYouItems: () => store.get().board?.needsYou ?? [],
     unblock: async (issue) => {
-      // The stored row carries the project item id the tick already read, so the gate costs one
-      // label edit, one status write and one comment — no extra GitHub read.
+      // The stored board carries the project item id and the PR the tick already read, so the
+      // gate costs label edits, one status write and one comment — no extra GitHub read.
       const item = store.get().board?.needsYou.find((n) => n.issue === issue) ?? null;
+      const pr = store.get().board?.issues.find((n) => n.issue === issue)?.pr ?? null;
       const message = await applyUnblock(gh, {
         issue,
         itemId: item?.itemId ?? null,
         host: cfg.host,
+        pr,
       });
       log("info", "unblocked", { issue });
       // Same reason as the owner gate: reflect it locally so the button goes now, and wake
