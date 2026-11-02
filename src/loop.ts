@@ -28,10 +28,13 @@ import { fmt, openClaim, parseClaim } from "./ledger.ts";
 import { log } from "./log.ts";
 import { createNotifier, type NotifyPort, noopNotify } from "./notify.ts";
 import {
+  fillPlanBody,
+  hasPlanPlaceholder,
   PlanIssuesSchema,
   parseDirectionCritical,
   parseSpecPath,
   planPhaseNumber,
+  planPlaceholderErrors,
 } from "./phase.ts";
 import { matchedSkipLabels } from "./pick.ts";
 import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts";
@@ -737,6 +740,10 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
     return false;
   }
   const planFile = PlanIssuesSchema.parse(JSON.parse(text));
+  // Refused before the first write, like a body that fails the schema: half-applied, the plan's
+  // created issues would point their dependencies at whatever the bad placeholder became.
+  const placeholderErrors = planPlaceholderErrors(planFile);
+  if (placeholderErrors.length > 0) throw new Error(`${file}: ${placeholderErrors.join("; ")}`);
   await ensurePlanLabels(
     gh,
     planFile.tasks.flatMap((t) => t.labels),
@@ -758,6 +765,10 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
     );
     return cache;
   };
+  // Every task's number first, so a body's `{{task:K}}` can name a task created after it.
+  const numbers: number[] = [];
+  const created = new Set<number>();
+  const reusedTasks = new Set<number>();
   for (const t of planFile.tasks) {
     // A task without a number is created — unless an earlier attempt already did: an apply that
     // failed later in the tick and was retried once created an exact duplicate. The title plus the "Parent epic" line the planner puts in every body is the key.
@@ -771,10 +782,10 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
         )?.number;
     let number = t.number ?? reused;
     if (number) {
-      await gh.editBody(number, t.body);
       // Only for a reused issue: on the t.number path the planner is naming an issue it already
       // linked, and addSubIssue on an existing link is a 422 that would fail the whole tick.
       if (reused) {
+        reusedTasks.add(reused);
         const linked = await linkedTasks();
         if (!linked.has(reused)) {
           await gh.addSubIssue(epicNumber, reused);
@@ -783,9 +794,19 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
         }
       }
     } else {
+      // Created with its placeholders still in; nothing picks it up before the edit below,
+      // because it has no `agent-ready` until then, and a retry reuses it by title.
       number = await gh.createIssue({ title: t.title, body: t.body, labels: t.labels });
+      created.add(number);
       await gh.addSubIssue(epicNumber, number);
     }
+    numbers.push(number);
+  }
+  for (const [i, t] of planFile.tasks.entries()) {
+    const number = numbers[i] as number;
+    if (!created.has(number) || hasPlanPlaceholder(t.body))
+      await gh.editBody(number, fillPlanBody(t.body, number, numbers));
+    const reused = reusedTasks.has(number) ? number : undefined;
     // A reused task the board has already moved on (In Progress / In Review / Done) must not be
     // re-armed: setStatus("Ready") makes mergeDecision reject its approved PR forever, and
     // buildCandidates would dispatch a second builder round on finished work. The retry that

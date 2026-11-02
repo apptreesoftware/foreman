@@ -238,7 +238,11 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
    clears `needs-owner` and puts the epic back In Progress. Re-adding `agent-ready` asks for a
    re-plan. Applying a plan reads `<plans.dir>/<date>-phase-NN-plan.issues.json` from the default
    branch on `origin`, so the clone never has to be pulled by hand. If the file is not there yet,
-   the foreman logs and retries next tick rather than recording the plan as applied.
+   the foreman logs and retries next tick rather than recording the plan as applied. A task body
+   names another task in the plan as `{{task:K}}` (its 1-based position) and its own number as
+   `{{issue}}`; the foreman creates every issue first, then fills both with the real numbers, so
+   issues or PRs opened while the plan waited for approval cannot shift a `Depends on` line. A
+   `{{task:K}}` past the end of the plan refuses the whole plan before anything is written.
 
 These run in order and stop after the first action that would start a `claude -p` session, so at
 most one session runs per iteration per Mac.
@@ -921,6 +925,10 @@ branch.
   find it to merge — or the plan file's `NN` does not match the epic's `phase:N` label. The foreman
   looks for `<plans.dir>/<date>-phase-NN-plan.issues.json` where `NN` is that label, zero-padded;
   the planner is told the same rule, so a mismatch means the plan was hand-edited.
+- **`loop iteration failed` with `…plan.issues.json: task K ("…") names {{task:J}}; the plan has
+  N tasks`.** The approved plan names a task position it does not have, so the foreman refuses
+  the whole plan before writing anything and every tick fails the same way. Fix the placeholder in
+  the `.issues.json` on the default branch; the next tick applies the plan.
 - **`~/.foreman/<name>/artifacts/<pr>/` is empty after a validation run.** The foreman only copies
   what the validator left in `<worktree>/.validation-artifacts/<pr>/`, and only on a
   `passed`/`failed` outcome — a session that died without an outcome archives nothing. Look for the

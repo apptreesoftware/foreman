@@ -15,6 +15,42 @@ export const PlanIssuesSchema = z.object({
 });
 export type PlanIssues = z.infer<typeof PlanIssuesSchema>;
 
+/**
+ * What a plan task's body writes in place of an issue number that does not exist until the plan
+ * is applied: `{{issue}}` is the task's own number, `{{task:K}}` the number of the plan's K-th
+ * task (1-based). Both fill in as the bare number, so a dependency reads `#{{task:3}}`. The
+ * planner used to predict these numbers instead, and every issue or PR opened between the draft
+ * and the apply shifted them onto the wrong issues.
+ */
+const PLAN_PLACEHOLDER = /\{\{(?:issue|task:(\d+))\}\}/g;
+
+/** Every `{{task:K}}` in the plan that names no task in it; empty when every body can be filled. */
+export function planPlaceholderErrors(plan: PlanIssues): string[] {
+  const errors: string[] = [];
+  plan.tasks.forEach((t, i) => {
+    for (const m of t.body.matchAll(PLAN_PLACEHOLDER)) {
+      const k = m[1] === undefined ? null : Number(m[1]);
+      if (k !== null && (k < 1 || k > plan.tasks.length))
+        errors.push(
+          `task ${i + 1} ("${t.title}") names ${m[0]}; the plan has ${plan.tasks.length} tasks`,
+        );
+    }
+  });
+  return errors;
+}
+
+/** True when the body has a placeholder `fillPlanBody` would replace. */
+export function hasPlanPlaceholder(body: string): boolean {
+  return new RegExp(PLAN_PLACEHOLDER.source).test(body);
+}
+
+/** The body with its placeholders filled; `numbers[K - 1]` is the K-th task's issue number. */
+export function fillPlanBody(body: string, own: number, numbers: number[]): string {
+  return body.replace(PLAN_PLACEHOLDER, (_all, k: string | undefined) =>
+    String(k === undefined ? own : numbers[Number(k) - 1]),
+  );
+}
+
 export function parseDirectionCritical(specText: string): boolean {
   return /^\*\*Direction-critical:\*\*\s*yes\b/im.test(specText);
 }

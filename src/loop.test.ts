@@ -751,6 +751,73 @@ describe("execute", () => {
     expect(calls).toContain("removeLabels issue 200 needs-owner");
     expect(calls).toContain("setStatus PVTI_200 In Progress");
   });
+  it("apply_plan fills each task's placeholders with the numbers its issues got", async () => {
+    // Two PRs opened between the draft and the apply: the tasks land on #282 and #283, not on
+    // whatever the planner would have predicted.
+    const { gh: base, calls } = fakeGh([
+      issue({
+        number: 200,
+        labels: ["epic", "phase:2", "plan-approved"],
+        body: "## Spec\ndocs/superpowers/specs/2026-09-03-phase-02-x-design.md",
+      }),
+      issue({ number: 201, labels: ["phase:2"], status: "Backlog" }),
+    ]);
+    let next = 282;
+    const gh: GitHubApi = { ...base, createIssue: async () => next++ };
+    const file = JSON.stringify({
+      epic: 200,
+      tasks: [
+        { title: "t1", body: "## Depends on\nNone", labels: ["phase:2"] },
+        { title: "t2", body: "e2e/{{issue}}-a.spec.ts\n## Depends on\n#{{task:1}}", labels: [] },
+        { number: 201, title: "t3", body: "## Depends on\n#{{task:2}}, #{{task:1}}", labels: [] },
+      ],
+    });
+    await execute(
+      { type: "apply_plan", epic: 200 },
+      ctx({
+        gh,
+        planFiles: async () => ["docs/superpowers/plans/2026-09-10-phase-02-plan.issues.json"],
+        readPlanFile: async () => file,
+      }),
+    );
+    expect(calls).toContain("editBody 283 e2e/283-a.spec.ts\n## Depends on\n#282");
+    expect(calls).toContain("editBody 201 ## Depends on\n#283, #282");
+    // A created task with nothing to fill is not edited a second time.
+    expect(calls.filter((c) => c.startsWith("editBody 282"))).toEqual([]);
+    // A task is armed only once its own body is filled.
+    for (const n of [283, 201]) {
+      const edit = calls.findIndex((c) => c.startsWith(`editBody ${n} `));
+      const arm = calls.findIndex((c) => c.startsWith(`addLabels issue ${n} `));
+      expect(edit).toBeGreaterThanOrEqual(0);
+      expect(edit).toBeLessThan(arm);
+    }
+  });
+  it("apply_plan refuses a plan whose {{task:K}} names no task, before writing anything", async () => {
+    const { gh, calls } = fakeGh([
+      issue({
+        number: 200,
+        labels: ["epic", "phase:2", "plan-approved"],
+        body: "## Spec\ndocs/superpowers/specs/2026-09-03-phase-02-x-design.md",
+      }),
+    ]);
+    const file = JSON.stringify({
+      epic: 200,
+      tasks: [{ title: "t1", body: "## Depends on\n#{{task:2}}", labels: ["phase:2"] }],
+    });
+    await expect(
+      execute(
+        { type: "apply_plan", epic: 200 },
+        ctx({
+          gh,
+          planFiles: async () => ["docs/superpowers/plans/2026-09-10-phase-02-plan.issues.json"],
+          readPlanFile: async () => file,
+        }),
+      ),
+    ).rejects.toThrow(
+      'docs/superpowers/plans/2026-09-10-phase-02-plan.issues.json: task 1 ("t1") names {{task:2}}; the plan has 1 tasks',
+    );
+    expect(calls).toEqual([]);
+  });
   it("apply_plan reads the board once, not once per task", async () => {
     const { gh } = fakeGh([
       issue({
