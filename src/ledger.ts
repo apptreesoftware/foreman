@@ -30,6 +30,12 @@ export const fmt = {
     `session ${id} interrupted on ${host}: stopped by operator after ${minutes}m`,
   aborted: (host: string) => `released by ${host}: aborted by operator`,
   unblocked: (host: string) => `unblocked by owner via foreman@${host}`,
+  /**
+   * Deliberately none of CLAIM, SESSION or TERMINAL, and not `blocked by`: the claim stays open
+   * so the first tick after the reset resumes this session.
+   */
+  usageLimit: (id: string, host: string, until: string) =>
+    `usage limit reached on foreman@${host}: session ${id} paused until ${until}; the claim stays open and the session resumes then`,
   planPrStuck: (host: string, pr: number, sha: string, reason: string) =>
     `plan PR #${pr} cannot merge at ${sha}: ${reason}. Fix it or merge it by hand (foreman@${host})`,
 };

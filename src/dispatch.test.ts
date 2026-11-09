@@ -20,6 +20,7 @@ import {
   trustWorktree,
 } from "./dispatch.ts";
 import type { Exec } from "./exec.ts";
+import { endReason } from "./session-end.ts";
 import { emptyActivity } from "./stream.ts";
 
 const cfg = parseConfig(
@@ -352,6 +353,92 @@ describe("dispatchWithRetry", () => {
     expect(n).toBe(1);
     expect(r.subtype).toBe("error_max_turns");
     expect(r.outcome).toBeNull();
+  });
+});
+
+const fixture = (name: string) =>
+  readFileSync(join(import.meta.dirname, `../test/fixtures/${name}.jsonl`), "utf8");
+
+/** Plays one recorded session per spawn, through the stream callback as `realSpawn` does. */
+function replay(names: string[]) {
+  const calls: { args: string[]; input: string }[] = [];
+  const spawn: Spawner = async (_cmd, args, opts) => {
+    const text = fixture(names[Math.min(calls.length, names.length - 1)] as string);
+    calls.push({ args, input: opts.input });
+    for (const l of text.split("\n").filter((x) => x.length > 0)) opts.onStdoutLine?.(l);
+    return { code: 0, stdout: text, stderr: "", timedOut: false, interrupted: false };
+  };
+  return { calls, spawn };
+}
+const FRESH_ID = "77777777-7777-7777-7777-777777777777";
+
+describe("dispatchWithRetry on an API refusal", () => {
+  it("does not retry a usage limit", async () => {
+    const { calls, spawn } = replay(["refusal-usage-limit"]);
+    const r = await dispatchWithRetry(req, cfg, { spawn, onAttempt: async () => {} });
+    expect(calls).toHaveLength(1);
+    expect(r.outcome).toBeNull();
+    expect(r.end).toEqual({
+      cause: "usage_limit",
+      requestId: null,
+      resetsAt: "2026-11-09T22:50:00.000Z",
+    });
+  });
+
+  it("retries a flagged resumed session once, as a new session, then stops naming the cause", async () => {
+    const { calls, spawn } = replay(["refusal-safeguard"]);
+    const attempts: DispatchRequest[] = [];
+    const r = await dispatchWithRetry({ ...req, resume: true }, cfg, {
+      spawn,
+      onAttempt: async (a) => {
+        attempts.push(a);
+      },
+      newSessionId: () => FRESH_ID,
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.args.join(" ")).toContain(`--resume ${req.sessionId}`);
+    // Never the flagged id again: resuming resends the flagged context.
+    expect(calls[1]?.args.join(" ")).toContain(`--session-id ${FRESH_ID}`);
+    expect(calls[1]?.args).not.toContain("--resume");
+    expect(attempts.map((a) => [a.sessionId, a.resume])).toEqual([
+      [req.sessionId, true],
+      [FRESH_ID, false],
+    ]);
+    // Same worktree, and the new session is told the earlier work is already in it.
+    expect(attempts[1]?.worktree).toBe(req.worktree);
+    expect(calls[1]?.input).toContain("already in this worktree");
+    expect(calls[1]?.input).not.toContain("You are resuming interrupted work");
+    expect(r.outcome).toBeNull();
+    expect(r.end?.cause).toBe("safeguard");
+    expect(endReason(r)).toBe(
+      "safeguard flag on 2 sessions (req_011Cgt4qVTW9B5dwTGegArfo, req_011Cgt4qVTW9B5dwTGegArfo)",
+    );
+  });
+
+  it("returns the fresh session's outcome when it gets past the flag", async () => {
+    let n = 0;
+    const flagged = replay(["refusal-safeguard"]).spawn;
+    const spawn: Spawner = async (cmd, args, opts) => {
+      n++;
+      if (n === 1) return flagged(cmd, args, opts);
+      return { code: 0, stdout: okJson(), stderr: "", timedOut: false, interrupted: false };
+    };
+    const r = await dispatchWithRetry(req, cfg, {
+      spawn,
+      onAttempt: async () => {},
+      newSessionId: () => FRESH_ID,
+    });
+    expect(n).toBe(2);
+    expect(r.outcome?.outcome).toBe("pr_opened");
+  });
+
+  it("keeps resuming, as today, a session that ends with no refusal", async () => {
+    const { calls, spawn } = replay(["refusal-none"]);
+    const r = await dispatchWithRetry(req, cfg, { spawn, onAttempt: async () => {} });
+    expect(calls.map((c) => c.args.includes("--resume"))).toEqual([false, true, true]);
+    expect(calls.every((c) => c.args.join(" ").includes(req.sessionId))).toBe(true);
+    expect(r.end?.cause).toBe("other");
+    expect(endReason(r)).toBe("error_max_turns after retries");
   });
 });
 

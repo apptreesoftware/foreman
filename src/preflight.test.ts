@@ -54,6 +54,17 @@ describe("preflight", () => {
   it("passes with a subscription login", async () => {
     expect((await preflight(cfg, deps())).ok).toBe(true);
   });
+  it("refuses while the Claude usage limit is spent and its reset is still ahead", async () => {
+    const now = new Date("2026-11-09T21:34:00.000Z");
+    const pause = { until: "2026-11-09T22:52:00.000Z", reason: "usage limit" };
+    expect(await preflight(cfg, deps({ now, pause }))).toEqual({
+      ok: false,
+      reason: "paused: usage limit until 22:52Z",
+    });
+    const after = new Date("2026-11-09T22:53:00.000Z");
+    expect((await preflight(cfg, deps({ now: after, pause }))).ok).toBe(true);
+    expect((await preflight(cfg, deps({ now, pause: null }))).ok).toBe(true);
+  });
   it("fails on API-key auth", async () => {
     const exec: Exec = async () => ({
       code: 0,

@@ -30,6 +30,7 @@ const report: StatusReport = {
   model: { current: "opus", configured: "opus", source: "config", choices: MODEL_CHOICES },
   cap: { current: 20, configured: 20, source: "config", choices: CAP_CHOICES },
   effort: { default: "high", levels: EFFORT_LEVELS },
+  pause: null,
   tick: null,
   current: null,
   orphan: null,
@@ -657,6 +658,13 @@ describe("web.html", () => {
     expect(html).toContain('post("/api/refresh")');
     expect(html).toContain(`Confirm $${"{cmd}"}?`);
     expect(html).toContain("Back to live");
+  });
+  it("shows a usage-limit pause on the Now card and its banner, with Go as the way out", () => {
+    expect(html).toContain(
+      'r.pause ? { label: "paused", sub: esc(r.pause.label.replace(/^paused: /, "")) }',
+    );
+    expect(html).toContain("waits for the reset; Go resumes now");
+    expect(html).toContain("Paused <b>");
   });
   it("puts every reason the foreman is idle in a banner", () => {
     expect(html).toContain("no state.json: restart the daemon");

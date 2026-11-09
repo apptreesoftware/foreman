@@ -445,7 +445,9 @@
     paused: { cls: "warn", fix: "Resume on the Board tab" },
   };
   function bannerRows(r) {
-    const rows = (r.attention?.banners ?? []).map((w) => ({ cls: BANNER[w.kind]?.cls ?? "warn", text: esc(w.detail), fix: BANNER[w.kind]?.fix ?? "" }));
+    // A usage-limit pause fails preflight too, but there is nothing to fix: it ends on its own.
+    const bannerOf = (w) => (w.kind === "preflight" && r.pause ? { cls: "warn", fix: "waits for the reset; Go resumes now" } : BANNER[w.kind]);
+    const rows = (r.attention?.banners ?? []).map((w) => ({ cls: bannerOf(w)?.cls ?? "warn", text: esc(w.detail), fix: bannerOf(w)?.fix ?? "" }));
     if (r.daemon === "UNKNOWN") rows.push({ cls: "warn", text: "no state.json: restart the daemon", fix: "" });
     if (r.daemon === "STOPPED") rows.push({ cls: "warn", text: "the daemon is stopped", fix: "foreman start" });
     if (r.daemon === "CRASHED") rows.push({ cls: "bad", text: "the daemon crashed", fix: "check foreman.err.log, then start it" });
@@ -463,7 +465,8 @@
     if (!c) {
       // "idle" is reserved for a tick that found nothing eligible; between a finished session and
       // the next tick the daemon is asleep on a schedule, and says so.
-      const phase = r.nowPhase === "parked"
+      const phase = r.pause ? { label: "paused", sub: esc(r.pause.label.replace(/^paused: /, "")) }
+        : r.nowPhase === "parked"
         ? { label: "parked", sub: esc(r.tick?.preflight?.reason ?? "preflight failed") }
         : r.nowPhase === "between_ticks"
           ? { label: "between ticks", sub: `next tick ${t(r.tick?.nextAt)}` }
@@ -471,7 +474,7 @@
             ? { label: "ticking", sub: `since ${t(r.tick?.lastAt)}` }
             : { label: "idle", sub: `last tick ${t(r.tick?.lastAt)} · next ${t(r.tick?.nextAt)}` };
       el.className = "card now idle";
-      el.innerHTML = `<div class="eyebrow"><span class="role${r.nowPhase === "parked" ? " parked" : ""}">${phase.label}</span><span class="muted">${phase.sub}</span></div>`;
+      el.innerHTML = `<div class="eyebrow"><span class="role${r.nowPhase === "parked" || r.pause ? " parked" : ""}">${phase.label}</span><span class="muted">${phase.sub}</span></div>`;
       return;
     }
     const a = c.activity;
@@ -899,7 +902,7 @@
       <div><div class="k">Model for new sessions</div><div class="v2">${esc(m?.current ?? "–")}</div>${m?.source === "override" ? `<div class="note">override · foreman.json says ${esc(m.configured)}</div>` : ""}<div class="opts">${modelOpts.map((o) => `<button type="button" data-model="${esc(o)}" class="${o === m.current ? "on" : ""}">${esc(o === "default" ? `default (${m.configured})` : o)}</button>`).join("")}</div></div>
       <div><div class="k">Daily session cap</div><div class="v2">${esc(r.today?.count ?? 0)} of ${esc(c?.current ?? r.today?.cap ?? 0)} today · ${usd(r.today?.spendUsd)}</div>${c?.source === "override" ? `<div class="note">override · foreman.json says ${esc(c.configured)}</div>` : ""}<div class="opts">${capOpts.map((o) => `<button type="button" data-cap="${esc(String(o))}" class="${o === c.current ? "on" : ""}">${esc(o === "default" ? `default (${c.configured})` : String(o))}</button>`).join("")}</div></div>
       <div><div class="k">GitHub budget</div><div class="v2">${b ? `${b.remaining.toLocaleString("en-US")} of ${b.limit.toLocaleString("en-US")} points` : "–"}</div>${b ? `<div class="note">resets ${hm(b.resetAt)} · last tick ${esc(b.tickReads)} reads, ${esc(b.actionSpend)} by sessions, ${esc(b.betweenTicks)} elsewhere</div>` : ""}</div>
-      <div class="row2"><span>Last tick <b>${t(r.tick?.lastAt)}</b> · ${r.tick?.preflight ? (r.tick.preflight.ok ? "preflight ok" : `preflight failed: ${esc(r.tick.preflight.reason)}`) : "no tick yet"}</span><span>Next tick <b>${r.tick?.blockedBySession ? "after the session" : t(r.tick?.nextAt)}</b></span><span>Backoff <b>${esc(r.tick?.consecutiveFailures ?? 0)}</b></span><span>launchd <b>${r.launchdInstalled ? "installed" : "not installed"}</b></span>${r.lastPlan ? `<span>Plan <b>${esc(r.lastPlan.join(", "))}</b></span>` : ""}</div>`;
+      <div class="row2"><span>Last tick <b>${t(r.tick?.lastAt)}</b> · ${r.tick?.preflight ? (r.tick.preflight.ok ? "preflight ok" : `preflight failed: ${esc(r.tick.preflight.reason)}`) : "no tick yet"}</span><span>Next tick <b>${r.tick?.blockedBySession ? "after the session" : t(r.tick?.nextAt)}</b></span><span>Backoff <b>${esc(r.tick?.consecutiveFailures ?? 0)}</b></span>${r.pause ? `<span>Paused <b>${esc(r.pause.label.replace(/^paused: /, ""))}</b></span>` : ""}<span>launchd <b>${r.launchdInstalled ? "installed" : "not installed"}</b></span>${r.lastPlan ? `<span>Plan <b>${esc(r.lastPlan.join(", "))}</b></span>` : ""}</div>`;
     for (const x of $("daemonCard").querySelectorAll("button[data-model]")) x.onclick = () => { if (x.dataset.model !== m.current) setModel(x.dataset.model); };
     for (const x of $("daemonCard").querySelectorAll("button[data-cap]")) x.onclick = () => { if (x.dataset.cap !== String(c.current)) setCap(x.dataset.cap === "default" ? null : Number(x.dataset.cap)); };
   }

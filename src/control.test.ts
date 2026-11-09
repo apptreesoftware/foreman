@@ -56,6 +56,19 @@ describe("Controller", () => {
   });
 });
 
+describe("go", () => {
+  it("SIGUSR2 is go: it runs the go handler, then wakes the sleeping loop", async () => {
+    const order: string[] = [];
+    const c = new Controller(undefined, () => order.push("go"));
+    const fake = new EventEmitter();
+    c.install(fake as unknown as NodeJS.Process);
+    const p = c.sleep(5_000).then(() => order.push("woke"));
+    fake.emit("SIGUSR2");
+    await p;
+    expect(order).toEqual(["go", "woke"]);
+  });
+});
+
 describe("Mutex", () => {
   it("serialises overlapping runs", async () => {
     const m = new Mutex();

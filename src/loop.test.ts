@@ -8,7 +8,7 @@ import { parseConfig } from "./config.ts";
 import type { Spawner } from "./dispatch.ts";
 import { type Exec, realExec } from "./exec.ts";
 import type { GitHubApi } from "./github.ts";
-import { fmt } from "./ledger.ts";
+import { fmt, openClaim } from "./ledger.ts";
 import {
   ACTIVITY_FLUSH_MS,
   type Ctx,
@@ -26,6 +26,7 @@ import {
 } from "./loop.ts";
 import type { LabelledIssue, NotifyEvent, NotifyPort } from "./notify.ts";
 import { defaultRepoConfig } from "./repo-config.ts";
+import { plan } from "./state.ts";
 import type { Issue } from "./types.ts";
 
 const cfg = parseConfig(
@@ -1928,5 +1929,171 @@ describe("modelFor", () => {
     expect(modelFor(ctx({ state: st.store }), ["phase:1", "model:haiku"])).toBe("haiku");
     // A malformed label is no label: the override still applies.
     expect(modelFor(ctx({ state: st.store }), ["model:--flag"])).toBe("sonnet");
+  });
+});
+
+describe("API refusals", () => {
+  const fixture = (name: string) =>
+    readFileSync(join(import.meta.dirname, `../test/fixtures/${name}.jsonl`), "utf8");
+  /** Plays a recorded session through the stream callback, as `realSpawn` does. */
+  const replaySpawn =
+    (name: string, counter: { n: number } = { n: 0 }): Spawner =>
+    async (_cmd, _args, opts) => {
+      counter.n++;
+      const text = fixture(name);
+      for (const l of text.split("\n").filter((x) => x.length > 0)) opts.onStdoutLine?.(l);
+      return { code: 0, stdout: text, stderr: "", timedOut: false, interrupted: false };
+    };
+  /** The bodies posted on one issue, in order, as the ledger would read them back. */
+  const posted = (calls: string[], n: number) =>
+    calls
+      .filter((c) => c.startsWith(`comment issue ${n} `))
+      .map((c, k) => comment(c.slice(`comment issue ${n} `.length), `2026-09-03T12:00:0${k}Z`));
+
+  it("a usage limit pauses the daemon, keeps the claim open for a resume, and blocks nothing", async () => {
+    const i = issue({ number: 794, title: "feat: tokyo bounds", status: "In Progress" });
+    const { gh, calls } = fakeGh([i]);
+    const n = recordNotify();
+    const st = memState();
+    const dir = mkdtempSync(join(tmpdir(), "tt-loop-"));
+    const spawns = { n: 0 };
+    await execute(
+      { type: "claim", issue: 794, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        notify: n.port,
+        state: st.store,
+        stateDir: dir,
+        spawn: replaySpawn("refusal-usage-limit", spawns),
+      }),
+    );
+    expect(spawns.n).toBe(1);
+    expect(calls.some((c) => c.includes("blocked"))).toBe(false);
+    expect(calls.some((c) => c.startsWith("unassign"))).toBe(false);
+    expect(n.kinds()).toEqual([]);
+    expect(st.get().pausedUntil).toBe("2026-11-09T22:52:00.000Z");
+    expect(st.get().pauseReason).toBe("usage limit");
+    expect(st.get().current).toBeNull();
+    // One short note, and the claim still open with this session: the next tick after the reset
+    // resumes it rather than starting over, and nothing counts against `limits.attempts`.
+    const bodies = posted(calls, 794);
+    const notes = bodies.filter((c) => c.body.includes("usage limit"));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.body).toContain("2026-11-09 22:52Z");
+    const issueAfter = { ...i, comments: bodies };
+    expect(openClaim(bodies)?.sessionId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(plan(snapshot({ issues: [issueAfter] }))[0]?.type).toBe("resume");
+    const line = JSON.parse(readFileSync(join(dir, "sessions.log"), "utf8").trim());
+    expect(line.outcome).toBe("usage_limit");
+  });
+
+  it("a safeguard flag on the fresh retry blocks with the cause, never 'success after retries'", async () => {
+    const i = issue({ number: 795, title: "feat: report" });
+    const { gh, calls } = fakeGh([i]);
+    const n = recordNotify();
+    const spawns = { n: 0 };
+    await execute(
+      { type: "claim", issue: 795, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        notify: n.port,
+        stateDir: mkdtempSync(join(tmpdir(), "tt-loop-")),
+        spawn: replaySpawn("refusal-safeguard", spawns),
+      }),
+    );
+    expect(spawns.n).toBe(2);
+    const reason =
+      "safeguard flag on 2 sessions (req_011Cgt4qVTW9B5dwTGegArfo, req_011Cgt4qVTW9B5dwTGegArfo)";
+    expect(calls).toContain("addLabels issue 795 blocked");
+    expect(
+      calls.some((c) => c.startsWith(`comment issue 795 blocked by foreman@mac-a: ${reason}`)),
+    ).toBe(true);
+    expect(calls.some((c) => c.includes("success after retries"))).toBe(false);
+    expect(n.events).toEqual([{ kind: "blocked", issue: 795, title: "feat: report", reason }]);
+  });
+
+  it("a session that finished as its window ran out still pauses the next one", async () => {
+    const i = issue({ number: 796 });
+    const { gh } = fakeGh([i]);
+    const st = memState();
+    const spent = fixture("refusal-usage-limit")
+      .split("\n")
+      .find((l) => l.includes("rate_limit_event")) as string;
+    const done = okSpawn({ outcome: "pr_opened", pr: 5, notes: "" });
+    await execute(
+      { type: "claim", issue: 796, role: "builder", pr: null, round: 1 },
+      ctx({
+        gh,
+        state: st.store,
+        stateDir: mkdtempSync(join(tmpdir(), "tt-loop-")),
+        spawn: async (cmd, args, opts) => {
+          opts.onStdoutLine?.(spent);
+          return done(cmd, args, opts);
+        },
+      }),
+    );
+    expect(st.get().pausedUntil).toBe("2026-11-09T22:52:00.000Z");
+  });
+
+  it("runForever sleeps until pausedUntil instead of the poll interval", async () => {
+    const st = memState();
+    st.store.patch({ pausedUntil: "2026-09-03T13:00:00.000Z", pauseReason: "usage limit" });
+    const seconds: number[] = [];
+    const stop = new Error("stop");
+    await expect(
+      runForever(ctx({ state: st.store }), {
+        // The tick that hit the limit did work, which would otherwise mean "tick again at once".
+        iterate: async () => ({ didWork: true, action: "claim" }),
+        sleep: async (ms) => {
+          seconds.push(ms / 1000);
+          throw stop;
+        },
+      }),
+    ).rejects.toThrow("stop");
+    expect(seconds).toEqual([3600]);
+    expect(st.get().nextTickAt).toBe("2026-09-03T13:00:00.000Z");
+  });
+
+  it("runForever ignores a pause that has already ended", async () => {
+    const st = memState();
+    st.store.patch({ pausedUntil: "2026-09-03T11:00:00.000Z", pauseReason: "usage limit" });
+    const seconds: number[] = [];
+    const stop = new Error("stop");
+    await expect(
+      runForever(ctx({ state: st.store }), {
+        iterate: async () => ({ didWork: false, action: null }),
+        sleep: async (ms) => {
+          seconds.push(ms / 1000);
+          throw stop;
+        },
+      }),
+    ).rejects.toThrow("stop");
+    expect(seconds).toEqual([300]);
+  });
+
+  it("runOnce refuses to dispatch while paused, naming the reset", async () => {
+    const st = memState();
+    // Preflight runs on the real clock, like the daily cap it sits beside.
+    const until = new Date(Date.now() + 3600_000).toISOString();
+    st.store.patch({ pausedUntil: until, pauseReason: "usage limit" });
+    const n = recordNotify();
+    let spawned = false;
+    const r = await runOnce(
+      ctx({
+        state: st.store,
+        notify: n.port,
+        spawn: async () => {
+          spawned = true;
+          throw new Error("no session while paused");
+        },
+      }),
+    );
+    expect(r.didWork).toBe(false);
+    expect(spawned).toBe(false);
+    expect(st.get().lastPreflight).toEqual({
+      ok: false,
+      reason: `paused: usage limit until ${until.slice(11, 16)}Z`,
+    });
+    expect(n.parked).toEqual([`paused: usage limit until ${until.slice(11, 16)}Z`]);
   });
 });

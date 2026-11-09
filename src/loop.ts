@@ -43,6 +43,13 @@ import { writeSessionFiles } from "./prompts.ts";
 import { ledgerInterrupt } from "./release.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import {
+  endReason,
+  exhaustedResetAt,
+  formatResetAt,
+  pauseUntil,
+  USAGE_LIMIT_REASON,
+} from "./session-end.ts";
+import {
   appendMerge,
   appendSession,
   readMerges,
@@ -568,6 +575,14 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
     }
     return;
   }
+  if (!result.outcome && result.end?.cause === "usage_limit") {
+    await pauseForUsageLimit(ctx, r, result, current, model);
+    return;
+  }
+  // A session can return its outcome on the very turn its window runs out; the next one would
+  // be refused on its first turn, so the pause starts now all the same.
+  const spentReset = current.activity ? exhaustedResetAt(current.activity) : null;
+  if (result.outcome && spentReset) setPause(ctx, pauseUntil(spentReset, ctx.now()));
   if (result.interrupted && result.outcome) {
     const mode = ctx.stopMode() ?? "stop";
     log("info", "session finished despite interrupt; applying its outcome", {
@@ -603,6 +618,49 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   await applyOutcome(ctx, r, result, worktree);
 }
 
+function setPause(ctx: Ctx, until: string): void {
+  ctx.state?.patch({ pausedUntil: until, pauseReason: USAGE_LIMIT_REASON });
+  log("warn", "Claude usage limit spent; dispatching paused", { until });
+}
+
+/**
+ * The API stopped the session, not the task: nothing is wrong with the issue, so it is neither
+ * blocked nor released. Like an operator `stop`, the claim stays open — assignee, worktree and
+ * session id all kept — and the first tick after the reset resumes it with its context intact,
+ * as a new dispatch that counts nothing against `limits.attempts`. Releasing it instead would
+ * lose the fix-round labels `prepareSession` already removed. No `finished` comment, which
+ * would close the claim; one short note says what happened and when work resumes.
+ */
+async function pauseForUsageLimit(
+  ctx: Ctx,
+  r: RunRole,
+  result: SessionResult,
+  current: CurrentSession,
+  model: string,
+): Promise<void> {
+  const { cfg, gh } = ctx;
+  const until = pauseUntil(result.end?.resetsAt ?? null, ctx.now());
+  setPause(ctx, until);
+  appendSession(ctx.stateDir, {
+    t: ctx.now(),
+    host: cfg.host,
+    role: r.role,
+    issue: r.issue.number,
+    sessionId: result.sessionId,
+    attempt: current.attempt,
+    costUsd: result.costUsd,
+    outcome: "usage_limit",
+    title: r.issue.title,
+    ...sessionMetrics(result, current, model),
+  });
+  await gh.comment(
+    "issue",
+    r.issue.number,
+    fmt.usageLimit(result.sessionId, cfg.host, formatResetAt(until, ctx.now())),
+  );
+  ctx.state?.patch({ current: null });
+}
+
 // Role sessions cannot write outside their worktree (`--permission-mode dontAsk` denies it even
 // for allowlisted mkdir/mv), so the validator leaves screenshots in
 // `<worktree>/.validation-artifacts/<pr>/` and the foreman archives them here before the worktree
@@ -627,7 +685,8 @@ async function applyOutcome(
   const pr = res.outcome?.pr ?? r.pr;
   if (!res.outcome) {
     const excerpt = [res.resultText ?? "", res.stderr].join("\n").trim().slice(-1500);
-    const reason = `${res.timedOut ? "timed out" : res.subtype} after retries`;
+    // Names what `classifyEnd` found; a session with no refusal keeps today's wording.
+    const reason = endReason(res);
     await gh.addLabels("issue", n, ["blocked"]);
     await gh.comment(
       "issue",
@@ -1102,6 +1161,12 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
       repoDir: ctx.cfg.repoDir,
       instance: ctx.instance,
       hookLog: ctx.hookLog,
+      pause: ctx.state
+        ? {
+            until: ctx.state.get().pausedUntil ?? null,
+            reason: ctx.state.get().pauseReason ?? null,
+          }
+        : null,
     },
   );
   ctx.state?.patch({ lastPreflight: { ok: pre.ok, reason: pre.ok ? null : pre.reason } });
@@ -1250,15 +1315,25 @@ export async function runForever(ctx: Ctx, deps: LoopDeps = {}): Promise<void> {
     // A tick that did work has changed the board — a merge unblocks dependents, a session has
     // already spent its minutes — so waiting out another `pollSeconds` is dead time.
     // A tick that found something new still sleeps the plain interval, and a failure backs off.
-    const delaySeconds =
+    const tickDelay =
       outcome.didWork && consecutiveFailures === 0
         ? 0
         : consecutiveFailures > 0
           ? backoffSeconds(ctx.cfg.pollSeconds, consecutiveFailures)
           : idleSeconds(ctx.cfg.pollSeconds, consecutiveQuiet);
-    if (delaySeconds === 0) log("info", "ticking again immediately", { action: outcome.action });
-    if (consecutiveQuiet > 0) log("info", "idle backoff", { consecutiveQuiet, delaySeconds });
     const at = ctx.now();
+    // A usage-limit pause outranks every other delay, the zero after a tick that did work
+    // included: each tick before the reset would only be refused. The sleep is the controller's,
+    // so `go` (which clears the pause) still wakes it at once.
+    const pausedUntil = ctx.state?.get().pausedUntil ?? null;
+    const pausedFor = pausedUntil
+      ? Math.ceil((Date.parse(pausedUntil) - Date.parse(at)) / 1000)
+      : 0;
+    const delaySeconds = Math.max(tickDelay, pausedFor);
+    if (pausedFor > tickDelay) log("info", "paused until the usage limit resets", { pausedUntil });
+    else if (delaySeconds === 0)
+      log("info", "ticking again immediately", { action: outcome.action });
+    if (consecutiveQuiet > 0) log("info", "idle backoff", { consecutiveQuiet, delaySeconds });
     ctx.state?.patch({
       lastTickAt: at,
       nextTickAt: new Date(Date.parse(at) + delaySeconds * 1000).toISOString(),

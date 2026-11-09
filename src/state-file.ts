@@ -343,6 +343,14 @@ export const ForemanStateSchema = z.object({
    * Older state.json files predate this field; the default keeps them readable.
    */
   theme: ThemeSchema.nullable().default(null),
+  /**
+   * No session is dispatched before this time: a session found the Claude usage limit spent, and
+   * this is its reset plus a margin. Survives a restart; `go` clears it. Older state.json files
+   * predate both fields; the defaults keep them readable.
+   */
+  pausedUntil: z.string().nullable().default(null),
+  /** Why dispatching is paused (`usage limit`); null when it is not. */
+  pauseReason: z.string().nullable().default(null),
 });
 export type ForemanState = z.infer<typeof ForemanStateSchema>;
 
@@ -362,6 +370,9 @@ export function initialState(o: {
   maxSessionsPerDay?: number | null;
   /** Carried over from the previous state.json, or picked at first start; never reset. */
   theme?: ThemeName | null;
+  /** Carried over, so a restart during a usage-limit pause does not dispatch into the limit. */
+  pausedUntil?: string | null;
+  pauseReason?: string | null;
 }): ForemanState {
   return {
     version: 1,
@@ -370,6 +381,8 @@ export function initialState(o: {
     model: o.model ?? null,
     maxSessionsPerDay: o.maxSessionsPerDay ?? null,
     theme: o.theme ?? null,
+    pausedUntil: o.pausedUntil ?? null,
+    pauseReason: o.pauseReason ?? null,
     exitedAt: null,
     lastTickAt: null,
     nextTickAt: null,

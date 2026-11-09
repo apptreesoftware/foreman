@@ -14,14 +14,29 @@ export const ActivitySchema = z.object({
     .nullable(),
   lastText: z.object({ text: z.string(), at: z.string() }).nullable(),
   lastError: z.object({ tool: z.string(), at: z.string() }).nullable(),
+  /**
+   * The `error` Claude Code sets on a synthetic assistant message that reports an API refusal
+   * (`rate_limit` for a usage limit). Added later; the default keeps older state.json readable.
+   */
+  lastApiError: z.string().nullable().default(null),
   tokens: z.object({
     input: z.number(),
     output: z.number(),
     cacheRead: z.number(),
     cacheWrite: z.number(),
   }),
+  /**
+   * The last `rate_limit_event`: utilization of each window (1 = spent) and when each resets.
+   * A reset the event leaves out is null, never 1970. `sevenDayResetsAt` arrived later; the
+   * default keeps an older state.json's `current.activity` readable.
+   */
   rateLimit: z
-    .object({ fiveHour: z.number(), sevenDay: z.number(), resetsAt: z.string() })
+    .object({
+      fiveHour: z.number(),
+      sevenDay: z.number(),
+      resetsAt: z.string().nullable(),
+      sevenDayResetsAt: z.string().nullable().default(null),
+    })
     .nullable(),
 });
 export type Activity = z.infer<typeof ActivitySchema>;
@@ -37,6 +52,7 @@ export function emptyActivity(): Activity {
     lastTool: null,
     lastText: null,
     lastError: null,
+    lastApiError: null,
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     rateLimit: null,
   };
@@ -115,6 +131,9 @@ interface Msg {
 }
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+/** Epoch seconds as ISO; null when absent, so a missing reset never reads as 1970. */
+const epochIso = (v: unknown): string | null =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 ? new Date(v * 1000).toISOString() : null;
 
 /** Pure and total: any line the folder does not understand only bumps `events`. */
 export function foldEvent(a: Activity, line: string, nowIso: string, worktree: string): FoldResult {
@@ -141,16 +160,18 @@ export function foldEvent(a: Activity, line: string, nowIso: string, worktree: s
     const w = (info.unifiedWindows ?? {}) as Record<string, Record<string, unknown>>;
     const five = w.five_hour ?? {};
     const seven = w.seven_day ?? {};
-    if (typeof five.utilization === "number") {
+    // Either window can be the one that ran out, so an event naming only one is still kept.
+    if (typeof five.utilization === "number" || typeof seven.utilization === "number") {
       next.rateLimit = {
-        fiveHour: five.utilization,
+        fiveHour: num(five.utilization),
         sevenDay: num(seven.utilization),
-        resetsAt: new Date(num(five.resetsAt) * 1000).toISOString(),
+        resetsAt: epochIso(five.resetsAt),
+        sevenDayResetsAt: epochIso(seven.resetsAt),
       };
       entries.push({
         t: at,
         kind: "rate_limit",
-        fiveHour: five.utilization,
+        fiveHour: num(five.utilization),
         sevenDay: num(seven.utilization),
       });
     }
@@ -160,6 +181,7 @@ export function foldEvent(a: Activity, line: string, nowIso: string, worktree: s
   if (j.type === "assistant") {
     const m = (j.message ?? {}) as Msg;
     next.lastEventAt = at;
+    if (typeof j.error === "string" && j.error) next.lastApiError = j.error;
     if (m.id && m.id !== a.lastMessageId) {
       next.turns = a.turns + 1;
       next.lastMessageId = m.id;

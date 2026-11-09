@@ -4,6 +4,7 @@ import type { BudgetSample } from "./budget.ts";
 import type { ForemanConfig } from "./config.ts";
 import type { Exec } from "./exec.ts";
 import { parsePreflight, runHook } from "./hooks.ts";
+import { formatResetAt } from "./session-end.ts";
 
 export const FORBIDDEN_ENV = [
   "ANTHROPIC_API_KEY",
@@ -22,6 +23,11 @@ export interface PreflightDeps {
   repoDir: string;
   instance: string;
   hookLog?: (line: string) => void;
+  /**
+   * The daemon's dispatch pause (state.json `pausedUntil`/`pauseReason`), set when a session
+   * found the Claude usage limit spent. Absent or null means no pause.
+   */
+  pause?: { until: string | null; reason: string | null } | null;
 }
 export type PreflightResult = { ok: true; warnings: string[] } | { ok: false; reason: string };
 
@@ -99,6 +105,15 @@ export async function preflight(cfg: ForemanConfig, deps: PreflightDeps): Promis
   const bad = checkEnv(deps.env);
   if (bad) return { ok: false, reason: `${bad} is set; refusing to run with API-key billing` };
   if (existsSync(join(deps.stateDir, "STOP"))) return { ok: false, reason: "STOP file present" };
+  // Before `claude auth status`: a session started now would be refused by the API on its first
+  // turn. The reason names a fixed time rather than a countdown, so it reads the same every tick
+  // and the parked notification goes out once.
+  const until = deps.pause?.until ?? null;
+  if (until && Date.parse(until) > deps.now.getTime())
+    return {
+      ok: false,
+      reason: `paused: ${deps.pause?.reason ?? "usage limit"} until ${formatResetAt(until, deps.now.toISOString())}`,
+    };
 
   const auth = await deps.exec("claude", ["auth", "status"]);
   let status: { loggedIn?: boolean; authMethod?: string } = {};
