@@ -227,7 +227,21 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
    `<worktree>/.validation-artifacts/<pr>/` to `~/.foreman/<name>/artifacts/<pr>/`, because a
    headless session cannot write outside its worktree and the worktree is removed at merge. A
    session that ends without a valid outcome is retried up to `limits.attempts` (3) times; if all
-   fail, the issue is labelled `blocked` with a log excerpt and unassigned.
+   fail, the issue is labelled `blocked` with a log excerpt and unassigned. Two API refusals are
+   handled apart, because neither is the task's fault and resuming cannot get past either
+   (`src/session-end.ts` holds every match on the API's wording):
+   - **Usage limit** (`You've hit your … limit`, or a spent five-hour or seven-day window in the
+     stream's rate-limit event). Not retried and not blocked. The claim stays open, as after
+     `stop`, with one note on the issue. Dispatching pauses until the window's reset plus two
+     minutes, or for 30 minutes when the reset is unknown. The pause is kept in `state.json` as
+     `pausedUntil`, survives a restart, and shows in `status` and on the page as
+     `paused: usage limit until 22:52Z`. The first tick after it resumes the session. The resumed
+     session is a new dispatch, so it counts nothing against `limits.attempts`. `foreman go`
+     clears the pause at once.
+   - **Safeguard flag** (`… safeguards flagged this message`). The flagged session is never
+     resumed. The next attempt starts one new session in the same worktree, told that the
+     earlier work is already there. A second flag blocks the issue with
+     `safeguard flag on 2 sessions (req_…)`.
 10. **Phase check.** If every task under a phase epic is closed, the phase-closer is dispatched.
    Then the planner, which is gated three ways: the epic must carry **`agent-ready`** (the owner's
    go-ahead — without it the foreman never plans anything), no approved phase may still be
@@ -726,7 +740,7 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   <host>: aborted by operator`, unassigns itself and moves a round-1 builder issue back to Ready.
   The worktree is left for reuse. If the daemon is already dead and `state.json` shows an
   unfinished claim, `abort` posts the release itself.
-- **Start again:** `foreman -p widgets go` removes `STOP` and wakes the daemon, or `launchctl
+- **Start again:** `foreman -p widgets go` removes `STOP`, clears a usage-limit pause, and wakes the daemon, or `launchctl
   kickstart`s it, or prints the start command. `foreman -p widgets restart` stops and starts,
   clearing the `STOP` that `stop` left.
 - **This Mac, next poll only:** `touch ~/.foreman/widgets/STOP`. Preflight fails on the next

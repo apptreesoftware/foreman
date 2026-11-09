@@ -291,6 +291,12 @@ export async function ctlGo(d: CtlDeps): Promise<void> {
   d.removeStop();
   d.out("STOP file removed");
   const s = readState(d.stateDir);
+  // A live daemon clears its own pause on SIGUSR2. A stopped one carries the pause over into the
+  // next start, so it is cleared here, in the file that start reads.
+  if (s && !d.pidAlive(s.pid) && s.pausedUntil) {
+    writeState(d.stateDir, { ...s, pausedUntil: null, pauseReason: null });
+    d.out("usage-limit pause cleared");
+  }
   if (s && d.pidAlive(s.pid)) {
     d.kill(s.pid, "SIGUSR2");
     d.out("tick requested");

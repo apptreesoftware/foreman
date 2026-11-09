@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { emptyActivity, foldEvent, summarizeToolUse } from "./stream.ts";
+import { ActivitySchema, emptyActivity, foldEvent, summarizeToolUse } from "./stream.ts";
 
 const lines = readFileSync(join(import.meta.dirname, "../test/fixtures/stream.jsonl"), "utf8")
   .split("\n")
@@ -103,7 +103,41 @@ describe("foldEvent", () => {
       fiveHour: 0.06,
       sevenDay: 0.33,
       resetsAt: "2026-09-04T18:10:00.000Z",
+      sevenDayResetsAt: "2026-09-06T22:00:00.000Z",
     });
+  });
+  it("keeps a seven-day window that arrives without a five-hour one, and no 1970 reset", () => {
+    const line = JSON.stringify({
+      type: "rate_limit_event",
+      rate_limit_info: { unifiedWindows: { seven_day: { utilization: 1 } } },
+    });
+    const a = foldEvent(emptyActivity(), line, now, wt).activity;
+    expect(a.rateLimit).toEqual({
+      fiveHour: 0,
+      sevenDay: 1,
+      resetsAt: null,
+      sevenDayResetsAt: null,
+    });
+  });
+  it("keeps the error Claude Code puts on a synthetic API-error message", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      error: "rate_limit",
+      message: { id: "m9", content: [{ type: "text", text: "You've hit your limit" }] },
+    });
+    const errored = foldEvent(emptyActivity(), line, now, wt).activity;
+    expect(errored.lastApiError).toBe("rate_limit");
+    expect(emptyActivity().lastApiError).toBeNull();
+    // A session that recovers from the error is no longer stopped by it.
+    const next = JSON.stringify({
+      type: "assistant",
+      message: { id: "m10", content: [{ type: "text", text: "carrying on" }] },
+    });
+    expect(foldEvent(errored, next, now, wt).activity.lastApiError).toBeNull();
+  });
+  it("reads an old state.json activity that predates the seven-day reset", () => {
+    const old = { ...emptyActivity(), rateLimit: { fiveHour: 1, sevenDay: 0, resetsAt: "x" } };
+    expect(ActivitySchema.parse(old).rateLimit?.sevenDayResetsAt).toBeNull();
   });
   it("emits feed entries without thinking, raw inputs or MCP tool arguments", () => {
     const { entries } = foldAll(lines);

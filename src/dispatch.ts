@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,7 @@ import type { FeedEntry } from "./feed.ts";
 import { log } from "./log.ts";
 import { FORBIDDEN_ENV } from "./preflight.ts";
 import { defaultRepoConfig } from "./repo-config.ts";
+import { classifyEnd, type SessionEnd } from "./session-end.ts";
 import { EFFORT_DEFAULT_LEVEL, type EffortLevel } from "./state-file.ts";
 import { type Activity, emptyActivity, foldEvent } from "./stream.ts";
 import type { Role } from "./types.ts";
@@ -87,6 +89,10 @@ export interface SessionResult {
   timedOut: boolean;
   stderr: string;
   interrupted: boolean;
+  /** Why a session with no outcome ended (`classifyEnd`); absent when it has an outcome. */
+  end?: SessionEnd;
+  /** The request id of each safeguard-flagged session this dispatch ran, in order. */
+  flagged?: (string | null)[];
 }
 
 export function slugify(title: string): string {
@@ -401,6 +407,8 @@ export interface DispatchDeps {
   signal?: AbortSignal;
   onSpawn?: (pid: number) => void;
   onActivity?: (activity: Activity, entries: FeedEntry[]) => void;
+  /** The id a fresh session after a safeguard flag runs under; `randomUUID` when absent. */
+  newSessionId?: () => string;
 }
 
 export async function runSession(
@@ -439,6 +447,7 @@ export async function runSession(
   parsed.interrupted = r.interrupted;
   if (r.interrupted && !parsed.outcome) parsed.subtype = "interrupted";
   if (!parsed.sessionId) parsed.sessionId = req.sessionId;
+  if (!parsed.outcome && !parsed.interrupted) parsed.end = classifyEnd(parsed, activity);
   deps.onActivity?.(activity, [
     {
       t: new Date().toISOString(),
@@ -463,7 +472,23 @@ export async function runSession(
   return parsed;
 }
 
-/** Attempt 1 as requested; later attempts resume the same session id. Stops on a valid outcome. */
+/**
+ * What a session started after a safeguard flag is told. It cannot resume the flagged
+ * conversation, so it starts cold in a worktree that already holds the earlier work.
+ */
+export function freshAfterFlagNotes(defaultBranch = "main"): string {
+  return `An earlier session on this task was stopped by an API safeguard flag and cannot be resumed, so this is a new session. The earlier work is already in this worktree: commits on this branch and any uncommitted changes. Run \`git status\` and \`git log origin/${defaultBranch}..HEAD\`, read your last Progress comment on the issue, and continue from the worktree's current state. Do not redo finished steps and do not discard uncommitted changes.`;
+}
+
+/**
+ * Attempt 1 as requested; later attempts resume the same session id. Stops on a valid outcome.
+ *
+ * Two API refusals are not the task's doing, and resuming cannot get past either:
+ *  - a usage limit returns at once. The caller pauses the daemon; it is neither retried nor
+ *    counted against `attempts`.
+ *  - a safeguard flag is never resumed, because resuming resends the flagged context. The next
+ *    attempt is one new session in the same worktree; a second flag returns.
+ */
 export async function dispatchWithRetry(
   req: DispatchRequest,
   cfg: ForemanConfig,
@@ -471,18 +496,48 @@ export async function dispatchWithRetry(
   attempts = 3,
 ): Promise<SessionResult> {
   let last: SessionResult | null = null;
-  for (let attempt = req.attempt; attempt < req.attempt + attempts; attempt++) {
+  let sessionId = req.sessionId;
+  let resume = req.resume;
+  let notes = req.notes;
+  const flagged: (string | null)[] = [];
+  let end = req.attempt + attempts;
+  for (let attempt = req.attempt; attempt < end; attempt++) {
     // An abort landing between attempts (the first attempt always runs) must not post another
     // "session …" comment and spawn a child just to kill it.
     if (attempt > req.attempt && deps.signal?.aborted) break;
-    const r = await runSession(
-      { ...req, attempt, resume: req.resume || attempt > req.attempt },
-      cfg,
-      deps,
-    );
+    const r = await runSession({ ...req, attempt, sessionId, resume, notes }, cfg, deps);
     last = r;
     if (r.outcome) return r;
     if (r.interrupted) return r; // operator stop/abort: never retry
+    if (r.end?.cause === "usage_limit") {
+      log("warn", "session stopped by the usage limit; not retrying", {
+        issue: req.issue,
+        attempt,
+        resetsAt: r.end.resetsAt,
+      });
+      return r;
+    }
+    if (r.end?.cause === "safeguard") {
+      flagged.push(r.end.requestId);
+      r.flagged = [...flagged];
+      if (flagged.length > 1) return r;
+      log("warn", "session flagged by API safeguards; retrying once as a new session", {
+        issue: req.issue,
+        attempt,
+        requestId: r.end.requestId,
+      });
+      // The one fresh session runs even when the flag used up the last attempt.
+      end = Math.max(end, attempt + 2);
+      sessionId = (deps.newSessionId ?? randomUUID)();
+      resume = false;
+      notes = [freshAfterFlagNotes(deps.defaultBranch ?? "main"), req.notes]
+        .filter(Boolean)
+        .join("\n");
+      continue;
+    }
+    // Every later attempt resumes the session that just ended: the requested one, or the new one
+    // a safeguard flag started.
+    resume = true;
     log("warn", "session ended without outcome; retrying", {
       issue: req.issue,
       attempt,
@@ -491,5 +546,6 @@ export async function dispatchWithRetry(
     });
   }
   if (!last) throw new Error("dispatchWithRetry: attempts must be at least 1");
+  if (flagged.length > 0) last.flagged = [...flagged];
   return last;
 }

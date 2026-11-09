@@ -158,12 +158,22 @@ export async function runDaemon(
       model: previous?.model ?? null,
       maxSessionsPerDay: previous?.maxSessionsPerDay ?? null,
       theme: previous?.theme ?? pickTheme(instance.name, others),
+      // A restart during a usage-limit pause must not dispatch straight into the limit.
+      pausedUntil: previous?.pausedUntil ?? null,
+      pauseReason: previous?.pauseReason ?? null,
     }),
   );
+  // `go` is the owner overruling a usage-limit pause (the limit was raised, or it reset early):
+  // clear it before the wake, so the tick that follows dispatches.
+  const clearPause = () => {
+    if (!store.get().pausedUntil) return;
+    store.patch({ pausedUntil: null, pauseReason: null });
+    log("info", "usage-limit pause cleared by go");
+  };
   const controller = new Controller((mode) => {
     log("info", "operator requested", { mode });
     store.patch({ stopping: { mode, at: new Date().toISOString() } });
-  });
+  }, clearPause);
   controller.install();
   const lock = new Mutex();
   const ctx = realCtx(
@@ -211,7 +221,7 @@ export async function runDaemon(
     act: async (cmd) => {
       if (cmd === "go") {
         if (existsSync(stopFile)) unlinkSync(stopFile);
-        controller.wake();
+        controller.go();
         return "STOP removed; tick requested";
       }
       writeFileSync(stopFile, "");

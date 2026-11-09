@@ -1,6 +1,7 @@
 import { type Attention, describeAttention } from "./attention.ts";
 import { overlayCurrent } from "./board.ts";
 import { formatBudget } from "./budget.ts";
+import { formatResetAt, USAGE_LIMIT_REASON } from "./session-end.ts";
 import { type SessionLogEntry, todayStats } from "./sessions.ts";
 import {
   type Board,
@@ -69,6 +70,11 @@ export interface StatusReport {
   };
   /** The effort every session runs at, and the levels a task's `effort:<level>` label may pick. */
   effort: { default: EffortLevel; levels: readonly EffortLevel[] };
+  /**
+   * A usage-limit pause still ahead of `now`: no session is dispatched before `until`. `label` is
+   * the line `status` and the page show.
+   */
+  pause: { until: string; reason: string; label: string } | null;
   tick: {
     lastAt: string | null;
     nextAt: string | null;
@@ -206,6 +212,7 @@ export function describeStatus(i: StatusInput): StatusReport {
       choices: i.modelChoices,
     },
     effort: { default: EFFORT_DEFAULT_LEVEL, levels: EFFORT_LEVELS },
+    pause: pauseOf(s?.pausedUntil ?? null, s?.pauseReason ?? null, i.now),
     tick: s
       ? {
           lastAt: s.lastTickAt,
@@ -240,6 +247,12 @@ export function describeStatus(i: StatusInput): StatusReport {
   };
 }
 
+function pauseOf(until: string | null, reason: string | null, now: string): StatusReport["pause"] {
+  if (!until || Date.parse(until) <= Date.parse(now)) return null;
+  const why = reason ?? USAGE_LIMIT_REASON;
+  return { until, reason: why, label: `paused: ${why} until ${formatResetAt(until, now)}` };
+}
+
 const hhmm = (iso: string | null) => (iso ? `${iso.slice(11, 19)}Z` : "–");
 const mins = (m: number) =>
   m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m` : `${m}m`;
@@ -264,7 +277,7 @@ export function formatStatus(r: StatusReport): string {
         : `preflight failed: ${r.tick.preflight.reason}`
       : "no tick yet";
     lines.push(
-      `tick   last ${hhmm(r.tick.lastAt)}  ${pre}   next ${hhmm(r.tick.nextAt)}   backoff ${r.tick.consecutiveFailures}`,
+      `tick   last ${hhmm(r.tick.lastAt)}  ${pre}   next ${hhmm(r.tick.nextAt)}   backoff ${r.tick.consecutiveFailures}${r.pause ? `   ${r.pause.label}` : ""}`,
     );
   }
   if (r.stopping) lines.push(`STOPPING (${r.stopping.mode}) since ${hhmm(r.stopping.at)}`);
@@ -284,7 +297,9 @@ export function formatStatus(r: StatusReport): string {
       lines.push(
         `STALLED  no output for ${mins(c.silentMinutes)} (limit ${c.limitMinutes}m; ctl stop to interrupt)`,
       );
-  } else if (r.nowPhase === "parked")
+  } else if (r.pause)
+    lines.push(`now    ${r.pause.label.replace(/^paused: /, "paused · ")}   (ctl go resumes now)`);
+  else if (r.nowPhase === "parked")
     lines.push(
       `now    parked · ${r.tick?.preflight?.reason ?? "preflight failed"}   (retrying every tick)`,
     );

@@ -294,6 +294,18 @@ describe("ctlGo", () => {
     expect(log.stop).toBe(false);
     expect(log.kills).toEqual(["SIGUSR2 100"]);
   });
+  it("clears a usage-limit pause even with no daemon running, so the next start dispatches", async () => {
+    const { d, dir } = deps({ launchdInstalled: async () => true });
+    writeState(dir, {
+      ...base(),
+      exitedAt: "2026-09-04T05:00:00.000Z",
+      pausedUntil: "2099-01-01T00:00:00.000Z",
+      pauseReason: "usage limit",
+    });
+    await ctlGo(d);
+    expect(readState(dir)?.pausedUntil).toBeNull();
+    expect(readState(dir)?.pauseReason).toBeNull();
+  });
   it("kickstarts launchd when installed, else prints the start command", async () => {
     const a = deps({ launchdInstalled: async () => true });
     await ctlGo(a.d);

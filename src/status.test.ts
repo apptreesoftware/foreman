@@ -145,6 +145,30 @@ describe("describeStatus", () => {
     // A running session still outranks it: the tick that started it had a healthy preflight.
     expect(describeStatus(input({ state: { ...capped, current } })).nowPhase).toBe("session");
   });
+  it("names a usage-limit pause and when it ends, in the report and the text", () => {
+    const paused = {
+      ...state(),
+      lastTickAt: "2026-09-04T05:09:00.000Z",
+      nextTickAt: "2026-09-04T07:52:00.000Z",
+      lastPlan: ["claim#143"],
+      lastPreflight: { ok: false, reason: "paused: usage limit until 07:52Z" },
+      pausedUntil: "2026-09-04T07:52:00.000Z",
+      pauseReason: "usage limit",
+    };
+    const r = describeStatus(input({ state: paused }));
+    expect(r.pause).toEqual({
+      until: "2026-09-04T07:52:00.000Z",
+      reason: "usage limit",
+      label: "paused: usage limit until 07:52Z",
+    });
+    const text = formatStatus(r);
+    expect(text).toContain("paused: usage limit until 07:52Z");
+    expect(text).toContain("now    paused · usage limit until 07:52Z   (ctl go resumes now)");
+    expect(text).not.toContain("retrying every tick");
+    // Once the pause has ended it is not reported, whatever state.json still holds.
+    const over = describeStatus(input({ state: paused, now: "2026-09-04T08:00:00.000Z" }));
+    expect(over.pause).toBeNull();
+  });
   it("reports the config cap, and the live override when one is set", () => {
     const fromConfig = describeStatus(input());
     expect(fromConfig.cap).toEqual({

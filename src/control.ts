@@ -6,7 +6,11 @@ export class Controller {
   private mode: StopMode | null = null;
   private wakers = new Set<() => void>();
 
-  constructor(private readonly onChange: (mode: StopMode) => void = () => {}) {}
+  constructor(
+    private readonly onChange: (mode: StopMode) => void = () => {},
+    /** The owner's `go`: runs before the wake, so the tick it triggers sees its effect. */
+    private readonly onGo: () => void = () => {},
+  ) {}
 
   get signal(): AbortSignal {
     return this.ac.signal;
@@ -27,6 +31,12 @@ export class Controller {
     this.onChange(mode);
     this.wake();
     return true;
+  }
+
+  /** The owner said go: clear what `onGo` clears, then run the next tick now. */
+  go(): void {
+    this.onGo();
+    this.wake();
   }
 
   wake(): void {
@@ -52,7 +62,8 @@ export class Controller {
     p.on("SIGTERM", () => this.request("stop"));
     p.on("SIGINT", () => this.request("stop"));
     p.on("SIGUSR1", () => this.request("abort"));
-    p.on("SIGUSR2", () => this.wake());
+    // `ctl go` is the only sender of SIGUSR2.
+    p.on("SIGUSR2", () => this.go());
   }
 }
 
