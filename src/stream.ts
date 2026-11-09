@@ -181,7 +181,8 @@ export function foldEvent(a: Activity, line: string, nowIso: string, worktree: s
   if (j.type === "assistant") {
     const m = (j.message ?? {}) as Msg;
     next.lastEventAt = at;
-    if (typeof j.error === "string" && j.error) next.lastApiError = j.error;
+    // Per message, not sticky: only the latest message says whether the API is refusing now.
+    next.lastApiError = typeof j.error === "string" && j.error ? j.error : null;
     if (m.id && m.id !== a.lastMessageId) {
       next.turns = a.turns + 1;
       next.lastMessageId = m.id;

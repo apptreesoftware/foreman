@@ -500,7 +500,8 @@ export async function dispatchWithRetry(
   let resume = req.resume;
   let notes = req.notes;
   const flagged: (string | null)[] = [];
-  for (let attempt = req.attempt; attempt < req.attempt + attempts; attempt++) {
+  let end = req.attempt + attempts;
+  for (let attempt = req.attempt; attempt < end; attempt++) {
     // An abort landing between attempts (the first attempt always runs) must not post another
     // "session …" comment and spawn a child just to kill it.
     if (attempt > req.attempt && deps.signal?.aborted) break;
@@ -525,6 +526,8 @@ export async function dispatchWithRetry(
         attempt,
         requestId: r.end.requestId,
       });
+      // The one fresh session runs even when the flag used up the last attempt.
+      end = Math.max(end, attempt + 2);
       sessionId = (deps.newSessionId ?? randomUUID)();
       resume = false;
       notes = [freshAfterFlagNotes(deps.defaultBranch ?? "main"), req.notes]

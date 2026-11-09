@@ -415,6 +415,19 @@ describe("dispatchWithRetry on an API refusal", () => {
     );
   });
 
+  it("runs the one fresh session even when the flag lands on the last allowed attempt", async () => {
+    const { calls, spawn } = replay(["refusal-safeguard"]);
+    const r = await dispatchWithRetry(
+      req,
+      cfg,
+      { spawn, onAttempt: async () => {}, newSessionId: () => FRESH_ID },
+      1,
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.args.join(" ")).toContain(`--session-id ${FRESH_ID}`);
+    expect(r.flagged).toHaveLength(2);
+  });
+
   it("returns the fresh session's outcome when it gets past the flag", async () => {
     let n = 0;
     const flagged = replay(["refusal-safeguard"]).spawn;

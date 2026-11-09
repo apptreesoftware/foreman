@@ -125,8 +125,15 @@ describe("foldEvent", () => {
       error: "rate_limit",
       message: { id: "m9", content: [{ type: "text", text: "You've hit your limit" }] },
     });
-    expect(foldEvent(emptyActivity(), line, now, wt).activity.lastApiError).toBe("rate_limit");
+    const errored = foldEvent(emptyActivity(), line, now, wt).activity;
+    expect(errored.lastApiError).toBe("rate_limit");
     expect(emptyActivity().lastApiError).toBeNull();
+    // A session that recovers from the error is no longer stopped by it.
+    const next = JSON.stringify({
+      type: "assistant",
+      message: { id: "m10", content: [{ type: "text", text: "carrying on" }] },
+    });
+    expect(foldEvent(errored, next, now, wt).activity.lastApiError).toBeNull();
   });
   it("reads an old state.json activity that predates the seven-day reset", () => {
     const old = { ...emptyActivity(), rateLimit: { fiveHour: 1, sevenDay: 0, resetsAt: "x" } };
