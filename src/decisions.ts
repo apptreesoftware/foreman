@@ -1,5 +1,5 @@
 import type { GitHubApi } from "./github.ts";
-import { decisionResumed, fmt, lastUnblockedAt, openClaim } from "./ledger.ts";
+import { decisionUnblocked, fmt, lastUnblockedAt, openClaim } from "./ledger.ts";
 import { log } from "./log.ts";
 import { type UnblockGh, unblockEdits } from "./needs-you.ts";
 import type { ClosedDecision, Comment, Snapshot } from "./types.ts";
@@ -59,7 +59,7 @@ export function planDecisionResumes(s: Snapshot, closed: ClosedDecision[]): Deci
     const task = s.issues.find((i) => i.number === n);
     if (task?.state !== "OPEN" || !task.labels.includes("blocked")) continue;
     if (openClaim(task.comments)) continue;
-    if (decisionResumed(task.comments, d.number)) continue;
+    if (decisionUnblocked(task.comments, d.number)) continue;
     const unblockedAt = lastUnblockedAt(task.comments);
     if (unblockedAt !== null && d.createdAt <= unblockedAt) continue;
     const r = byTask.get(n) ?? {
@@ -95,7 +95,7 @@ export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promi
   const resumes = planDecisionResumes(s, await gh.listClosedDecisions(since));
   for (const r of resumes) {
     for (const d of r.decisions)
-      await gh.comment("issue", r.task, fmt.decisionResumed(s.host, d.number, d.answer));
+      await gh.comment("issue", r.task, fmt.decisionUnblocked(s.host, d.number, d.answer));
     await unblockEdits(gh, { issue: r.task, itemId: r.itemId, host: s.host, pr: r.pr });
     log("info", "decision resumed task", {
       task: r.task,

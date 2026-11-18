@@ -31,13 +31,13 @@ export const fmt = {
   aborted: (host: string) => `released by ${host}: aborted by operator`,
   unblocked: (host: string) => `unblocked by owner via foreman@${host}`,
   /**
-   * The foreman resumed a task because decision #`decision` was closed as completed. Not
-   * TERMINAL and not `blocked by`: a resume must neither close a claim nor count as a block.
+   * The foreman unblocked a task because decision #`decision` was closed as completed. Not
+   * TERMINAL and not `blocked by`: it must neither close a claim nor count as a block.
    */
-  decisionResumed: (host: string, decision: number, answer: string | null) =>
+  decisionUnblocked: (host: string, decision: number, answer: string | null) =>
     answer
-      ? `decision #${decision} settled: ${answer} — resumed by foreman@${host}`
-      : `decision #${decision} closed; read it before continuing — resumed by foreman@${host}`,
+      ? `decision #${decision} settled: ${answer} — unblocked by decision via foreman@${host}`
+      : `decision #${decision} closed; read it before continuing — unblocked by decision via foreman@${host}`,
   /**
    * Deliberately none of CLAIM, SESSION or TERMINAL, and not `blocked by`: the claim stays open
    * so the first tick after the reset resumes this session.
@@ -129,15 +129,16 @@ export function planApplied(comments: Comment[]): boolean {
   return comments.some((c) => c.body.trim().startsWith("plan applied by foreman@"));
 }
 
-const DECISION_RESUMED = /^decision #(\d+) (?:settled: |closed; ).* — resumed by foreman@\S+$/;
+const DECISION_UNBLOCKED =
+  /^decision #(\d+) (?:settled: |closed; ).* — unblocked by decision via foreman@\S+$/;
 
-/** Whether this task was already resumed for decision `n`; each decision resumes at most once. */
-export function decisionResumed(comments: Comment[], n: number): boolean {
-  return comments.some((c) => DECISION_RESUMED.exec(c.body.trim())?.[1] === String(n));
+/** Whether decision `n` already unblocked this task; each decision unblocks at most once. */
+export function decisionUnblocked(comments: Comment[], n: number): boolean {
+  return comments.some((c) => DECISION_UNBLOCKED.exec(c.body.trim())?.[1] === String(n));
 }
 
 /**
- * When the task last left a blocked spell: the owner's Unblock or a decision resume. A decision
+ * When the task last left a blocked spell: the owner's Unblock or a settled decision. A decision
  * opened before this belongs to an earlier spell and must not release the current one. Null when
  * neither ever happened.
  */
@@ -146,7 +147,7 @@ export function lastUnblockedAt(comments: Comment[]): string | null {
     comments
       .filter((c) => {
         const b = c.body.trim();
-        return b.startsWith("unblocked by owner via foreman@") || DECISION_RESUMED.test(b);
+        return b.startsWith("unblocked by owner via foreman@") || DECISION_UNBLOCKED.test(b);
       })
       .map((c) => c.createdAt)
       .sort()

@@ -1927,7 +1927,7 @@ describe("notifications", () => {
     expect(calls).toContain("removeLabels issue 5 blocked");
     expect(calls).toContain("setStatus PVTI_5 Ready");
     expect(calls).toContain(
-      "comment issue 5 decision #40 settled: B — Use REST — resumed by foreman@mac-a",
+      "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
     );
   });
 

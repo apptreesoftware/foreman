@@ -278,7 +278,7 @@ plan on retry instead of duplicating it.
 |---|---|
 | builder `pr_opened` | issue → In Review |
 | builder `blocked` | issue `blocked`, unassigned |
-| (foreman) `decision` issue with `Blocks: #N` closed as completed | #N unblocked → Ready, `decision #<d> settled: <answer> — resumed by foreman@<host>` |
+| (foreman) `decision` issue with `Blocks: #N` closed as completed | #N unblocked → Ready, `decision #<d> settled: <answer> — unblocked by decision via foreman@<host>` |
 | reviewer `approved` / `changes_requested` | PR `reviewer:approved` / `reviewer:changes` |
 | validator `passed` / `failed` | PR `validator:passed` / `validator:failed` |
 | (foreman) issue carries a `validator.skipLabels` label | PR `validator:skipped` |
@@ -358,8 +358,8 @@ reclaimed from <host> by <host> at <iso>
 merged by foreman@<host>
 ci rerun by foreman@<host> for <sha>
 unblocked by owner via foreman@<host>
-decision #<d> settled: <answer> — resumed by foreman@<host>
-decision #<d> closed; read it before continuing — resumed by foreman@<host>
+decision #<d> settled: <answer> — unblocked by decision via foreman@<host>
+decision #<d> closed; read it before continuing — unblocked by decision via foreman@<host>
 plan PR #<pr> cannot merge at <sha>: <reason>. Fix it or merge it by hand (foreman@<host>)
 ```
 
@@ -788,7 +788,7 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   else about the issue changes.
 - **Settled decisions resume their task:** a builder's decision issue ends in `Blocks: #<issue>`.
   Close it as **completed** and, on its next tick, the foreman does what Unblock does to that issue
-  and comments `decision #<d> settled: <answer> — resumed by foreman@<host>`, quoting the first
+  and comments `decision #<d> settled: <answer> — unblocked by decision via foreman@<host>`, quoting the first
   comment that starts `Settled: `, or `decision #<d> closed; read it before continuing` when there
   is none. Close it as **not planned** to leave the task blocked. It waits while another open
   decision still names the same task, or while a role session still holds a claim on the task;

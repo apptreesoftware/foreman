@@ -77,12 +77,12 @@ after the snapshot, next to `notify.syncDecisions`.
   `blocks === N`, resume N when all of these hold:
   - N is open and labelled `blocked`;
   - no *open* decision issue also has `Blocks: #N`;
-  - N has no prior `decision #D … resumed by foreman@…` ledger comment for this decision D
+  - N has no prior `decision #D … unblocked by decision via foreman@…` ledger comment for this decision D
     (idempotency).
 - **Apply:** reuse `applyUnblock` (removes `blocked`, clears `reviewer:changes` /
   `validator:failed` on the PR, sets Status Ready), then post a ledger comment on N:
-  - with an answer: `decision #D settled: <answer line> — resumed by foreman@<host>`;
-  - without one: `decision #D closed; read it before continuing — resumed by foreman@<host>`.
+  - with an answer: `decision #D settled: <answer line> — unblocked by decision via foreman@<host>`;
+  - without one: `decision #D closed; read it before continuing — unblocked by decision via foreman@<host>`.
   The ledger grammar gains this one entry in `src/ledger.ts`.
 - **Snapshot:** closed decision issues must be visible. Fetch closed `decision`-labelled issues
   updated since the last tick's watermark (or the last 7 days on first run), with `stateReason`

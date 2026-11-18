@@ -154,12 +154,12 @@ describe("applyUnblock", () => {
     await applyUnblock(
       gh,
       { issue: 5, itemId: "PVTI_5", host: "mac-a", pr: null },
-      "decision #40 settled: B — resumed by foreman@mac-a",
+      "decision #40 settled: B — unblocked by decision via foreman@mac-a",
     );
     expect(calls).toEqual([
       "removeLabels issue 5 blocked",
       "setStatus PVTI_5 Ready",
-      "comment issue 5 decision #40 settled: B — resumed by foreman@mac-a",
+      "comment issue 5 decision #40 settled: B — unblocked by decision via foreman@mac-a",
     ]);
   });
 });

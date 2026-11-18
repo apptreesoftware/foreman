@@ -98,7 +98,7 @@ describe("planDecisionResumes", () => {
     const task = blockedTask({
       comments: [
         comment("blocked by builder: see #40", hoursAgo(4)),
-        comment(fmt.decisionResumed("mac-a", 40, "B"), hoursAgo(0.5)),
+        comment(fmt.decisionUnblocked("mac-a", 40, "B"), hoursAgo(0.5)),
       ],
     });
     expect(planDecisionResumes(snapshot({ issues: [task] }), [closed()])).toEqual([]);
@@ -191,8 +191,8 @@ describe("resumeSettledDecisions", () => {
     expect(await resumeSettledDecisions(gh, s)).toEqual([5]);
     expect(calls).toEqual([
       "listClosedDecisions 2026-08-27",
-      "comment issue 5 decision #40 settled: B — Use REST — resumed by foreman@mac-a",
-      "comment issue 5 decision #42 closed; read it before continuing — resumed by foreman@mac-a",
+      "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
+      "comment issue 5 decision #42 closed; read it before continuing — unblocked by decision via foreman@mac-a",
       "removeLabels issue 5 blocked",
       "removeLabels pr 77 reviewer:changes,validator:failed",
       "setStatus PVTI_5 Ready",
@@ -211,7 +211,7 @@ describe("resumeSettledDecisions", () => {
     await expect(resumeSettledDecisions(failingGh, s)).rejects.toThrow("gh rate limited");
     expect(calls).toEqual([
       "listClosedDecisions 2026-08-27",
-      "comment issue 5 decision #40 settled: B — Use REST — resumed by foreman@mac-a",
+      "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
     ]);
 
     // The decision comment landed before the failed edits, so the task still carries the resume
@@ -219,7 +219,7 @@ describe("resumeSettledDecisions", () => {
     const task = blockedTask({
       comments: [
         ...blockedTask().comments,
-        comment(fmt.decisionResumed("mac-a", 40, "B — Use REST"), hoursAgo(0)),
+        comment(fmt.decisionUnblocked("mac-a", 40, "B — Use REST"), hoursAgo(0)),
       ],
     });
     expect(planDecisionResumes(snapshot({ issues: [task] }), [closed()])).toEqual([]);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { comment, hoursAgo } from "../test/helpers.ts";
 import {
   ciRerunCount,
-  decisionResumed,
+  decisionUnblocked,
   fixRound,
   fmt,
   lastActivityAt,
@@ -126,28 +126,28 @@ describe("plan PR stuck ledger", () => {
   });
 });
 
-describe("decision resume ledger", () => {
-  it("formats a settled and an unanswered resume", () => {
-    expect(fmt.decisionResumed("mac-a", 40, "B — Use REST")).toBe(
-      "decision #40 settled: B — Use REST — resumed by foreman@mac-a",
+describe("decision unblock ledger", () => {
+  it("formats a settled and an unanswered decision unblock", () => {
+    expect(fmt.decisionUnblocked("mac-a", 40, "B — Use REST")).toBe(
+      "decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
     );
-    expect(fmt.decisionResumed("mac-a", 41, null)).toBe(
-      "decision #41 closed; read it before continuing — resumed by foreman@mac-a",
+    expect(fmt.decisionUnblocked("mac-a", 41, null)).toBe(
+      "decision #41 closed; read it before continuing — unblocked by decision via foreman@mac-a",
     );
   });
 
-  it("decisionResumed finds only the named decision", () => {
-    const cs = [comment(fmt.decisionResumed("mac-a", 40, "A")), comment("decision #4 is odd")];
-    expect(decisionResumed(cs, 40)).toBe(true);
-    expect(decisionResumed(cs, 41)).toBe(false);
-    expect(decisionResumed(cs, 4)).toBe(false);
-    expect(decisionResumed([comment("decision #40 settled: B")], 40)).toBe(false);
+  it("decisionUnblocked finds only the named decision", () => {
+    const cs = [comment(fmt.decisionUnblocked("mac-a", 40, "A")), comment("decision #4 is odd")];
+    expect(decisionUnblocked(cs, 40)).toBe(true);
+    expect(decisionUnblocked(cs, 41)).toBe(false);
+    expect(decisionUnblocked(cs, 4)).toBe(false);
+    expect(decisionUnblocked([comment("decision #40 settled: B")], 40)).toBe(false);
   });
 
-  it("lastUnblockedAt is the newest owner unblock or decision resume", () => {
+  it("lastUnblockedAt is the newest owner unblock or decision unblock", () => {
     const cs = [
       comment("unblocked by owner via foreman@mac-a", hoursAgo(9)),
-      comment(fmt.decisionResumed("mac-a", 40, "A"), hoursAgo(5)),
+      comment(fmt.decisionUnblocked("mac-a", 40, "A"), hoursAgo(5)),
       comment("blocked by builder: see #41", hoursAgo(2)),
     ];
     expect(lastUnblockedAt(cs)).toBe(hoursAgo(5));
