@@ -7,6 +7,7 @@ import { ensurePlanLabels } from "./bootstrap/labels.ts";
 import { budgetUpdate } from "./budget.ts";
 import { conflictOn } from "./claim.ts";
 import type { ForemanConfig } from "./config.ts";
+import { resumeSettledDecisions } from "./decisions.ts";
 import {
   branchFor,
   type DispatchRequest,
@@ -1184,6 +1185,14 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   // A decision issue is opened by a role session, not by the foreman, so the snapshot is the only
   // place it shows up; the notifier announces each one once.
   await ctx.notify.syncDecisions(snapshot.issues);
+  // A settled decision resumes the task it blocked. The snapshot still shows that task blocked,
+  // so the picker claims it next tick. A failed read or write is logged and never costs the
+  // tick: the decision stays closed and the next tick tries again.
+  try {
+    await resumeSettledDecisions(ctx.gh, snapshot);
+  } catch (e) {
+    log("warn", "decision resume failed", { error: e instanceof Error ? e.message : String(e) });
+  }
   const actions = plan(snapshot, ctx.repo);
   const names = actions.map((a) =>
     // Every non-idle Action variant carries either "issue" or "epic" — never neither — so a

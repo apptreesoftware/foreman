@@ -1904,6 +1904,44 @@ describe("notifications", () => {
     expect(n.parked).toEqual([null]);
   });
 
+  it("runOnce resumes a task whose decision was settled", async () => {
+    const task = issue({
+      number: 5,
+      labels: ["phase:1", "blocked"],
+      comments: [comment("blocked by builder: see #40", hoursAgo(4))],
+    });
+    const { gh, calls } = fakeGh(
+      [task],
+      [
+        {
+          number: 40,
+          body: "Blocks: #5",
+          stateReason: "COMPLETED",
+          createdAt: hoursAgo(5),
+          closedAt: hoursAgo(1),
+          comments: [comment("Settled: B — Use REST", hoursAgo(1))],
+        },
+      ],
+    );
+    await runOnce(ctx({ gh, exec: okExec, notify: recordNotify().port, stateDir: tmp() }));
+    expect(calls).toContain("removeLabels issue 5 blocked");
+    expect(calls).toContain("setStatus PVTI_5 Ready");
+    expect(calls).toContain(
+      "comment issue 5 decision #40 settled: B — Use REST — resumed by foreman@mac-a",
+    );
+  });
+
+  it("runOnce survives a failed decision read", async () => {
+    const task = issue({ number: 5, labels: ["phase:1", "blocked"] });
+    const { gh } = fakeGh([task]);
+    gh.listClosedDecisions = async () => {
+      throw new Error("gh issue list failed (1): HTTP 502");
+    };
+    await expect(
+      runOnce(ctx({ gh, exec: okExec, notify: recordNotify().port, stateDir: tmp() })),
+    ).resolves.toBeDefined();
+  });
+
   it("a failed preflight parks with its reason and skips the decision sync", async () => {
     const dir = tmp();
     writeFileSync(join(dir, "STOP"), "");
