@@ -1,4 +1,7 @@
-import { decisionResumed, lastUnblockedAt } from "./ledger.ts";
+import type { GitHubApi } from "./github.ts";
+import { decisionResumed, fmt, lastUnblockedAt } from "./ledger.ts";
+import { log } from "./log.ts";
+import { applyUnblock, type UnblockGh } from "./needs-you.ts";
 import type { ClosedDecision, Comment, Snapshot } from "./types.ts";
 
 /** The decision layout's last line: the one task this decision blocks. */
@@ -68,4 +71,40 @@ export function planDecisionResumes(s: Snapshot, closed: ClosedDecision[]): Deci
     byTask.set(n, r);
   }
   return [...byTask.values()].sort((a, b) => a.task - b.task);
+}
+
+/** How far back closed decisions are read; an older one resumes nothing. */
+export const DECISION_LOOKBACK_DAYS = 7;
+
+export type DecisionGh = UnblockGh & Pick<GitHubApi, "listClosedDecisions">;
+
+/**
+ * Resumes every blocked task whose decision was settled: the same edits as the owner's Unblock
+ * (label, PR verdicts, Status Ready) with a `decision #D …` ledger line in place of
+ * `unblocked by owner`, plus one more line per extra decision it consumes. Returns the tasks
+ * resumed. Every write goes through `gh`, so `dryRun` writes nothing.
+ */
+export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promise<number[]> {
+  // Nothing is blocked, so nothing can be resumed: an idle board spends no call on this.
+  if (!s.issues.some((i) => i.state === "OPEN" && i.labels.includes("blocked"))) return [];
+  const since = new Date(Date.parse(s.now) - DECISION_LOOKBACK_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const resumes = planDecisionResumes(s, await gh.listClosedDecisions(since));
+  for (const r of resumes) {
+    const [first, ...rest] = r.decisions;
+    if (!first) continue;
+    await applyUnblock(
+      gh,
+      { issue: r.task, itemId: r.itemId, host: s.host, pr: r.pr },
+      fmt.decisionResumed(s.host, first.number, first.answer),
+    );
+    for (const d of rest)
+      await gh.comment("issue", r.task, fmt.decisionResumed(s.host, d.number, d.answer));
+    log("info", "decision resumed task", {
+      task: r.task,
+      decisions: r.decisions.map((d) => d.number),
+    });
+  }
+  return resumes.map((r) => r.task);
 }

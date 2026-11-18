@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { comment, hoursAgo, issue, pr, snapshot } from "../test/helpers.ts";
-import { parseBlocks, planDecisionResumes, settledAnswer } from "./decisions.ts";
+import {
+  type DecisionGh,
+  parseBlocks,
+  planDecisionResumes,
+  resumeSettledDecisions,
+  settledAnswer,
+} from "./decisions.ts";
 import { fmt } from "./ledger.ts";
 import type { ClosedDecision } from "./types.ts";
 
@@ -132,6 +138,51 @@ describe("planDecisionResumes", () => {
           { number: 42, answer: "A" },
         ],
       },
+    ]);
+  });
+});
+
+describe("resumeSettledDecisions", () => {
+  function fakeGh(closedDecisions: ClosedDecision[]) {
+    const calls: string[] = [];
+    const gh: DecisionGh = {
+      listClosedDecisions: async (since) => {
+        calls.push(`listClosedDecisions ${since}`);
+        return closedDecisions;
+      },
+      removeLabels: async (kind, n, labels) => {
+        calls.push(`removeLabels ${kind} ${n} ${labels.join(",")}`);
+      },
+      comment: async (kind, n, body) => {
+        calls.push(`comment ${kind} ${n} ${body}`);
+      },
+      setStatus: async (itemId, status) => {
+        calls.push(`setStatus ${itemId} ${status}`);
+      },
+      addToProject: async (n) => `PVTI_new_${n}`,
+    };
+    return { gh, calls };
+  }
+
+  it("reads nothing when no open issue is blocked", async () => {
+    const { gh, calls } = fakeGh([closed()]);
+    expect(await resumeSettledDecisions(gh, snapshot({ issues: [issue({ number: 5 })] }))).toEqual(
+      [],
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("looks back seven days and unblocks with one ledger line per decision", async () => {
+    const { gh, calls } = fakeGh([closed(), closed({ number: 42, comments: [] })]);
+    const s = snapshot({ issues: [blockedTask()], prs: [pr({ number: 77, issue: 5 })] });
+    expect(await resumeSettledDecisions(gh, s)).toEqual([5]);
+    expect(calls).toEqual([
+      "listClosedDecisions 2026-08-27",
+      "removeLabels issue 5 blocked",
+      "removeLabels pr 77 reviewer:changes,validator:failed",
+      "setStatus PVTI_5 Ready",
+      "comment issue 5 decision #40 settled: B — Use REST — resumed by foreman@mac-a",
+      "comment issue 5 decision #42 closed; read it before continuing — resumed by foreman@mac-a",
     ]);
   });
 });
