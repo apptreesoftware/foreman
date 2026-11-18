@@ -149,6 +149,19 @@ describe("applyUnblock", () => {
     await applyUnblock(gh, { issue: 5, itemId: "PVTI_5", host: "mac-a", pr: 12 });
     expect(calls).toContain("removeLabels pr 12 reviewer:changes,validator:failed");
   });
+  it("posts the given note in place of the owner unblock line", async () => {
+    const { gh, calls } = fakeGh();
+    await applyUnblock(
+      gh,
+      { issue: 5, itemId: "PVTI_5", host: "mac-a", pr: null },
+      "decision #40 settled: B — resumed by foreman@mac-a",
+    );
+    expect(calls).toEqual([
+      "removeLabels issue 5 blocked",
+      "setStatus PVTI_5 Ready",
+      "comment issue 5 decision #40 settled: B — resumed by foreman@mac-a",
+    ]);
+  });
 });
 
 describe("applyUnblockToBoard", () => {

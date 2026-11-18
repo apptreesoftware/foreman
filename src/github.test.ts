@@ -522,9 +522,17 @@ describe("listClosedDecisions", () => {
             body: "## Question\nX?\n\nBlocks: #5",
             stateReason: "COMPLETED",
             closedAt: "2026-09-03T11:00:00Z",
-            comments: [{ author: { login: "jane" }, body: "Settled: B", createdAt: "2026-09-03T10:59:00Z" }],
+            comments: [
+              { author: { login: "jane" }, body: "Settled: B", createdAt: "2026-09-03T10:59:00Z" },
+            ],
           },
-          { number: 41, body: null, stateReason: "", closedAt: "2026-09-02T11:00:00Z", comments: [] },
+          {
+            number: 41,
+            body: null,
+            stateReason: "",
+            closedAt: "2026-09-02T11:00:00Z",
+            comments: [],
+          },
         ]),
       };
     };

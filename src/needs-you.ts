@@ -37,6 +37,8 @@ export type UnblockGh = Pick<GitHubApi, "removeLabels" | "comment" | "setStatus"
 export async function applyUnblock(
   gh: UnblockGh,
   i: { issue: number; itemId: string | null; host: string; pr: number | null },
+  /** The ledger line; the owner's Unblock button leaves the default. */
+  note: string = fmt.unblocked(i.host),
 ): Promise<string> {
   await gh.removeLabels("issue", i.issue, ["blocked"]);
   // The fix-round count stays spent, so a `reviewer:changes` or `validator:failed` left on the PR
@@ -46,7 +48,7 @@ export async function applyUnblock(
   // An issue that is somehow off the project board has no status to set until it is on it.
   const itemId = i.itemId ?? (await gh.addToProject(i.issue));
   await gh.setStatus(itemId, "Ready");
-  await gh.comment("issue", i.issue, fmt.unblocked(i.host));
+  await gh.comment("issue", i.issue, note);
   return `#${i.issue} unblocked and moved to Ready; the next tick may claim it`;
 }
 
