@@ -3,7 +3,29 @@
 Goal: turn the issue into a merge-ready PR on the given branch.
 
 1. Read the issue's **Acceptance criteria**, **Touches**, and **Spec** sections, the linked plan task in `{{plansDir}}/` if one exists, and every existing **Progress** comment.
-2. If the issue is ambiguous in a way that changes the outcome, do not guess. Open a decision issue: write the context, options A/B with trade-offs, your recommendation and a link to #<issue> to `.gh-body.md`, then `gh issue create --title "Decision: <question>" --label "decision,needs-owner,phase:<N>" --body-file .gh-body.md`, then `gh issue edit <issue> --add-label blocked`, comment why, and return `blocked` with the decision issue number in notes. For small ambiguities pick the simplest interpretation and state it in the PR body.
+2. If the issue is ambiguous in a way that changes the outcome, do not guess. Open a decision issue. Write this to `.gh-body.md`, with at least two options, and `Blocks:` alone on the last line:
+
+   ```
+   ## Question
+   <one sentence>
+
+   ## Context
+   <what you found, and a link to #<issue>>
+
+   ## Options
+   ### A: <short label>
+   <trade-offs>
+
+   ### B: <short label>
+   <trade-offs>
+
+   ## Recommendation
+   <letter, and why>
+
+   Blocks: #<issue>
+   ```
+
+   then `gh issue create --title "Decision: <question>" --label "decision,needs-owner,phase:<N>" --body-file .gh-body.md`, then `gh issue edit <issue> --add-label blocked`, comment why, and return `blocked` with the decision issue number in notes. When the decision is settled the foreman resumes this issue and quotes the answer in a `decision #<n> settled: …` comment; read it before anything else. For small ambiguities pick the simplest interpretation and state it in the PR body.
 3. Test-driven: write the failing test first, run it, implement, run again. Run the checks ({{checks}}) before every push.
 4. Checkpoints: after each meaningful step, `git add -A && git commit -m "<type>(<area>): <summary> (#<issue>)"` and `git push -u origin <branch>`, then post a Progress comment on the issue:
    ```

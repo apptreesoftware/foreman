@@ -45,6 +45,19 @@ describe("role prompts", () => {
     expect(planner).toContain("Parent epic: #<epic>");
     expect(planner).toContain(".issues.json");
   });
+  it("builder writes decisions in the layout the foreman and decisions page parse", () => {
+    const builder = readFileSync(join(dir, "builder.md"), "utf8");
+    for (const s of [
+      "## Question",
+      "## Context",
+      "## Options",
+      "### A:",
+      "### B:",
+      "## Recommendation",
+      "Blocks: #<issue>",
+    ])
+      expect(builder, s).toContain(s);
+  });
 });
 
 describe("the base prompts say nothing about one particular repository", () => {
