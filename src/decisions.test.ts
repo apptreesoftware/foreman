@@ -229,10 +229,28 @@ describe("resumeSettledDecisions", () => {
       "listClosedDecisions 2026-08-27",
       "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
       "comment issue 5 decision #42 closed; read it before continuing — unblocked by decision via foreman@mac-a",
-      "removeLabels issue 5 blocked",
       "removeLabels pr 77 reviewer:changes,validator:failed",
       "setStatus PVTI_5 Ready",
+      "removeLabels issue 5 blocked",
     ]);
+  });
+
+  it("never removes `blocked` when setting Status Ready fails", async () => {
+    const { gh, calls } = fakeGh([closed()]);
+    const failingGh: DecisionGh = {
+      ...gh,
+      setStatus: async () => {
+        throw new Error("gh rate limited");
+      },
+    };
+    const s = snapshot({ issues: [blockedTask()], prs: [pr({ number: 77, issue: 5 })] });
+    await expect(resumeSettledDecisions(failingGh, s)).rejects.toThrow("gh rate limited");
+    expect(calls).toEqual([
+      "listClosedDecisions 2026-08-27",
+      "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
+      "removeLabels pr 77 reviewer:changes,validator:failed",
+    ]);
+    expect(calls).not.toContain("removeLabels issue 5 blocked");
   });
 
   it("leaves the task blocked with the answer recorded when the unblock edits fail", async () => {
@@ -248,6 +266,7 @@ describe("resumeSettledDecisions", () => {
     expect(calls).toEqual([
       "listClosedDecisions 2026-08-27",
       "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
+      "setStatus PVTI_5 Ready",
     ]);
 
     // The decision comment landed before the failed edits, so the task still carries the resume

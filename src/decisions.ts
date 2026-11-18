@@ -93,9 +93,10 @@ export type DecisionGh = UnblockGh & Pick<GitHubApi, "listClosedDecisions">;
 
 /**
  * Resumes every blocked task whose decision was settled: a `decision #D …` ledger line per
- * decision it consumes, then the same edits as the owner's Unblock (label, PR verdicts, Status
- * Ready). The ledger lines come first, so a failure partway through leaves the task blocked with
- * the answer recorded rather than losing it; the owner's Unblock then finishes the job by hand.
+ * decision it consumes, then the same edits as the owner's Unblock (PR verdicts, Status Ready,
+ * label). The ledger lines come first and `blocked` is removed last, so a failure partway through
+ * leaves the task blocked with the answer recorded rather than losing it; the owner's Unblock
+ * then finishes the job by hand.
  * Returns the tasks resumed. Every write goes through `gh`, so `dryRun` writes nothing.
  */
 export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promise<number[]> {
@@ -108,7 +109,7 @@ export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promi
   for (const r of resumes) {
     for (const d of r.decisions)
       await gh.comment("issue", r.task, fmt.decisionUnblocked(s.host, d.number, d.answer));
-    await unblockEdits(gh, { issue: r.task, itemId: r.itemId, host: s.host, pr: r.pr });
+    await unblockEdits(gh, { issue: r.task, itemId: r.itemId, pr: r.pr }, { blockedLast: true });
     log("info", "decision resumed task", {
       task: r.task,
       decisions: r.decisions.map((d) => d.number),
