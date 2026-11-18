@@ -1904,13 +1904,13 @@ describe("notifications", () => {
     expect(n.parked).toEqual([null]);
   });
 
-  it("runOnce resumes a task whose decision was settled", async () => {
+  const settledFixture = () => {
     const task = issue({
       number: 5,
       labels: ["phase:1", "blocked"],
       comments: [comment("blocked by builder: see #40", hoursAgo(4))],
     });
-    const { gh, calls } = fakeGh(
+    return fakeGh(
       [task],
       [
         {
@@ -1923,12 +1923,28 @@ describe("notifications", () => {
         },
       ],
     );
-    await runOnce(ctx({ gh, exec: okExec, notify: recordNotify().port, stateDir: tmp() }));
+  };
+
+  it("runOnce resumes a task whose decision was settled, and counts it as work", async () => {
+    const { gh, calls } = settledFixture();
+    const out = await runOnce(
+      ctx({ gh, exec: okExec, notify: recordNotify().port, stateDir: tmp() }),
+    );
+    // Work resets the idle backoff, so the claim follows on the next poll.
+    expect(out.didWork).toBe(true);
     expect(calls).toContain("removeLabels issue 5 blocked");
     expect(calls).toContain("setStatus PVTI_5 Ready");
     expect(calls).toContain(
       "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
     );
+  });
+
+  it("a dry-run decision resume is not work", async () => {
+    const { gh } = settledFixture();
+    const out = await runOnce(
+      ctx({ gh, exec: okExec, notify: recordNotify().port, stateDir: tmp(), dryRun: true }),
+    );
+    expect(out.didWork).toBe(false);
   });
 
   it("runOnce survives a failed decision read", async () => {

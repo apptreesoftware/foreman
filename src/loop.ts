@@ -1119,8 +1119,9 @@ export async function execute(
 
 export interface TickOutcome {
   /**
-   * True when this tick changed the board — started a session, merged, applied a plan, released
-   * or blocked — so the next tick need not wait out `pollSeconds`.
+   * True when this tick changed the board — started a session, merged, applied a plan, released,
+   * blocked, or unblocked a task whose decision was settled — so the next tick need not wait out
+   * `pollSeconds`.
    */
   didWork: boolean;
   /** The last action that counted as work, for the log line; null when none did. */
@@ -1186,10 +1187,12 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   // place it shows up; the notifier announces each one once.
   await ctx.notify.syncDecisions(snapshot.issues);
   // A settled decision resumes the task it blocked. The snapshot still shows that task blocked,
-  // so the picker claims it next tick. A failed read or write is logged and never costs the
-  // tick: the decision stays closed and the next tick tries again.
+  // so the picker claims it next tick — which is why a resume counts as work below: the next
+  // tick follows at once rather than after an idle backoff. A failed read or write is logged and
+  // never costs the tick: the decision stays closed and the next tick tries again.
+  let resumed: number[] = [];
   try {
-    await resumeSettledDecisions(ctx.gh, snapshot);
+    resumed = await resumeSettledDecisions(ctx.gh, snapshot);
   } catch (e) {
     log("warn", "decision resume failed", { error: e instanceof Error ? e.message : String(e) });
   }
@@ -1216,7 +1219,8 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   );
   ctx.state?.patch({ lastPlan: names, board });
   const afterReads = await graphqlBudget(ctx.exec);
-  let didWork = false;
+  // A dry run writes nothing, so its resumes changed nothing either.
+  let didWork = !ctx.dryRun && resumed.length > 0;
   let worked: Action["type"] | null = null;
   for (const a of actions) {
     if (ctx.signal.aborted) {
