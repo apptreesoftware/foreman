@@ -192,12 +192,13 @@ describe("planDecisionResumes", () => {
 });
 
 describe("resumeSettledDecisions", () => {
-  function fakeGh(closedDecisions: ClosedDecision[]) {
+  /** `notPlanned` is what the second, undated read of not-planned decisions returns. */
+  function fakeGh(closedDecisions: ClosedDecision[], notPlanned: ClosedDecision[] = []) {
     const calls: string[] = [];
     const gh: DecisionGh = {
-      listClosedDecisions: async (since) => {
-        calls.push(`listClosedDecisions ${since}`);
-        return closedDecisions;
+      listClosedDecisions: async (since, opts = {}) => {
+        calls.push(`listClosedDecisions ${since}${opts.notPlanned ? " notPlanned" : ""}`);
+        return opts.notPlanned ? notPlanned : closedDecisions;
       },
       removeLabels: async (kind, n, labels) => {
         calls.push(`removeLabels ${kind} ${n} ${labels.join(",")}`);
@@ -221,12 +222,36 @@ describe("resumeSettledDecisions", () => {
     expect(calls).toEqual([]);
   });
 
+  it("reads once when no closed decision is a candidate", async () => {
+    const { gh, calls } = fakeGh([closed({ stateReason: "NOT_PLANNED" })]);
+    expect(await resumeSettledDecisions(gh, snapshot({ issues: [blockedTask()] }))).toEqual([]);
+    expect(calls).toEqual(["listClosedDecisions 2026-08-27"]);
+  });
+
+  it("keeps the task blocked by a not-planned decision closed before the read window", async () => {
+    // Both decisions were opened in the task's current blocked spell (no unblock since).
+    const old = closed({
+      number: 39,
+      stateReason: "NOT_PLANNED",
+      createdAt: hoursAgo(12 * 24),
+      closedAt: hoursAgo(10 * 24),
+      comments: [],
+    });
+    const { gh, calls } = fakeGh([closed()], [old]);
+    expect(await resumeSettledDecisions(gh, snapshot({ issues: [blockedTask()] }))).toEqual([]);
+    expect(calls).toEqual([
+      "listClosedDecisions 2026-08-27",
+      "listClosedDecisions 2026-08-27 notPlanned",
+    ]);
+  });
+
   it("looks back seven days and unblocks with one ledger line per decision", async () => {
     const { gh, calls } = fakeGh([closed(), closed({ number: 42, comments: [] })]);
     const s = snapshot({ issues: [blockedTask()], prs: [pr({ number: 77, issue: 5 })] });
     expect(await resumeSettledDecisions(gh, s)).toEqual([5]);
     expect(calls).toEqual([
       "listClosedDecisions 2026-08-27",
+      "listClosedDecisions 2026-08-27 notPlanned",
       "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
       "comment issue 5 decision #42 closed; read it before continuing — unblocked by decision via foreman@mac-a",
       "removeLabels pr 77 reviewer:changes,validator:failed",
@@ -247,6 +272,7 @@ describe("resumeSettledDecisions", () => {
     await expect(resumeSettledDecisions(failingGh, s)).rejects.toThrow("gh rate limited");
     expect(calls).toEqual([
       "listClosedDecisions 2026-08-27",
+      "listClosedDecisions 2026-08-27 notPlanned",
       "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
       "removeLabels pr 77 reviewer:changes,validator:failed",
     ]);
@@ -265,6 +291,7 @@ describe("resumeSettledDecisions", () => {
     await expect(resumeSettledDecisions(failingGh, s)).rejects.toThrow("gh rate limited");
     expect(calls).toEqual([
       "listClosedDecisions 2026-08-27",
+      "listClosedDecisions 2026-08-27 notPlanned",
       "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
       "setStatus PVTI_5 Ready",
     ]);

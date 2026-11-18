@@ -96,8 +96,10 @@ export type DecisionGh = UnblockGh & Pick<GitHubApi, "listClosedDecisions">;
  * decision it consumes, then the same edits as the owner's Unblock (PR verdicts, Status Ready,
  * label). The ledger lines come first and `blocked` is removed last, so a failure partway through
  * leaves the task blocked with the answer recorded rather than losing it; the owner's Unblock
- * then finishes the job by hand.
- * Returns the tasks resumed. Every write goes through `gh`, so `dryRun` writes nothing.
+ * then finishes the job by hand. Closed decisions are read for the last week; only when that
+ * yields a candidate does a second read fetch every decision closed as not planned, however old,
+ * so one closed before the window still holds its task. Returns the tasks resumed. Every write
+ * goes through `gh`, so `dryRun` writes nothing.
  */
 export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promise<number[]> {
   // Nothing is blocked, so nothing can be resumed: an idle board spends no call on this.
@@ -105,7 +107,13 @@ export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promi
   const since = new Date(Date.parse(s.now) - DECISION_LOOKBACK_DAYS * 86_400_000)
     .toISOString()
     .slice(0, 10);
-  const resumes = planDecisionResumes(s, await gh.listClosedDecisions(since));
+  const recent = await gh.listClosedDecisions(since);
+  if (planDecisionResumes(s, recent).length === 0) return [];
+  const seen = new Set(recent.map((d) => d.number));
+  const notPlanned = (await gh.listClosedDecisions(since, { notPlanned: true })).filter(
+    (d) => !seen.has(d.number),
+  );
+  const resumes = planDecisionResumes(s, [...recent, ...notPlanned]);
   for (const r of resumes) {
     for (const d of r.decisions)
       await gh.comment("issue", r.task, fmt.decisionUnblocked(s.host, d.number, d.answer));

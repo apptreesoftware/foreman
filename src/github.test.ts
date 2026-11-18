@@ -577,4 +577,33 @@ describe("listClosedDecisions", () => {
       },
     ]);
   });
+
+  it("reads every decision closed as not planned, with no date bound", async () => {
+    const calls: string[][] = [];
+    const exec: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return { code: 0, stderr: "", stdout: "[]" };
+    };
+    const gh = new GitHub(cfg, exec, false);
+    expect(await gh.listClosedDecisions("2026-08-27", { notPlanned: true })).toEqual([]);
+    expect(calls).toEqual([
+      [
+        "gh",
+        "issue",
+        "list",
+        "--repo",
+        "acme/widgets",
+        "--label",
+        "decision",
+        "--state",
+        "closed",
+        "--search",
+        'reason:"not planned"',
+        "--limit",
+        "100",
+        "--json",
+        "number,body,stateReason,createdAt,closedAt,comments",
+      ],
+    ]);
+  });
 });

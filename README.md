@@ -793,10 +793,11 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   comment that starts `Settled: `, or `decision #<d> closed; read it before continuing` when there
   is none. Close it as **not planned** to leave the task blocked; that wins over a completed
   one, so if any decision opened since the task was last unblocked was closed as not planned, the
-  task stays blocked even when another decision for it was completed. It waits while another open
-  decision still names the same task, or while a role session still holds a claim on the task;
-  it ignores decisions closed more than about a week ago (the cutoff is a calendar date, so the
-  window is 7–8 days) or opened before the task was last unblocked. It writes those ledger lines
+  task stays blocked even when another decision for it was completed, however long ago the
+  not-planned one was closed. It waits while another open decision still names the same task, or
+  while a role session still holds a claim on the task; it ignores completed decisions closed
+  more than about a week ago (the cutoff is a calendar date, so the window is 7–8 days) and any
+  decision opened before the task was last unblocked. It writes those ledger lines
   first, then clears the PR's failing verdicts and sets Status Ready, and lifts the block last, so
   any failure leaves the task blocked with the answer recorded, ready for Unblock. Decisions
   written before this layout have no `Blocks:` line and still need Unblock.

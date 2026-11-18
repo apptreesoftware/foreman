@@ -330,11 +330,16 @@ export class GitHub {
 
   /**
    * `decision` issues closed on or after `since` (YYYY-MM-DD), with the open and close times and
-   * close reason the resume needs. `gh issue list --search` is one GraphQL `search` query of at
-   * most 100 issues, so it does spend the hourly GraphQL budget; the loop only calls it on a tick
-   * that has a blocked issue to resume.
+   * close reason the resume needs. With `notPlanned`, `since` is ignored and the read is instead
+   * every `decision` issue closed as not planned, however long ago: one of those holds its task
+   * blocked even when it closed before the dated window. `gh issue list --search` is one GraphQL
+   * `search` query of at most 100 issues, so it does spend the hourly GraphQL budget; the loop
+   * only calls it on a tick that has a blocked issue to resume.
    */
-  async listClosedDecisions(since: string): Promise<ClosedDecision[]> {
+  async listClosedDecisions(
+    since: string,
+    opts: { notPlanned?: boolean } = {},
+  ): Promise<ClosedDecision[]> {
     const raw = JSON.parse(
       await this.gh([
         "issue",
@@ -346,7 +351,7 @@ export class GitHub {
         "--state",
         "closed",
         "--search",
-        `closed:>=${since}`,
+        opts.notPlanned ? 'reason:"not planned"' : `closed:>=${since}`,
         "--limit",
         "100",
         "--json",
