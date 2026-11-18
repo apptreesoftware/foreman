@@ -521,6 +521,7 @@ describe("listClosedDecisions", () => {
             number: 40,
             body: "## Question\nX?\n\nBlocks: #5",
             stateReason: "COMPLETED",
+            createdAt: "2026-09-02T09:00:00Z",
             closedAt: "2026-09-03T11:00:00Z",
             comments: [
               { author: { login: "jane" }, body: "Settled: B", createdAt: "2026-09-03T10:59:00Z" },
@@ -530,8 +531,9 @@ describe("listClosedDecisions", () => {
             number: 41,
             body: null,
             stateReason: "",
+            createdAt: "2026-09-01T09:00:00Z",
             closedAt: "2026-09-02T11:00:00Z",
-            comments: [],
+            comments: [{ author: null, body: "noted", createdAt: "2026-09-02T10:00:00Z" }],
           },
         ]),
       };
@@ -553,7 +555,7 @@ describe("listClosedDecisions", () => {
         "--limit",
         "100",
         "--json",
-        "number,body,stateReason,closedAt,comments",
+        "number,body,stateReason,createdAt,closedAt,comments",
       ],
     ]);
     expect(out).toEqual([
@@ -561,10 +563,18 @@ describe("listClosedDecisions", () => {
         number: 40,
         body: "## Question\nX?\n\nBlocks: #5",
         stateReason: "COMPLETED",
+        createdAt: "2026-09-02T09:00:00Z",
         closedAt: "2026-09-03T11:00:00Z",
         comments: [{ author: "jane", body: "Settled: B", createdAt: "2026-09-03T10:59:00Z" }],
       },
-      { number: 41, body: "", stateReason: null, closedAt: "2026-09-02T11:00:00Z", comments: [] },
+      {
+        number: 41,
+        body: "",
+        stateReason: null,
+        createdAt: "2026-09-01T09:00:00Z",
+        closedAt: "2026-09-02T11:00:00Z",
+        comments: [{ author: "", body: "noted", createdAt: "2026-09-02T10:00:00Z" }],
+      },
     ]);
   });
 });

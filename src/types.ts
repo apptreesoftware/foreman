@@ -27,6 +27,8 @@ export interface ClosedDecision {
   body: string;
   /** GitHub's close reason. Only COMPLETED resumes; NOT_PLANNED, DUPLICATE and the rest do not. */
   stateReason: string | null;
+  /** When the decision was opened; ties it to the blocked spell it belongs to. */
+  createdAt: string;
   closedAt: string;
   comments: Comment[];
 }

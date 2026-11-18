@@ -329,9 +329,10 @@ export class GitHub {
   }
 
   /**
-   * `decision` issues closed on or after `since` (YYYY-MM-DD), with the close reason the resume
-   * needs. A REST search, not the tick's GraphQL read, so it spends none of that budget; and the
-   * loop only calls it on a tick that has a blocked issue to resume.
+   * `decision` issues closed on or after `since` (YYYY-MM-DD), with the open and close times and
+   * close reason the resume needs. `gh issue list --search` is one GraphQL `search` query of at
+   * most 100 issues, so it does spend the hourly GraphQL budget; the loop only calls it on a tick
+   * that has a blocked issue to resume.
    */
   async listClosedDecisions(since: string): Promise<ClosedDecision[]> {
     const raw = JSON.parse(
@@ -349,12 +350,13 @@ export class GitHub {
         "--limit",
         "100",
         "--json",
-        "number,body,stateReason,closedAt,comments",
+        "number,body,stateReason,createdAt,closedAt,comments",
       ]),
     ) as Array<{
       number: number;
       body: string | null;
       stateReason: string | null;
+      createdAt: string;
       closedAt: string;
       comments: Array<{ author: { login: string } | null; body: string; createdAt: string }>;
     }>;
@@ -362,6 +364,7 @@ export class GitHub {
       number: i.number,
       body: i.body ?? "",
       stateReason: i.stateReason || null,
+      createdAt: i.createdAt,
       closedAt: i.closedAt,
       comments: i.comments.map(
         (c): Comment => ({ author: c.author?.login ?? "", body: c.body, createdAt: c.createdAt }),

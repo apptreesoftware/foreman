@@ -6,7 +6,7 @@ import {
   fixRound,
   fmt,
   lastActivityAt,
-  lastBlockedAt,
+  lastUnblockedAt,
   openClaim,
   parseClaim,
   planPrStuckReported,
@@ -141,15 +141,16 @@ describe("decision resume ledger", () => {
     expect(decisionResumed(cs, 40)).toBe(true);
     expect(decisionResumed(cs, 41)).toBe(false);
     expect(decisionResumed(cs, 4)).toBe(false);
+    expect(decisionResumed([comment("decision #40 settled: B")], 40)).toBe(false);
   });
 
-  it("lastBlockedAt is the newest `blocked by` comment, from the foreman or a role", () => {
+  it("lastUnblockedAt is the newest owner unblock or decision resume", () => {
     const cs = [
-      comment("blocked by foreman@mac-a: setup failed", hoursAgo(9)),
-      comment("blocked by builder: see #40", hoursAgo(5)),
-      comment("unblocked by owner via foreman@mac-a", hoursAgo(2)),
+      comment("unblocked by owner via foreman@mac-a", hoursAgo(9)),
+      comment(fmt.decisionResumed("mac-a", 40, "A"), hoursAgo(5)),
+      comment("blocked by builder: see #41", hoursAgo(2)),
     ];
-    expect(lastBlockedAt(cs)).toBe(hoursAgo(5));
-    expect(lastBlockedAt([comment("Progress")])).toBeNull();
+    expect(lastUnblockedAt(cs)).toBe(hoursAgo(5));
+    expect(lastUnblockedAt([comment("blocked by builder: x")])).toBeNull();
   });
 });

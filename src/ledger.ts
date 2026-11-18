@@ -129,7 +129,7 @@ export function planApplied(comments: Comment[]): boolean {
   return comments.some((c) => c.body.trim().startsWith("plan applied by foreman@"));
 }
 
-const DECISION_RESUMED = /^decision #(\d+) (?:settled: |closed; )/;
+const DECISION_RESUMED = /^decision #(\d+) (?:settled: |closed; ).* — resumed by foreman@\S+$/;
 
 /** Whether this task was already resumed for decision `n`; each decision resumes at most once. */
 export function decisionResumed(comments: Comment[], n: number): boolean {
@@ -137,14 +137,17 @@ export function decisionResumed(comments: Comment[], n: number): boolean {
 }
 
 /**
- * When the issue was last blocked through the ledger: `blocked by foreman@…` (setup, attempts,
- * fix rounds) or `blocked by <role>: …` (a role's `blocked` outcome). Null when it never was —
- * a `blocked` label added by hand leaves no comment.
+ * When the task last left a blocked spell: the owner's Unblock or a decision resume. A decision
+ * opened before this belongs to an earlier spell and must not release the current one. Null when
+ * neither ever happened.
  */
-export function lastBlockedAt(comments: Comment[]): string | null {
+export function lastUnblockedAt(comments: Comment[]): string | null {
   return (
     comments
-      .filter((c) => c.body.trim().startsWith("blocked by "))
+      .filter((c) => {
+        const b = c.body.trim();
+        return b.startsWith("unblocked by owner via foreman@") || DECISION_RESUMED.test(b);
+      })
       .map((c) => c.createdAt)
       .sort()
       .at(-1) ?? null
