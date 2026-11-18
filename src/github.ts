@@ -7,7 +7,16 @@ import {
   MODEL_LABEL_PREFIX,
   ModelSchema,
 } from "./state-file.ts";
-import type { CheckState, Comment, Issue, Mergeable, PullRequest, Size, Status } from "./types.ts";
+import type {
+  CheckState,
+  ClosedDecision,
+  Comment,
+  Issue,
+  Mergeable,
+  PullRequest,
+  Size,
+  Status,
+} from "./types.ts";
 
 export interface GhConfig {
   repo: string;
@@ -317,6 +326,47 @@ export class GitHub {
     ).data.repository.issue;
     if (!raw) throw new Error(`issue #${n} not found in ${this.cfg.repo}`);
     return this.toIssue(raw);
+  }
+
+  /**
+   * `decision` issues closed on or after `since` (YYYY-MM-DD), with the close reason the resume
+   * needs. A REST search, not the tick's GraphQL read, so it spends none of that budget; and the
+   * loop only calls it on a tick that has a blocked issue to resume.
+   */
+  async listClosedDecisions(since: string): Promise<ClosedDecision[]> {
+    const raw = JSON.parse(
+      await this.gh([
+        "issue",
+        "list",
+        "--repo",
+        this.cfg.repo,
+        "--label",
+        "decision",
+        "--state",
+        "closed",
+        "--search",
+        `closed:>=${since}`,
+        "--limit",
+        "100",
+        "--json",
+        "number,body,stateReason,closedAt,comments",
+      ]),
+    ) as Array<{
+      number: number;
+      body: string | null;
+      stateReason: string | null;
+      closedAt: string;
+      comments: Array<{ author: { login: string } | null; body: string; createdAt: string }>;
+    }>;
+    return raw.map((i) => ({
+      number: i.number,
+      body: i.body ?? "",
+      stateReason: i.stateReason || null,
+      closedAt: i.closedAt,
+      comments: i.comments.map(
+        (c): Comment => ({ author: c.author?.login ?? "", body: c.body, createdAt: c.createdAt }),
+      ),
+    }));
   }
 
   async listOpenPRs(): Promise<PullRequest[]> {
@@ -707,6 +757,7 @@ export type GitHubApi = Pick<
   GitHub,
   | "listIssues"
   | "getIssue"
+  | "listClosedDecisions"
   | "listOpenPRs"
   | "subIssues"
   | "branchLastCommitAt"

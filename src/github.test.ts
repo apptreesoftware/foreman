@@ -507,3 +507,56 @@ describe("GitHub bootstrap calls", () => {
     );
   });
 });
+
+describe("listClosedDecisions", () => {
+  it("reads closed decision issues since a date and maps their comments", async () => {
+    const calls: string[][] = [];
+    const exec: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return {
+        code: 0,
+        stderr: "",
+        stdout: JSON.stringify([
+          {
+            number: 40,
+            body: "## Question\nX?\n\nBlocks: #5",
+            stateReason: "COMPLETED",
+            closedAt: "2026-09-03T11:00:00Z",
+            comments: [{ author: { login: "jane" }, body: "Settled: B", createdAt: "2026-09-03T10:59:00Z" }],
+          },
+          { number: 41, body: null, stateReason: "", closedAt: "2026-09-02T11:00:00Z", comments: [] },
+        ]),
+      };
+    };
+    const out = await new GitHub(cfg, exec, false).listClosedDecisions("2026-08-27");
+    expect(calls).toEqual([
+      [
+        "gh",
+        "issue",
+        "list",
+        "--repo",
+        "acme/widgets",
+        "--label",
+        "decision",
+        "--state",
+        "closed",
+        "--search",
+        "closed:>=2026-08-27",
+        "--limit",
+        "100",
+        "--json",
+        "number,body,stateReason,closedAt,comments",
+      ],
+    ]);
+    expect(out).toEqual([
+      {
+        number: 40,
+        body: "## Question\nX?\n\nBlocks: #5",
+        stateReason: "COMPLETED",
+        closedAt: "2026-09-03T11:00:00Z",
+        comments: [{ author: "jane", body: "Settled: B", createdAt: "2026-09-03T10:59:00Z" }],
+      },
+      { number: 41, body: "", stateReason: null, closedAt: "2026-09-02T11:00:00Z", comments: [] },
+    ]);
+  });
+});

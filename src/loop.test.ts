@@ -27,7 +27,7 @@ import {
 import type { LabelledIssue, NotifyEvent, NotifyPort } from "./notify.ts";
 import { defaultRepoConfig } from "./repo-config.ts";
 import { plan } from "./state.ts";
-import type { Issue } from "./types.ts";
+import type { ClosedDecision, Issue } from "./types.ts";
 
 const cfg = parseConfig(
   JSON.stringify({
@@ -40,7 +40,7 @@ const cfg = parseConfig(
   }),
 );
 
-function fakeGh(issues: Issue[]) {
+function fakeGh(issues: Issue[], closedDecisions: ClosedDecision[] = []) {
   const calls: string[] = [];
   const rec =
     (name: string) =>
@@ -51,6 +51,10 @@ function fakeGh(issues: Issue[]) {
     dryRun: false,
     listIssues: async () => issues,
     getIssue: async (n) => issues.find((i) => i.number === n) as Issue,
+    listClosedDecisions: async (since: string) => {
+      calls.push(`listClosedDecisions ${since}`);
+      return closedDecisions;
+    },
     listOpenPRs: async () => [],
     subIssues: async () => [],
     branchLastCommitAt: async () => null,
