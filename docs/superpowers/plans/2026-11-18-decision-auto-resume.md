@@ -4,7 +4,7 @@
 
 **Goal:** When a `decision` issue is closed as completed, the foreman resumes the task its `Blocks: #N` line names, quoting the settled answer on the task.
 
-**Architecture:** Builders write decision issues in a fixed layout ending in `Blocks: #<issue>`. Each tick, if any open issue is `blocked`, the foreman reads `decision` issues closed in the last 7 days (one `gh issue list` call), plans which blocked tasks they release (pure function, `src/decisions.ts`), and applies each through the existing `applyUnblock` with a new ledger comment instead of `unblocked by owner`. Idempotency and safety come from the ledger: one `decision #D …` comment per consumed decision, and a decision only counts if it closed after the task's newest `blocked by …` comment.
+**Architecture:** Builders write decision issues in a fixed layout ending in `Blocks: #<issue>`. Each tick, if any open issue is `blocked`, the foreman reads `decision` issues closed in the last 7 days (one `gh issue list` call), plans which blocked tasks they release (pure function, `src/decisions.ts`), and applies each through the existing `applyUnblock` with a new ledger comment instead of `unblocked by owner`. Idempotency and safety come from the ledger: one `decision #D …` comment per consumed decision, and a decision only counts if it was opened after the task was last unblocked or resumed (so an old answer cannot release a task re-blocked for another reason, and settling before the builder's session ends still resumes).
 
 **Tech Stack:** TypeScript (ESM, `.ts` imports), vitest, `gh` CLI, Biome.
 
@@ -358,6 +358,61 @@ git commit -m "refactor(needs-you): applyUnblock takes an optional ledger note"
 
 ---
 
+### Task 3b: Review amendments to Tasks 1–3 (already-committed code)
+
+Tasks 1–3 are committed. Review found: (a) `lastBlockedAt` makes a decision settled before the builder's session returns never resume, because `blocked by builder:` is written only at session end; (b) `DECISION_RESUMED` would treat a human comment starting `decision #40 settled: …` as a consumed decision; (c) the `listClosedDecisions` doc comment wrongly calls it a REST search — `gh issue list --search` is a GraphQL `search` query; (d) no test for a deleted comment author.
+
+**Files:** `src/ledger.ts`, `src/ledger.test.ts`, `src/types.ts`, `src/github.ts`, `src/github.test.ts`
+
+- [ ] **Step 1: Tests first.** In `src/ledger.test.ts`, replace the `lastBlockedAt` test with:
+
+```ts
+  it("lastUnblockedAt is the newest owner unblock or decision resume", () => {
+    const cs = [
+      comment("unblocked by owner via foreman@mac-a", hoursAgo(9)),
+      comment(fmt.decisionResumed("mac-a", 40, "A"), hoursAgo(5)),
+      comment("blocked by builder: see #41", hoursAgo(2)),
+    ];
+    expect(lastUnblockedAt(cs)).toBe(hoursAgo(5));
+    expect(lastUnblockedAt([comment("blocked by builder: x")])).toBeNull();
+  });
+```
+
+and add to the `decisionResumed` test: `expect(decisionResumed([comment("decision #40 settled: B")], 40)).toBe(false);` (a line without the foreman suffix is not a resume). In `src/github.test.ts`'s `listClosedDecisions` test, add `createdAt` to both raw items and expected items (`"2026-09-02T09:00:00Z"`, `"2026-09-01T09:00:00Z"`), add `createdAt` to the expected `--json` field list (`number,body,stateReason,createdAt,closedAt,comments`), and give issue 41 one comment with `author: null` expecting `author: ""`. Run `pnpm test -- src/ledger.test.ts src/github.test.ts`; expect failures.
+
+- [ ] **Step 2: Implement.**
+  - `src/ledger.ts`: replace `lastBlockedAt` with
+
+```ts
+/**
+ * When the task last left a blocked spell: the owner's Unblock or a decision resume. A decision
+ * opened before this belongs to an earlier spell and must not release the current one. Null when
+ * neither ever happened.
+ */
+export function lastUnblockedAt(comments: Comment[]): string | null {
+  return (
+    comments
+      .filter((c) => {
+        const b = c.body.trim();
+        return b.startsWith("unblocked by owner via foreman@") || DECISION_RESUMED.test(b);
+      })
+      .map((c) => c.createdAt)
+      .sort()
+      .at(-1) ?? null
+  );
+}
+```
+
+  and tighten `DECISION_RESUMED` to `/^decision #(\d+) (?:settled: |closed; ).* — resumed by foreman@\S+$/` (declare it above both users).
+  - `src/types.ts`: add `createdAt: string;` to `ClosedDecision` (before `closedAt`), doc: `/** When the decision was opened; ties it to the blocked spell it belongs to. */`.
+  - `src/github.ts` `listClosedDecisions`: add `createdAt` to the `--json` list and the mapping; replace the doc comment with: `` `decision` issues closed on or after `since` (YYYY-MM-DD), with the open and close times and close reason the resume needs. `gh issue list --search` is one GraphQL `search` query of at most 100 issues, so it does spend the hourly GraphQL budget; the loop only calls it on a tick that has a blocked issue to resume. ``
+  - Update `src/loop.test.ts` fake fixtures if the typechecker asks for `createdAt`.
+
+- [ ] **Step 3: Verify and commit.** `pnpm test && pnpm typecheck && pnpm lint`, then
+`git commit -am "fix(decisions): tie decisions to the blocked spell; tighten resume grammar"`.
+
+---
+
 ### Task 4: Parse decision issues
 
 **Files:**
@@ -477,6 +532,7 @@ const closed = (over: Partial<ClosedDecision> = {}): ClosedDecision => ({
   number: 40,
   body: "## Question\nX?\n\nBlocks: #5",
   stateReason: "COMPLETED",
+  createdAt: hoursAgo(5),
   closedAt: hoursAgo(1),
   comments: [comment("Settled: B — Use REST", hoursAgo(1))],
   ...over,
@@ -528,10 +584,22 @@ describe("planDecisionResumes", () => {
     expect(planDecisionResumes(snapshot({ issues: [task] }), [closed()])).toEqual([]);
   });
 
-  it("ignores a decision closed before the task's latest block", () => {
-    // Settled and consumed earlier, then the task was blocked again for another reason.
-    const task = blockedTask({ comments: [comment("blocked by foreman@mac-a: fix rounds spent", hoursAgo(0.5))] });
+  it("ignores a decision opened before the task was last unblocked", () => {
+    // The owner pressed Unblock before settling; the task was later blocked for another reason.
+    const task = blockedTask({
+      comments: [
+        comment("unblocked by owner via foreman@mac-a", hoursAgo(3)),
+        comment("blocked by foreman@mac-a: fix rounds spent", hoursAgo(2)),
+      ],
+    });
     expect(planDecisionResumes(snapshot({ issues: [task] }), [closed()])).toEqual([]);
+  });
+
+  it("resumes when the decision closed before the builder's session ended", () => {
+    // The foreman writes `blocked by builder:` only when the session returns.
+    const task = blockedTask({ comments: [comment("blocked by builder: see #40", hoursAgo(1))] });
+    const d = closed({ createdAt: hoursAgo(3), closedAt: hoursAgo(2) });
+    expect(planDecisionResumes(snapshot({ issues: [task] }), [d])).toHaveLength(1);
   });
 
   it("folds two closed decisions for one task into one resume, lowest number first", () => {
@@ -565,7 +633,7 @@ Expected: FAIL — `planDecisionResumes` not exported.
 In `src/decisions.ts`, extend the imports:
 
 ```ts
-import { decisionResumed, lastBlockedAt } from "./ledger.ts";
+import { decisionResumed, lastUnblockedAt } from "./ledger.ts";
 import type { ClosedDecision, Comment, Snapshot } from "./types.ts";
 ```
 
@@ -582,9 +650,10 @@ export interface DecisionResume {
 
 /**
  * Which blocked tasks the closed decisions release. A decision counts once (the ledger says so),
- * only when closed as completed, only after the task's latest `blocked by …` comment — so a task
- * blocked again for another reason is not released by an old answer — and only once no open
- * decision still names the same task.
+ * only when closed as completed, only when opened after the task was last unblocked or resumed —
+ * so a task blocked again for another reason is not released by an old answer, while a decision
+ * settled before the builder's session returned still counts — and only once no open decision
+ * still names the same task.
  */
 export function planDecisionResumes(s: Snapshot, closed: ClosedDecision[]): DecisionResume[] {
   const stillOpen = new Set(
@@ -601,8 +670,8 @@ export function planDecisionResumes(s: Snapshot, closed: ClosedDecision[]): Deci
     const task = s.issues.find((i) => i.number === n);
     if (!task || task.state !== "OPEN" || !task.labels.includes("blocked")) continue;
     if (decisionResumed(task.comments, d.number)) continue;
-    const blockedAt = lastBlockedAt(task.comments);
-    if (blockedAt !== null && d.closedAt <= blockedAt) continue;
+    const unblockedAt = lastUnblockedAt(task.comments);
+    if (unblockedAt !== null && d.createdAt <= unblockedAt) continue;
     const r = byTask.get(n) ?? {
       task: n,
       itemId: task.itemId,
@@ -698,7 +767,7 @@ In `src/decisions.ts`, extend the imports:
 
 ```ts
 import type { GitHubApi } from "./github.ts";
-import { decisionResumed, fmt, lastBlockedAt } from "./ledger.ts";
+import { decisionResumed, fmt, lastUnblockedAt } from "./ledger.ts";
 import { log } from "./log.ts";
 import { applyUnblock, type UnblockGh } from "./needs-you.ts";
 ```
@@ -781,6 +850,7 @@ Add `comment` and `hoursAgo` to the `../test/helpers.ts` import in `src/loop.tes
           number: 40,
           body: "Blocks: #5",
           stateReason: "COMPLETED",
+          createdAt: hoursAgo(5),
           closedAt: hoursAgo(1),
           comments: [comment("Settled: B — Use REST", hoursAgo(1))],
         },
@@ -947,8 +1017,8 @@ After the bullet that ends `…because nothing else about the issue changes.`, a
   and comments `decision #<d> settled: <answer> — resumed by foreman@<host>`, quoting the first
   comment that starts `Settled: `, or `decision #<d> closed; read it before continuing` when there
   is none. Close it as **not planned** to leave the task blocked. It waits while another open
-  decision still names the same task, ignores decisions closed more than 7 days ago or before the
-  task's latest `blocked by …` comment, and resumes once per decision. Decisions written before
+  decision still names the same task, ignores decisions closed more than 7 days ago or opened before
+  the task was last unblocked or resumed, and resumes once per decision. Decisions written before
   this layout have no `Blocks:` line and still need Unblock.
 ```
 
