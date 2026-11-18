@@ -2,8 +2,8 @@
 
 Goal: turn the issue into a merge-ready PR on the given branch.
 
-1. Read the issue's **Acceptance criteria**, **Touches**, and **Spec** sections, the linked plan task in `{{plansDir}}/` if one exists, and every existing **Progress** comment.
-2. If the issue is ambiguous in a way that changes the outcome, do not guess. Open a decision issue. Write this to `.gh-body.md`, with at least two options, and `Blocks:` alone on the last line:
+1. Read the issue's **Acceptance criteria**, **Touches**, and **Spec** sections, the linked plan task in `{{plansDir}}/` if one exists, every existing **Progress** comment, and any `decision #<n> …` comment from the foreman. Follow that decision's answer. If the comment says `closed; read it before continuing`, run `gh issue view <n> --comments` first and follow what was decided there.
+2. If the issue is ambiguous in a way that changes the outcome, do not guess. Open a decision issue. Write this to `.gh-body.md`, with at least two options, and `Blocks: #<issue>` alone on the last line, with no indentation:
 
    ```
    ## Question
@@ -25,7 +25,7 @@ Goal: turn the issue into a merge-ready PR on the given branch.
    Blocks: #<issue>
    ```
 
-   then `gh issue create --title "Decision: <question>" --label "decision,needs-owner,phase:<N>" --body-file .gh-body.md`, then `gh issue edit <issue> --add-label blocked`, comment why, and return `blocked` with the decision issue number in notes. When the decision is settled the foreman resumes this issue and quotes the answer in a `decision #<n> settled: …` comment; read it before anything else. For small ambiguities pick the simplest interpretation and state it in the PR body.
+   then `gh issue create --title "Decision: <question>" --label "decision,needs-owner,phase:<N>" --body-file .gh-body.md`, then `gh issue edit <issue> --add-label blocked`, comment why, and return `blocked` with the decision issue number in notes. The foreman unblocks this issue when the decision is closed. For small ambiguities pick the simplest interpretation and state it in the PR body.
 3. Test-driven: write the failing test first, run it, implement, run again. Run the checks ({{checks}}) before every push.
 4. Checkpoints: after each meaningful step, `git add -A && git commit -m "<type>(<area>): <summary> (#<issue>)"` and `git push -u origin <branch>`, then post a Progress comment on the issue:
    ```

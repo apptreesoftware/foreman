@@ -58,6 +58,14 @@ describe("role prompts", () => {
     ])
       expect(builder, s).toContain(s);
   });
+  it("builder reads the foreman's decision line before anything else when unblocked", () => {
+    const builder = readFileSync(join(dir, "builder.md"), "utf8");
+    expect(builder).toContain("with no indentation");
+    expect(builder).toContain("`decision #<n> …`");
+    expect(builder).toContain("closed; read it before continuing");
+    expect(builder).toContain("gh issue view <n> --comments");
+    expect(builder).not.toContain("the foreman resumes");
+  });
 });
 
 describe("the base prompts say nothing about one particular repository", () => {
