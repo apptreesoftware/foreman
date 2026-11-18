@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { comment, hoursAgo } from "../test/helpers.ts";
 import {
   ciRerunCount,
+  decisionResumed,
   fixRound,
   fmt,
   lastActivityAt,
+  lastBlockedAt,
   openClaim,
   parseClaim,
   planPrStuckReported,
@@ -121,5 +123,33 @@ describe("plan PR stuck ledger", () => {
       comment(fmt.planPrStuck("mac-a", 279, sha, "checks failed"), hoursAgo(1)),
     ];
     expect(openClaim(cs)).not.toBeNull();
+  });
+});
+
+describe("decision resume ledger", () => {
+  it("formats a settled and an unanswered resume", () => {
+    expect(fmt.decisionResumed("mac-a", 40, "B — Use REST")).toBe(
+      "decision #40 settled: B — Use REST — resumed by foreman@mac-a",
+    );
+    expect(fmt.decisionResumed("mac-a", 41, null)).toBe(
+      "decision #41 closed; read it before continuing — resumed by foreman@mac-a",
+    );
+  });
+
+  it("decisionResumed finds only the named decision", () => {
+    const cs = [comment(fmt.decisionResumed("mac-a", 40, "A")), comment("decision #4 is odd")];
+    expect(decisionResumed(cs, 40)).toBe(true);
+    expect(decisionResumed(cs, 41)).toBe(false);
+    expect(decisionResumed(cs, 4)).toBe(false);
+  });
+
+  it("lastBlockedAt is the newest `blocked by` comment, from the foreman or a role", () => {
+    const cs = [
+      comment("blocked by foreman@mac-a: setup failed", hoursAgo(9)),
+      comment("blocked by builder: see #40", hoursAgo(5)),
+      comment("unblocked by owner via foreman@mac-a", hoursAgo(2)),
+    ];
+    expect(lastBlockedAt(cs)).toBe(hoursAgo(5));
+    expect(lastBlockedAt([comment("Progress")])).toBeNull();
   });
 });

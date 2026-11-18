@@ -31,6 +31,14 @@ export const fmt = {
   aborted: (host: string) => `released by ${host}: aborted by operator`,
   unblocked: (host: string) => `unblocked by owner via foreman@${host}`,
   /**
+   * The foreman resumed a task because decision #`decision` was closed as completed. Not
+   * TERMINAL and not `blocked by`: a resume must neither close a claim nor count as a block.
+   */
+  decisionResumed: (host: string, decision: number, answer: string | null) =>
+    answer
+      ? `decision #${decision} settled: ${answer} — resumed by foreman@${host}`
+      : `decision #${decision} closed; read it before continuing — resumed by foreman@${host}`,
+  /**
    * Deliberately none of CLAIM, SESSION or TERMINAL, and not `blocked by`: the claim stays open
    * so the first tick after the reset resumes this session.
    */
@@ -119,4 +127,26 @@ export function lastActivityAt(comments: Comment[]): string | null {
 
 export function planApplied(comments: Comment[]): boolean {
   return comments.some((c) => c.body.trim().startsWith("plan applied by foreman@"));
+}
+
+const DECISION_RESUMED = /^decision #(\d+) (?:settled: |closed; )/;
+
+/** Whether this task was already resumed for decision `n`; each decision resumes at most once. */
+export function decisionResumed(comments: Comment[], n: number): boolean {
+  return comments.some((c) => DECISION_RESUMED.exec(c.body.trim())?.[1] === String(n));
+}
+
+/**
+ * When the issue was last blocked through the ledger: `blocked by foreman@…` (setup, attempts,
+ * fix rounds) or `blocked by <role>: …` (a role's `blocked` outcome). Null when it never was —
+ * a `blocked` label added by hand leaves no comment.
+ */
+export function lastBlockedAt(comments: Comment[]): string | null {
+  return (
+    comments
+      .filter((c) => c.body.trim().startsWith("blocked by "))
+      .map((c) => c.createdAt)
+      .sort()
+      .at(-1) ?? null
+  );
 }
