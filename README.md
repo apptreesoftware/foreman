@@ -278,6 +278,7 @@ plan on retry instead of duplicating it.
 |---|---|
 | builder `pr_opened` | issue → In Review |
 | builder `blocked` | issue `blocked`, unassigned |
+| (foreman) `decision` issue with `Blocks: #N` closed as completed | #N unblocked → Ready, `decision #<d> settled: <answer> — resumed by foreman@<host>` |
 | reviewer `approved` / `changes_requested` | PR `reviewer:approved` / `reviewer:changes` |
 | validator `passed` / `failed` | PR `validator:passed` / `validator:failed` |
 | (foreman) issue carries a `validator.skipLabels` label | PR `validator:skipped` |
@@ -357,6 +358,8 @@ reclaimed from <host> by <host> at <iso>
 merged by foreman@<host>
 ci rerun by foreman@<host> for <sha>
 unblocked by owner via foreman@<host>
+decision #<d> settled: <answer> — resumed by foreman@<host>
+decision #<d> closed; read it before continuing — resumed by foreman@<host>
 plan PR #<pr> cannot merge at <sha>: <reason>. Fix it or merge it by hand (foreman@<host>)
 ```
 
@@ -783,6 +786,19 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   `validator:failed` from the issue's PR, sets Status **Ready** and comments
   `unblocked by owner via foreman@<host>` — fix whatever caused the block first, because nothing
   else about the issue changes.
+- **Settled decisions resume their task:** a builder's decision issue ends in `Blocks: #<issue>`.
+  Close it as **completed** and, on its next tick, the foreman does what Unblock does to that issue
+  and comments `decision #<d> settled: <answer> — resumed by foreman@<host>`, quoting the first
+  comment that starts `Settled: `, or `decision #<d> closed; read it before continuing` when there
+  is none. Close it as **not planned** to leave the task blocked. It waits while another open
+  decision still names the same task, or while a role session still holds a claim on the task;
+  it ignores decisions closed more than 7 days ago or opened before the task was last unblocked
+  or resumed; and it writes those ledger lines before lifting the block, so a failure after that
+  leaves the task blocked with the answer recorded, ready for Unblock. Decisions written before
+  this layout have no `Blocks:` line and still need Unblock.
+
+  **Known gaps:** removing `blocked` by hand on GitHub, rather than through Unblock, writes no
+  ledger line. In that case a settled decision from before can release a later, unrelated block.
 - **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.apptreesoftware.foreman.widgets`,
   or `foreman -p widgets launchd uninstall`.
 
