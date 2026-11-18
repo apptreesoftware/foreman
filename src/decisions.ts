@@ -1,7 +1,7 @@
 import type { GitHubApi } from "./github.ts";
-import { decisionResumed, fmt, lastUnblockedAt } from "./ledger.ts";
+import { decisionResumed, fmt, lastUnblockedAt, openClaim } from "./ledger.ts";
 import { log } from "./log.ts";
-import { applyUnblock, type UnblockGh } from "./needs-you.ts";
+import { type UnblockGh, unblockEdits } from "./needs-you.ts";
 import type { ClosedDecision, Comment, Snapshot } from "./types.ts";
 
 /** The decision layout's last line: the one task this decision blocks. */
@@ -57,7 +57,8 @@ export function planDecisionResumes(s: Snapshot, closed: ClosedDecision[]): Deci
     const n = parseBlocks(d.body);
     if (n === null || stillOpen.has(n)) continue;
     const task = s.issues.find((i) => i.number === n);
-    if (!task || task.state !== "OPEN" || !task.labels.includes("blocked")) continue;
+    if (task?.state !== "OPEN" || !task.labels.includes("blocked")) continue;
+    if (openClaim(task.comments)) continue;
     if (decisionResumed(task.comments, d.number)) continue;
     const unblockedAt = lastUnblockedAt(task.comments);
     if (unblockedAt !== null && d.createdAt <= unblockedAt) continue;
@@ -79,10 +80,11 @@ export const DECISION_LOOKBACK_DAYS = 7;
 export type DecisionGh = UnblockGh & Pick<GitHubApi, "listClosedDecisions">;
 
 /**
- * Resumes every blocked task whose decision was settled: the same edits as the owner's Unblock
- * (label, PR verdicts, Status Ready) with a `decision #D …` ledger line in place of
- * `unblocked by owner`, plus one more line per extra decision it consumes. Returns the tasks
- * resumed. Every write goes through `gh`, so `dryRun` writes nothing.
+ * Resumes every blocked task whose decision was settled: a `decision #D …` ledger line per
+ * decision it consumes, then the same edits as the owner's Unblock (label, PR verdicts, Status
+ * Ready). The ledger lines come first, so a failure partway through leaves the task blocked with
+ * the answer recorded rather than losing it; the owner's Unblock then finishes the job by hand.
+ * Returns the tasks resumed. Every write goes through `gh`, so `dryRun` writes nothing.
  */
 export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promise<number[]> {
   // Nothing is blocked, so nothing can be resumed: an idle board spends no call on this.
@@ -92,15 +94,9 @@ export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promi
     .slice(0, 10);
   const resumes = planDecisionResumes(s, await gh.listClosedDecisions(since));
   for (const r of resumes) {
-    const [first, ...rest] = r.decisions;
-    if (!first) continue;
-    await applyUnblock(
-      gh,
-      { issue: r.task, itemId: r.itemId, host: s.host, pr: r.pr },
-      fmt.decisionResumed(s.host, first.number, first.answer),
-    );
-    for (const d of rest)
+    for (const d of r.decisions)
       await gh.comment("issue", r.task, fmt.decisionResumed(s.host, d.number, d.answer));
+    await unblockEdits(gh, { issue: r.task, itemId: r.itemId, host: s.host, pr: r.pr });
     log("info", "decision resumed task", {
       task: r.task,
       decisions: r.decisions.map((d) => d.number),

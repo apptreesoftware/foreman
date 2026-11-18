@@ -122,6 +122,19 @@ describe("planDecisionResumes", () => {
     expect(planDecisionResumes(snapshot({ issues: [task] }), [d])).toHaveLength(1);
   });
 
+  it("waits while a role session still holds the claim on the blocked task", () => {
+    const task = blockedTask({
+      comments: [
+        comment(fmt.claimed("mac-a", hoursAgo(4), "builder", 1), hoursAgo(4)),
+        comment(
+          fmt.session("11111111-1111-1111-1111-111111111111", "mac-a", "builder", 1),
+          hoursAgo(4),
+        ),
+      ],
+    });
+    expect(planDecisionResumes(snapshot({ issues: [task] }), [closed()])).toEqual([]);
+  });
+
   it("folds two closed decisions for one task into one resume, lowest number first", () => {
     const s = snapshot({ issues: [blockedTask()] });
     const out = planDecisionResumes(s, [
@@ -178,11 +191,37 @@ describe("resumeSettledDecisions", () => {
     expect(await resumeSettledDecisions(gh, s)).toEqual([5]);
     expect(calls).toEqual([
       "listClosedDecisions 2026-08-27",
+      "comment issue 5 decision #40 settled: B — Use REST — resumed by foreman@mac-a",
+      "comment issue 5 decision #42 closed; read it before continuing — resumed by foreman@mac-a",
       "removeLabels issue 5 blocked",
       "removeLabels pr 77 reviewer:changes,validator:failed",
       "setStatus PVTI_5 Ready",
-      "comment issue 5 decision #40 settled: B — Use REST — resumed by foreman@mac-a",
-      "comment issue 5 decision #42 closed; read it before continuing — resumed by foreman@mac-a",
     ]);
+  });
+
+  it("leaves the task blocked with the answer recorded when the unblock edits fail", async () => {
+    const { gh, calls } = fakeGh([closed()]);
+    const failingGh: DecisionGh = {
+      ...gh,
+      removeLabels: async () => {
+        throw new Error("gh rate limited");
+      },
+    };
+    const s = snapshot({ issues: [blockedTask()] });
+    await expect(resumeSettledDecisions(failingGh, s)).rejects.toThrow("gh rate limited");
+    expect(calls).toEqual([
+      "listClosedDecisions 2026-08-27",
+      "comment issue 5 decision #40 settled: B — Use REST — resumed by foreman@mac-a",
+    ]);
+
+    // The decision comment landed before the failed edits, so the task still carries the resume
+    // line. A later tick must not resume it again from the same decision.
+    const task = blockedTask({
+      comments: [
+        ...blockedTask().comments,
+        comment(fmt.decisionResumed("mac-a", 40, "B — Use REST"), hoursAgo(0)),
+      ],
+    });
+    expect(planDecisionResumes(snapshot({ issues: [task] }), [closed()])).toEqual([]);
   });
 });
