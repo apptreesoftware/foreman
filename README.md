@@ -790,7 +790,9 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   Close it as **completed** and, on its next tick, the foreman does what Unblock does to that issue
   and comments `decision #<d> settled: <answer> — unblocked by decision via foreman@<host>`, quoting the first
   comment that starts `Settled: `, or `decision #<d> closed; read it before continuing` when there
-  is none. Close it as **not planned** to leave the task blocked. It waits while another open
+  is none. Close it as **not planned** to leave the task blocked; that wins over a completed
+  one, so if any decision opened since the task was last unblocked was closed as not planned, the
+  task stays blocked even when another decision for it was completed. It waits while another open
   decision still names the same task, or while a role session still holds a claim on the task;
   it ignores decisions closed more than 7 days ago or opened before the task was last unblocked
   or resumed; and it writes those ledger lines before lifting the block, so a failure after that

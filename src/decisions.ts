@@ -5,7 +5,7 @@ import { type UnblockGh, unblockEdits } from "./needs-you.ts";
 import type { ClosedDecision, Comment, Snapshot } from "./types.ts";
 
 /** The decision layout's last line: the one task this decision blocks. */
-const BLOCKS = /^Blocks: #(\d+)\s*$/m;
+const BLOCKS = /^[ \t]*Blocks: #(\d+)[ \t]*$/m;
 /** The first line of the comment the decisions page posts when someone settles. */
 const SETTLED = /^Settled: (.+)$/;
 const MAX_ANSWER = 500;
@@ -42,7 +42,8 @@ export interface DecisionResume {
  * only when closed as completed, only when opened after the task was last unblocked or resumed —
  * so a task blocked again for another reason is not released by an old answer, while a decision
  * settled before the builder's session returned still counts — and only once no open decision
- * still names the same task.
+ * still names the same task. A decision of the same spell closed as not planned holds the task
+ * blocked even when another was completed; any other close reason is ignored.
  */
 export function planDecisionResumes(s: Snapshot, closed: ClosedDecision[]): DecisionResume[] {
   const stillOpen = new Set(
@@ -51,17 +52,28 @@ export function planDecisionResumes(s: Snapshot, closed: ClosedDecision[]): Deci
       .map((i) => parseBlocks(i.body))
       .filter((n): n is number => n !== null),
   );
+  const tasks = new Map(s.issues.map((i) => [i.number, i]));
+  /** Opened after the task's last unblock, so it belongs to the current blocked spell. */
+  const inSpell = (d: ClosedDecision, n: number): boolean => {
+    const unblockedAt = lastUnblockedAt(tasks.get(n)?.comments ?? []);
+    return unblockedAt === null || d.createdAt > unblockedAt;
+  };
+  const held = new Set<number>();
+  for (const d of closed) {
+    if (d.stateReason !== "NOT_PLANNED") continue;
+    const n = parseBlocks(d.body);
+    if (n !== null && inSpell(d, n)) held.add(n);
+  }
   const byTask = new Map<number, DecisionResume>();
   for (const d of [...closed].sort((a, b) => a.number - b.number)) {
     if (d.stateReason !== "COMPLETED") continue;
     const n = parseBlocks(d.body);
-    if (n === null || stillOpen.has(n)) continue;
-    const task = s.issues.find((i) => i.number === n);
+    if (n === null || stillOpen.has(n) || held.has(n)) continue;
+    const task = tasks.get(n);
     if (task?.state !== "OPEN" || !task.labels.includes("blocked")) continue;
     if (openClaim(task.comments)) continue;
     if (decisionUnblocked(task.comments, d.number)) continue;
-    const unblockedAt = lastUnblockedAt(task.comments);
-    if (unblockedAt !== null && d.createdAt <= unblockedAt) continue;
+    if (!inSpell(d, n)) continue;
     const r = byTask.get(n) ?? {
       task: n,
       itemId: task.itemId,

@@ -14,6 +14,10 @@ describe("parseBlocks", () => {
   it("reads the task from a `Blocks: #N` line", () => {
     expect(parseBlocks("## Question\nX?\n\n## Recommendation\nA\n\nBlocks: #57\n")).toBe(57);
   });
+  it("tolerates indentation and trailing blanks around the line", () => {
+    expect(parseBlocks("   Blocks: #57")).toBe(57);
+    expect(parseBlocks("\tBlocks: #57 ")).toBe(57);
+  });
   it("is null without the line, or when it is not on a line of its own", () => {
     expect(parseBlocks("Context: this blocks #57")).toBeNull();
     expect(parseBlocks("Blocks: #57 and #58")).toBeNull();
@@ -76,6 +80,37 @@ describe("planDecisionResumes", () => {
     expect(planDecisionResumes(s, [closed({ stateReason: "NOT_PLANNED" })])).toEqual([]);
   });
 
+  it("keeps the task blocked when one decision is completed and another not planned", () => {
+    const s = snapshot({ issues: [blockedTask()] });
+    const notPlanned = closed({ number: 41, stateReason: "NOT_PLANNED", comments: [] });
+    expect(planDecisionResumes(s, [closed(), notPlanned])).toEqual([]);
+  });
+
+  it("lets a not-planned decision from before the last unblock go, so the completed one counts", () => {
+    const task = blockedTask({
+      comments: [
+        comment("unblocked by owner via foreman@mac-a", hoursAgo(6)),
+        comment("blocked by builder: see #40", hoursAgo(4)),
+      ],
+    });
+    const stale = closed({
+      number: 39,
+      stateReason: "NOT_PLANNED",
+      createdAt: hoursAgo(8),
+      closedAt: hoursAgo(7),
+      comments: [],
+    });
+    expect(planDecisionResumes(snapshot({ issues: [task] }), [stale, closed()])).toEqual([
+      { task: 5, itemId: "PVTI_5", pr: null, decisions: [{ number: 40, answer: "B — Use REST" }] },
+    ]);
+  });
+
+  it("ignores a decision closed as a duplicate", () => {
+    const s = snapshot({ issues: [blockedTask()] });
+    const dup = closed({ number: 41, stateReason: "DUPLICATE", comments: [] });
+    expect(planDecisionResumes(s, [closed(), dup])).toHaveLength(1);
+  });
+
   it("does nothing without a Blocks line", () => {
     const s = snapshot({ issues: [blockedTask()] });
     expect(planDecisionResumes(s, [closed({ body: "Options A/B, see #5" })])).toEqual([]);
@@ -94,6 +129,7 @@ describe("planDecisionResumes", () => {
     expect(planDecisionResumes(s, [closed()])).toEqual([]);
   });
 
+  // The opened-after-last-unblock check also rejects this, so `decisionUnblocked` is the safety net.
   it("does not resume twice for the same decision", () => {
     const task = blockedTask({
       comments: [
