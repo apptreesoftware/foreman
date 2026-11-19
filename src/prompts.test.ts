@@ -6,7 +6,9 @@ import {
   composeRolePrompt,
   composeSettings,
   PACKAGE_ROOT,
+  readBaseSettings,
   readRepoRules,
+  targetBranchDenies,
   worktreeDenies,
   writeSessionFiles,
 } from "./prompts.ts";
@@ -149,6 +151,35 @@ describe("writeSessionFiles", () => {
     expect(prompt).toContain("gh pr create --base v2");
     expect(prompt).toContain("git merge origin/v2");
     expect(prompt).not.toContain("{{targetBranch}}");
+  });
+  /**
+   * `settings/headless.json` protects `main` and `master` statically. A repository building on
+   * another branch gets the same seven rules for that branch, so a session cannot push to it,
+   * check it out, switch to it or delete it either.
+   */
+  it("denies the target branch the way the base file denies main and master", () => {
+    const masterRules = readBaseSettings().permissions.deny.filter((r) =>
+      / master\*|:master\*/.test(r),
+    );
+    expect(masterRules).toHaveLength(7);
+    const expected = masterRules.map((r) => r.replace("master", "v2"));
+    expect(targetBranchDenies("v2")).toEqual(expected);
+
+    const stateDir = mkdtempSync(join(tmpdir(), "state-"));
+    const out = writeSessionFiles(stateDir, fixtureRepo, "builder", defaultRepoConfig(), "v2");
+    const deny: string[] = JSON.parse(readFileSync(out.settingsPath, "utf8")).permissions.deny;
+    expect(deny).toEqual(expect.arrayContaining([...expected, ...worktreeDenies(fixtureRepo)]));
+    expect(deny).toContain("Bash(git push origin main*)");
+  });
+  it("adds nothing for main or master, which the base file already denies", () => {
+    expect(targetBranchDenies("main")).toEqual([]);
+    expect(targetBranchDenies("master")).toEqual([]);
+    const settingsFor = (t?: string) => {
+      const stateDir = mkdtempSync(join(tmpdir(), "state-"));
+      const out = writeSessionFiles(stateDir, fixtureRepo, "builder", defaultRepoConfig(), t);
+      return readFileSync(out.settingsPath, "utf8");
+    };
+    expect(settingsFor("main")).toBe(settingsFor());
   });
   it("PACKAGE_ROOT holds roles/ and settings/", () => {
     expect(existsSync(join(PACKAGE_ROOT, "roles", "ground-rules.md"))).toBe(true);

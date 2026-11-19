@@ -127,6 +127,25 @@ export function worktreeDenies(worktree: string): string[] {
   ]);
 }
 
+/**
+ * The base file denies pushing, checking out, switching to and deleting `main` and `master`. A
+ * repository whose `targetBranch` is another branch gets the same seven rules for that one, so a
+ * session cannot land work on it without a PR the foreman merges. Nothing for `main` or `master`,
+ * which are already denied.
+ */
+export function targetBranchDenies(target: string): string[] {
+  if (target === "main" || target === "master") return [];
+  return [
+    `Bash(git push origin ${target}*)`,
+    `Bash(git push -u origin ${target}*)`,
+    `Bash(git push * ${target}*)`,
+    `Bash(git push origin HEAD:${target}*)`,
+    `Bash(git checkout ${target}*)`,
+    `Bash(git switch ${target}*)`,
+    `Bash(git branch -D ${target}*)`,
+  ];
+}
+
 /** Spec §7: the files `claude -p` is pointed at, regenerated per dispatch from the worktree's `.foreman/`. */
 export function writeSessionFiles(
   stateDir: string,
@@ -151,7 +170,13 @@ export function writeSessionFiles(
     ...composed,
     permissions: {
       ...composed.permissions,
-      deny: [...new Set([...composed.permissions.deny, ...worktreeDenies(worktree)])],
+      deny: [
+        ...new Set([
+          ...composed.permissions.deny,
+          ...worktreeDenies(worktree),
+          ...targetBranchDenies(targetBranch),
+        ]),
+      ],
     },
   };
   mkdirSync(join(stateDir, "roles"), { recursive: true });
