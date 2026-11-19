@@ -78,6 +78,7 @@ export async function runDaemon(
     repoDir: cfg.repoDir,
     instance: instance.name,
     hookLog,
+    targetBranch: repo.targetBranch,
   });
   if (!result.ok) {
     log(once ? "error" : "warn", "preflight failed", { reason: result.reason });

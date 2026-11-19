@@ -1437,6 +1437,42 @@ describe("buildSnapshot", () => {
   });
 });
 
+describe("runOnce with a target branch origin does not have", () => {
+  it("parks with the branch named, before reading the board", async () => {
+    const { gh, calls } = fakeGh([]);
+    let listed = 0;
+    gh.listIssues = async () => {
+      listed++;
+      return [];
+    };
+    const exec: Exec = async (cmd, args) =>
+      cmd === "git" && args.includes("ls-remote")
+        ? { code: 2, stdout: "", stderr: "" }
+        : {
+            code: 0,
+            stdout:
+              '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
+            stderr: "",
+          };
+    const n = recordNotify();
+    const stateDir = mkdtempSync(join(tmpdir(), "tt-loop-target-"));
+    const r = await runOnce(
+      ctx({
+        gh,
+        exec,
+        stateDir,
+        notify: n.port,
+        repo: { ...defaultRepoConfig(), targetBranch: "v2" },
+        targetBranch: "v2",
+      }),
+    );
+    expect(r).toEqual({ didWork: false, action: null });
+    expect(n.parked).toEqual(["target branch v2 not found on origin"]);
+    expect(listed).toBe(0);
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("runOnce abort mid-plan", () => {
   it("stops between actions once the signal aborts, so a second mergeable PR is never merged", async () => {
     const i1 = issue({ number: 1, status: "In Review" });

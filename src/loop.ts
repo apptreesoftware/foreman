@@ -1177,6 +1177,7 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
       repoDir: ctx.cfg.repoDir,
       instance: ctx.instance,
       hookLog: ctx.hookLog,
+      targetBranch: ctx.repo.targetBranch,
       pause: ctx.state
         ? {
             until: ctx.state.get().pausedUntil ?? null,

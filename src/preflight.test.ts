@@ -160,6 +160,36 @@ describe("preflight", () => {
     const notJson: Exec = async () => ({ code: 1, stdout: "<html>502</html>", stderr: "" });
     expect(await graphqlBudget(notJson)).toBeNull();
   });
+  describe("target branch", () => {
+    const withRemote = (code: number) => {
+      const calls: string[] = [];
+      const exec: Exec = async (cmd, args, opts) => {
+        if (cmd === "git") {
+          calls.push(`${cmd} ${args.join(" ")}`);
+          return { code, stdout: "", stderr: "" };
+        }
+        return okExec(cmd, args, opts);
+      };
+      return { calls, exec };
+    };
+    it("asks nothing of git when the repository names no target branch", async () => {
+      const { calls, exec } = withRemote(2);
+      expect((await preflight(cfg, deps({ exec }))).ok).toBe(true);
+      expect(calls).toEqual([]);
+    });
+    it("passes when origin has the target branch", async () => {
+      const { calls, exec } = withRemote(0);
+      expect((await preflight(cfg, deps({ exec, targetBranch: "v2" }))).ok).toBe(true);
+      expect(calls).toEqual([`git -C ${noHooksRepo} ls-remote --exit-code --heads origin v2`]);
+    });
+    it("parks, naming the branch, when origin does not have it", async () => {
+      const { exec } = withRemote(2);
+      expect(await preflight(cfg, deps({ exec, targetBranch: "v2" }))).toEqual({
+        ok: false,
+        reason: "target branch v2 not found on origin",
+      });
+    });
+  });
   it("a repoDir with no hooks passes with no warnings", async () => {
     const r = await preflight(cfg, deps());
     expect(r).toEqual({ ok: true, warnings: [] });
