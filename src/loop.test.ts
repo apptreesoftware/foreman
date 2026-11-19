@@ -1916,6 +1916,7 @@ describe("notifications", () => {
       [
         {
           number: 40,
+          author: "acme",
           body: "Blocks: #5",
           stateReason: "COMPLETED",
           createdAt: hoursAgo(5),

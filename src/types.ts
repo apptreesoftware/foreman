@@ -24,6 +24,8 @@ export interface Issue {
 /** A closed `decision` issue, read only to resume the task its `Blocks: #N` line names. */
 export interface ClosedDecision {
   number: number;
+  /** Who opened the decision; empty for a deleted account. */
+  author: string;
   body: string;
   /** GitHub's close reason. Only COMPLETED resumes; NOT_PLANNED, DUPLICATE and the rest do not. */
   stateReason: string | null;

@@ -355,10 +355,11 @@ export class GitHub {
         "--limit",
         "100",
         "--json",
-        "number,body,stateReason,createdAt,closedAt,comments",
+        "number,author,body,stateReason,createdAt,closedAt,comments",
       ]),
     ) as Array<{
       number: number;
+      author: { login: string } | null;
       body: string | null;
       stateReason: string | null;
       createdAt: string;
@@ -367,6 +368,7 @@ export class GitHub {
     }>;
     return raw.map((i) => ({
       number: i.number,
+      author: i.author?.login ?? "",
       body: i.body ?? "",
       stateReason: i.stateReason || null,
       createdAt: i.createdAt,
@@ -564,10 +566,12 @@ export class GitHub {
 
   /**
    * Whether `login` may write to the repository: collaborator permission `admin` or `write`
-   * (`maintain` reports as `write` in that field). A read. A login that is not a plain GitHub
-   * username, a 404 or any other failed lookup answers false.
+   * (`maintain` reports as `write` in that field). A read. False when GitHub says so: any other
+   * permission, a 404 (no such user), or a login that is not a plain GitHub username, which is
+   * never sent. `"unknown"` when the lookup fails any other way (rate limit, 5xx, network), so the
+   * caller can retry rather than treat a hiccup as a no.
    */
-  async hasWriteAccess(login: string): Promise<boolean> {
+  async hasWriteAccess(login: string): Promise<boolean | "unknown"> {
     if (!/^[A-Za-z0-9-]+$/.test(login)) return false;
     const r = await this.exec("gh", [
       "api",
@@ -575,7 +579,8 @@ export class GitHub {
       "--jq",
       ".permission",
     ]);
-    return r.code === 0 && ["admin", "maintain", "write"].includes(r.stdout.trim());
+    if (r.code === 0) return ["admin", "maintain", "write"].includes(r.stdout.trim());
+    return /\(HTTP 404\)/.test(r.stderr) ? false : "unknown";
   }
 
   async fileOnDefaultBranch(path: string): Promise<boolean> {

@@ -497,7 +497,7 @@ describe("GitHub bootstrap calls", () => {
     expect(query).toContain('{name: "B", color: GRAY');
   });
 
-  it("hasWriteAccess is true for admin or write, false for read or a failed lookup", async () => {
+  it("hasWriteAccess is true for admin or write, false for read, none or not found", async () => {
     const calls: string[][] = [];
     expect(
       await new GitHub(cfg, exec({ stdout: "admin\n" }, calls), false).hasWriteAccess("jane"),
@@ -514,7 +514,23 @@ describe("GitHub bootstrap calls", () => {
     expect(await answer({ stdout: "write\n" })).toBe(true);
     expect(await answer({ stdout: "read\n" })).toBe(false);
     expect(await answer({ stdout: "none\n" })).toBe(false);
-    expect(await answer({ code: 1, stdout: "admin\n", stderr: "HTTP 404: Not Found" })).toBe(false);
+    expect(
+      await answer({
+        code: 1,
+        stdout: '{"message":"jane is not a user","status":"404"}',
+        stderr: "gh: jane is not a user (HTTP 404)",
+      }),
+    ).toBe(false);
+  });
+
+  it("hasWriteAccess is unknown when the lookup fails for any other reason", async () => {
+    const answer = async (r: Partial<ExecResult>) =>
+      new GitHub(cfg, exec(r), false).hasWriteAccess("jane");
+    expect(await answer({ code: 1, stderr: "gh: Server Error (HTTP 502)" })).toBe("unknown");
+    expect(await answer({ code: 1, stderr: "gh: API rate limit exceeded (HTTP 403)" })).toBe(
+      "unknown",
+    );
+    expect(await answer({ code: 1, stderr: "error connecting to api.github.com" })).toBe("unknown");
   });
 
   it("hasWriteAccess asks nothing for a login that cannot name a user", async () => {
@@ -547,6 +563,7 @@ describe("listClosedDecisions", () => {
         stdout: JSON.stringify([
           {
             number: 40,
+            author: { login: "acme" },
             body: "## Question\nX?\n\nBlocks: #5",
             stateReason: "COMPLETED",
             createdAt: "2026-09-02T09:00:00Z",
@@ -557,6 +574,7 @@ describe("listClosedDecisions", () => {
           },
           {
             number: 41,
+            author: null,
             body: null,
             stateReason: "",
             createdAt: "2026-09-01T09:00:00Z",
@@ -583,12 +601,13 @@ describe("listClosedDecisions", () => {
         "--limit",
         "100",
         "--json",
-        "number,body,stateReason,createdAt,closedAt,comments",
+        "number,author,body,stateReason,createdAt,closedAt,comments",
       ],
     ]);
     expect(out).toEqual([
       {
         number: 40,
+        author: "acme",
         body: "## Question\nX?\n\nBlocks: #5",
         stateReason: "COMPLETED",
         createdAt: "2026-09-02T09:00:00Z",
@@ -597,6 +616,7 @@ describe("listClosedDecisions", () => {
       },
       {
         number: 41,
+        author: "",
         body: "",
         stateReason: null,
         createdAt: "2026-09-01T09:00:00Z",
@@ -630,7 +650,7 @@ describe("listClosedDecisions", () => {
         "--limit",
         "100",
         "--json",
-        "number,body,stateReason,createdAt,closedAt,comments",
+        "number,author,body,stateReason,createdAt,closedAt,comments",
       ],
     ]);
   });

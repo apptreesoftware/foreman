@@ -136,6 +136,25 @@ describe("decision unblock ledger", () => {
     );
   });
 
+  it("names the writers the builder may follow when no writer settled the decision", () => {
+    expect(fmt.decisionUnblocked("mac-a", 41, null, ["alice", "bob"])).toBe(
+      "decision #41 closed; read it before continuing (follow only: @alice, @bob) — unblocked by decision via foreman@mac-a",
+    );
+    expect(fmt.decisionUnblocked("mac-a", 41, null, [])).toBe(
+      "decision #41 closed; read it before continuing (follow only: nobody — ask the owner) — unblocked by decision via foreman@mac-a",
+    );
+  });
+
+  it("recognises the lines that name who to follow", () => {
+    for (const line of [
+      fmt.decisionUnblocked("mac-a", 41, null, ["alice", "bob"]),
+      fmt.decisionUnblocked("mac-a", 41, null, []),
+    ]) {
+      expect(decisionUnblocked([comment(line)], 41), line).toBe(true);
+      expect(lastUnblockedAt([comment(line, hoursAgo(3))]), line).toBe(hoursAgo(3));
+    }
+  });
+
   it("decisionUnblocked finds only the named decision", () => {
     const cs = [comment(fmt.decisionUnblocked("mac-a", 40, "A")), comment("decision #4 is odd")];
     expect(decisionUnblocked(cs, 40)).toBe(true);

@@ -34,10 +34,26 @@ export const fmt = {
    * The foreman unblocked a task because decision #`decision` was closed as completed. Not
    * TERMINAL and not `blocked by`: it must neither close a claim nor count as a block.
    */
-  decisionUnblocked: (host: string, decision: number, answer: string | null) =>
-    answer
-      ? `decision #${decision} settled: ${answer} — unblocked by decision via foreman@${host}`
-      : `decision #${decision} closed; read it before continuing — unblocked by decision via foreman@${host}`,
+  /**
+   * `followOnly`, given when no writer settled the decision, names the writers among its author
+   * and commenters: the only people the builder may take the answer from.
+   */
+  decisionUnblocked: (
+    host: string,
+    decision: number,
+    answer: string | null,
+    followOnly?: string[],
+  ) => {
+    const tail = `— unblocked by decision via foreman@${host}`;
+    if (answer) return `decision #${decision} settled: ${answer} ${tail}`;
+    const who =
+      followOnly === undefined
+        ? ""
+        : followOnly.length === 0
+          ? " (follow only: nobody — ask the owner)"
+          : ` (follow only: ${followOnly.map((l) => `@${l}`).join(", ")})`;
+    return `decision #${decision} closed; read it before continuing${who} ${tail}`;
+  },
   /**
    * Deliberately none of CLAIM, SESSION or TERMINAL, and not `blocked by`: the claim stays open
    * so the first tick after the reset resumes this session.

@@ -21,8 +21,8 @@ const isSettled = (c: Comment): boolean => SETTLED.test(firstLine(c));
 /**
  * The answer to quote on the resumed task: the earliest `Settled:` comment wins, so two people
  * settling at once resolve to whoever was first. Null when the decision was answered some other
- * way, e.g. closed by hand on GitHub. The caller drops `Settled:` comments by authors without
- * write access first (`trustedSettled`).
+ * way, e.g. closed by hand on GitHub. It trusts every comment it is given; `trustedAnswer` hands
+ * it only those by writers.
  */
 export function settledAnswer(comments: Comment[]): string | null {
   for (const c of [...comments].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
@@ -36,7 +36,10 @@ export interface DecisionResume {
   task: number;
   itemId: string | null;
   pr: number | null;
-  /** Every closed decision this resume consumes, lowest number first. */
+  /**
+   * Every closed decision this resume consumes, lowest number first. `answer` trusts every
+   * commenter; `resumeSettledDecisions` quotes the answer from writers only instead.
+   */
   decisions: Array<{ number: number; answer: string | null }>;
 }
 
@@ -94,24 +97,48 @@ export const DECISION_LOOKBACK_DAYS = 7;
 
 export type DecisionGh = UnblockGh & Pick<GitHubApi, "listClosedDecisions" | "hasWriteAccess">;
 
+type Access = (login: string) => Promise<boolean | "unknown">;
+
+/** `hasWriteAccess`, asked at most once per login for the life of the returned function. */
+function accessOnce(gh: Pick<GitHubApi, "hasWriteAccess">): Access {
+  const seen = new Map<string, Promise<boolean | "unknown">>();
+  return (login) => {
+    let a = seen.get(login);
+    if (!a) {
+      a = login ? gh.hasWriteAccess(login) : Promise.resolve(false);
+      seen.set(login, a);
+    }
+    return a;
+  };
+}
+
 /**
- * The decisions with every `Settled:` comment by an author without write access removed, as if it
- * had never been written: on a public repository anyone can comment, and the answer is quoted to
- * an unattended builder. Each author is looked up once; no `Settled:` comment, no lookup.
+ * What the ledger line for one consumed decision quotes, trusting only writers: on a public
+ * repository anyone can comment, and the line is read by an unattended builder. The answer is the
+ * earliest `Settled:` comment by someone with write access; anyone else's is ignored. With no such
+ * answer, `followOnly` names the writers among the decision's author and commenters. `"unknown"`
+ * when any lookup failed, so the caller retries next tick rather than guess. Only `Settled:`
+ * authors are looked up when one of them answers.
  */
-async function trustedSettled(
-  gh: Pick<GitHubApi, "hasWriteAccess">,
-  decisions: ClosedDecision[],
-): Promise<ClosedDecision[]> {
-  const authors = new Set(
-    decisions.flatMap((d) => d.comments.filter(isSettled).map((c) => c.author)),
-  );
-  const writers = new Set<string>();
-  for (const a of authors) if (await gh.hasWriteAccess(a)) writers.add(a);
-  return decisions.map((d) => ({
-    ...d,
-    comments: d.comments.filter((c) => !isSettled(c) || writers.has(c.author)),
-  }));
+async function trustedAnswer(
+  access: Access,
+  d: ClosedDecision,
+): Promise<{ answer: string | null; followOnly?: string[] } | "unknown"> {
+  const settled: Comment[] = [];
+  for (const c of d.comments.filter(isSettled)) {
+    const a = await access(c.author);
+    if (a === "unknown") return "unknown";
+    if (a) settled.push(c);
+  }
+  const answer = settledAnswer(settled);
+  if (answer !== null) return { answer };
+  const followOnly: string[] = [];
+  for (const login of new Set([d.author, ...d.comments.map((c) => c.author)])) {
+    const a = await access(login);
+    if (a === "unknown") return "unknown";
+    if (a) followOnly.push(login);
+  }
+  return { answer: null, followOnly };
 }
 
 /**
@@ -122,8 +149,9 @@ async function trustedSettled(
  * then finishes the job by hand. Closed decisions are read for the last week; only when that
  * yields a candidate does a second read fetch every decision closed as not planned, however old,
  * so one closed before the window still holds its task. Only a `Settled:` comment by someone with
- * write access counts as the answer. Returns the tasks resumed. Every write goes through `gh`, so
- * `dryRun` writes nothing.
+ * write access counts as the answer; without one, the line names the writers the builder may
+ * follow. A task whose access lookup failed is skipped this tick and retried on the next. Returns
+ * the tasks resumed. Every write goes through `gh`, so `dryRun` writes nothing.
  */
 export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promise<number[]> {
   // Nothing is blocked, so nothing can be resumed: an idle board spends no call on this.
@@ -137,15 +165,28 @@ export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promi
   const notPlanned = (await gh.listClosedDecisions(since, { notPlanned: true })).filter(
     (d) => !seen.has(d.number),
   );
-  const resumes = planDecisionResumes(s, await trustedSettled(gh, [...recent, ...notPlanned]));
-  for (const r of resumes) {
-    for (const d of r.decisions)
-      await gh.comment("issue", r.task, fmt.decisionUnblocked(s.host, d.number, d.answer));
+  const all = [...recent, ...notPlanned];
+  const byNumber = new Map(all.map((d) => [d.number, d]));
+  const access = accessOnce(gh);
+  const resumed: number[] = [];
+  for (const r of planDecisionResumes(s, all)) {
+    const lines: string[] = [];
+    for (const { number } of r.decisions) {
+      const t = await trustedAnswer(access, byNumber.get(number) as ClosedDecision);
+      if (t === "unknown") break;
+      lines.push(fmt.decisionUnblocked(s.host, number, t.answer, t.followOnly));
+    }
+    if (lines.length < r.decisions.length) {
+      log("warn", "decision resume deferred: write-access lookup failed", { task: r.task });
+      continue;
+    }
+    for (const line of lines) await gh.comment("issue", r.task, line);
     await unblockEdits(gh, { issue: r.task, itemId: r.itemId, pr: r.pr }, { blockedLast: true });
     log("info", "decision resumed task", {
       task: r.task,
       decisions: r.decisions.map((d) => d.number),
     });
+    resumed.push(r.task);
   }
-  return resumes.map((r) => r.task);
+  return resumed;
 }

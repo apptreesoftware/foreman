@@ -359,7 +359,7 @@ merged by foreman@<host>
 ci rerun by foreman@<host> for <sha>
 unblocked by owner via foreman@<host>
 decision #<d> settled: <answer> — unblocked by decision via foreman@<host>
-decision #<d> closed; read it before continuing — unblocked by decision via foreman@<host>
+decision #<d> closed; read it before continuing (follow only: @<login>, …) — unblocked by decision via foreman@<host>
 plan PR #<pr> cannot merge at <sha>: <reason>. Fix it or merge it by hand (foreman@<host>)
 ```
 
@@ -791,7 +791,13 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   Unblock does to that issue and comments
   `decision #<d> settled: <answer> — unblocked by decision via foreman@<host>`, quoting the first
   comment that starts `Settled: ` from someone with write access to the repository (anyone
-  else's is ignored), or `decision #<d> closed; read it before continuing` when there is none. Close it as **not planned** to leave the task blocked; that wins over a completed
+  else's is ignored). When there is none it comments
+  `decision #<d> closed; read it before continuing (follow only: @<login>, …)`, naming the
+  writers among the decision's author and commenters (`nobody — ask the owner` when there are
+  none); the builder follows only what they wrote, and returns `blocked` when that does not
+  settle it. Write access is looked up once per person per tick, only on a tick that resumes
+  something; if GitHub cannot answer (rate limit, outage) that task waits for the next tick.
+  Close it as **not planned** to leave the task blocked; that wins over a completed
   one, so if any decision opened since the task was last unblocked was closed as not planned, the
   task stays blocked even when another decision for it was completed, however long ago the
   not-planned one was closed. It waits while another open decision still names the same task, or
