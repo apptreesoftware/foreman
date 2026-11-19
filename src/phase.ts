@@ -68,7 +68,7 @@ export function parseSpecPath(body: string): string | null {
  * done so since before the label was authoritative. Deriving it from the spec path alone is how
  * `apply_plan` used to fail for every repository that names its specs anything else: the filter
  * matched no plan file, the epic never got its tasks, and the tick logged "approved plan file not
- * on origin/main" for ever.
+ * on origin/<target>" for ever.
  */
 export function planPhaseNumber(labels: string[], specPath: string): string | null {
   for (const l of labels) {
@@ -156,14 +156,26 @@ export function planUnapplied(e: Epic, issues: Issue[]): boolean {
   );
 }
 
+/** The branch a snapshot's PRs target: the foreman's target branch, `main` when unnamed. */
+export function targetOf(s: Snapshot): string {
+  return s.targetBranch ?? "main";
+}
+
 /**
  * The open PR the planner opened for this epic, by the title `planner.md` prescribes:
- * `docs(plan): phase NN plan (#<epic>)`. The newest wins when a re-plan left two open.
+ * `docs(plan): phase NN plan (#<epic>)`, aimed at the target branch. The newest wins when a
+ * re-plan left two open.
  */
 export function planPR(s: Snapshot, epic: number): PullRequest | null {
+  const target = targetOf(s);
   return (
     s.prs
-      .filter((p) => p.title.startsWith("docs(plan):") && p.title.includes(`(#${epic})`))
+      .filter(
+        (p) =>
+          p.baseRefName === target &&
+          p.title.startsWith("docs(plan):") &&
+          p.title.includes(`(#${epic})`),
+      )
       .sort((a, b) => b.number - a.number)[0] ?? null
   );
 }
@@ -178,8 +190,8 @@ export type PlanPrState =
  * GitHub's own verdicts gate it: green or absent checks merge, running checks wait a tick, and red
  * checks or a conflict need the owner.
  */
-export function planPrState(pr: PullRequest): PlanPrState {
-  if (pr.mergeable === "CONFLICTING") return { state: "stuck", reason: "conflicts with main" };
+export function planPrState(pr: PullRequest, target = "main"): PlanPrState {
+  if (pr.mergeable === "CONFLICTING") return { state: "stuck", reason: `conflicts with ${target}` };
   if (pr.checks === "failure") return { state: "stuck", reason: "checks failed" };
   if (pr.checks === "pending") return { state: "pending" };
   return { state: "ready" };
@@ -201,7 +213,7 @@ export function applyPlanActions(s: Snapshot): Action[] {
       out.push({ type: "apply_plan", epic: e.number });
       continue;
     }
-    const st = planPrState(p);
+    const st = planPrState(p, targetOf(s));
     if (st.state === "ready")
       out.push(
         { type: "merge_plan", epic: e.number, pr: p.number },

@@ -268,6 +268,24 @@ describe("describeWaiting", () => {
       detail: "PR #11 conflicts with main; rebase queued",
     });
   });
+  it("review_cycle names the target branch an approved PR conflicts with", () => {
+    const s = snapshot({
+      targetBranch: "v2",
+      issues: [issue({ number: 1, status: "In Review" })],
+      prs: [
+        pr({
+          number: 11,
+          issue: 1,
+          baseRefName: "v2",
+          labels: ["reviewer:approved", "validator:passed"],
+          mergeable: "CONFLICTING",
+        }),
+      ],
+    });
+    expect(describeWaiting(s, base)[0]).toMatchObject({
+      detail: "PR #11 conflicts with v2; rebase queued",
+    });
+  });
   it("human: a phase held by too many blocked tasks, once, with the count", () => {
     const blocked = (number: number) =>
       issue({

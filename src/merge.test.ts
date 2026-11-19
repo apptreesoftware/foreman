@@ -28,6 +28,34 @@ describe("validatorRequired", () => {
   });
 });
 
+describe("mergeDecision on a PR aimed at another branch", () => {
+  it("refuses a PR whose base is not the target, naming both", () => {
+    const p = pr({ issue: 20, labels: ready, baseRefName: "main" });
+    expect(mergeDecision(p, inReview(), "v2")).toEqual({
+      ok: false,
+      reason: "targets main, not v2",
+    });
+    expect(mergeDecision({ ...p, baseRefName: "v2" }, inReview(), "v2").ok).toBe(true);
+    // No target named is today's: main.
+    expect(mergeDecision(p, inReview()).ok).toBe(true);
+  });
+  it("names the target when the branch conflicts with it", () => {
+    const p = pr({ issue: 20, labels: ready, baseRefName: "v2", mergeable: "CONFLICTING" });
+    expect(mergeDecision(p, inReview(), "v2")).toEqual({ ok: false, reason: "conflicts with v2" });
+  });
+  it("mergeActions merges only PRs on the snapshot's target", () => {
+    const s = snapshot({
+      targetBranch: "v2",
+      issues: [inReview(), inReview({ number: 21 })],
+      prs: [
+        pr({ number: 5, issue: 20, labels: ready, baseRefName: "v2" }),
+        pr({ number: 6, issue: 21, labels: ready, baseRefName: "main" }),
+      ],
+    });
+    expect(mergeActions(s)).toEqual([{ type: "merge", pr: 5, issue: 20 }]);
+  });
+});
+
 describe("mergeDecision on a conflicting branch", () => {
   it("refuses with a reason the page can show, whatever the checks say", () => {
     const d = mergeDecision(pr({ issue: 20, labels: ready, mergeable: "CONFLICTING" }), inReview());

@@ -1,4 +1,5 @@
 import { mergeDecision } from "./merge.ts";
+import { targetOf } from "./phase.ts";
 import { matchedSkipLabels } from "./pick.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import { plan } from "./state.ts";
@@ -70,7 +71,9 @@ export function describeNext(s: Snapshot, repo: RepoConfig = defaultRepoConfig()
     explain: actions.map((a) => explain(a, s, repo)),
     prs: s.prs.map((p) => {
       const issue = p.issue === null ? undefined : s.issues.find((i) => i.number === p.issue);
-      const d = issue ? mergeDecision(p, issue) : { ok: false as const, reason: "no open issue" };
+      const d = issue
+        ? mergeDecision(p, issue, targetOf(s))
+        : { ok: false as const, reason: "no open issue" };
       return {
         pr: p.number,
         issue: p.issue,

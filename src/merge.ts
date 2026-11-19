@@ -1,4 +1,5 @@
 import { fixRound, openClaim } from "./ledger.ts";
+import { targetOf } from "./phase.ts";
 import { ciRerunsSpent, validatorRequired } from "./pick.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { Action, Issue, PullRequest, Snapshot } from "./types.ts";
@@ -8,10 +9,14 @@ export { validatorRequired } from "./pick.ts";
 export function mergeDecision(
   pr: PullRequest,
   issue: Issue,
+  target = "main",
 ): { ok: true } | { ok: false; reason: string } {
+  // The snapshot already drops PRs aimed elsewhere; this is the guard in depth at the merge.
+  if (pr.baseRefName !== target)
+    return { ok: false, reason: `targets ${pr.baseRefName || "an unknown base"}, not ${target}` };
   if (pr.isDraft) return { ok: false, reason: "draft" };
   if (issue.status !== "In Review") return { ok: false, reason: `issue status ${issue.status}` };
-  if (pr.mergeable === "CONFLICTING") return { ok: false, reason: "conflicts with main" };
+  if (pr.mergeable === "CONFLICTING") return { ok: false, reason: `conflicts with ${target}` };
   if (pr.checks !== "success") return { ok: false, reason: `checks ${pr.checks}` };
   if (!pr.labels.includes("reviewer:approved"))
     return { ok: false, reason: "no reviewer:approved" };
@@ -29,7 +34,7 @@ function pairs(s: Snapshot): Array<{ pr: PullRequest; issue: Issue }> {
 
 export function mergeActions(s: Snapshot): Action[] {
   return pairs(s)
-    .filter(({ pr, issue }) => mergeDecision(pr, issue).ok)
+    .filter(({ pr, issue }) => mergeDecision(pr, issue, targetOf(s)).ok)
     .map(({ pr, issue }) => ({ type: "merge", pr: pr.number, issue: issue.number }));
 }
 

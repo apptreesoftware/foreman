@@ -331,13 +331,14 @@ export class GitHub {
         "--limit",
         "100",
         "--json",
-        "number,title,body,headRefName,headRefOid,labels,isDraft,mergeable,statusCheckRollup,updatedAt",
+        "number,title,body,headRefName,baseRefName,headRefOid,labels,isDraft,mergeable,statusCheckRollup,updatedAt",
       ]),
     ) as Array<{
       number: number;
       title: string;
       body: string;
       headRefName: string;
+      baseRefName?: string;
       headRefOid?: string;
       isDraft: boolean;
       mergeable?: string;
@@ -350,6 +351,7 @@ export class GitHub {
       title: p.title,
       body: p.body ?? "",
       headRefName: p.headRefName,
+      baseRefName: p.baseRefName ?? "",
       headSha: p.headRefOid ?? "",
       labels: names(p.labels),
       isDraft: p.isDraft,

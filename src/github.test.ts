@@ -269,6 +269,33 @@ describe("GitHub reads", () => {
     expect(prs[0]?.mergeable).toBe("CONFLICTING");
     // The head commit: a CI rerun is budgeted per sha.
     expect(prs[0]?.headSha).toMatch(/^[0-9a-f]{40}$/);
+    // The base, so a PR aimed at another branch than the target is ignored.
+    expect(prs[0]?.baseRefName).toBe("main");
+  });
+  it("asks for each PR's base, and reads a missing one as no base rather than crashing", async () => {
+    const calls: string[][] = [];
+    const exec: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          {
+            number: 1,
+            title: "t",
+            body: "Closes #2",
+            headRefName: "feat/2-x",
+            isDraft: false,
+            updatedAt: "2026-09-03T20:00:00Z",
+            labels: [],
+            statusCheckRollup: [],
+          },
+        ]),
+        stderr: "",
+      };
+    };
+    const prs = await new GitHub(cfg, exec, false).listOpenPRs();
+    expect(calls[0]?.join(" ")).toMatch(/--json \S*\bbaseRefName\b/);
+    expect(prs[0]?.baseRefName).toBe("");
   });
   it("resolves status option ids from field-list", async () => {
     const gh = new GitHub(cfg, fakeExec([]), false);

@@ -11,6 +11,7 @@ import type { GitHubApi } from "./github.ts";
 import { fmt, openClaim } from "./ledger.ts";
 import {
   ACTIVITY_FLUSH_MS,
+  buildSnapshot,
   type Ctx,
   effortFor,
   ensureLogin,
@@ -335,6 +336,33 @@ describe("execute", () => {
     expect(calls).not.toContain("setStatus PVTI_1 In Progress");
     expect(inputs[0]).toContain("rebase round");
     expect(inputs[0]).not.toContain("fix round");
+  });
+  it("claim: a PR aimed at another branch never lends its branch, and the prompt names the target", async () => {
+    const i = issue({ number: 1, title: "Thing", status: "In Review" });
+    const { gh } = fakeGh([i]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 9, issue: 1, baseRefName: "main", headRefName: "someone-elses-branch" }),
+    ];
+    const branches: string[] = [];
+    const inputs: string[] = [];
+    const spawn: Spawner = async (_cmd, _args, opts) => {
+      inputs.push(opts.input);
+      return okSpawn({ outcome: "approved", pr: 9, notes: "" })("", [], opts);
+    };
+    await execute(
+      { type: "claim", issue: 1, role: "reviewer", pr: 9, round: 1 },
+      ctx({
+        gh,
+        spawn,
+        targetBranch: "v2",
+        ensureWorktree: async (_c, _i, branch) => {
+          branches.push(branch);
+          return "/work/1";
+        },
+      }),
+    );
+    expect(branches).toEqual(["feat/1-thing"]);
+    expect(inputs[0]).toContain("Never touch v2.");
   });
   it("claim: comments, assigns, sets In Progress, dispatches, applies pr_opened", async () => {
     const i = issue({ number: 1 });
@@ -1389,6 +1417,23 @@ describe("runForever stop", () => {
       },
     });
     expect(locked).toBe(1);
+  });
+});
+
+describe("buildSnapshot", () => {
+  it("keeps only the PRs aimed at the target branch, and records the target", async () => {
+    const { gh } = fakeGh([]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 10, issue: 1, baseRefName: "v2" }),
+      pr({ number: 11, issue: 1, baseRefName: "main" }),
+      pr({ number: 12, issue: 1, baseRefName: "v2", isDraft: true }),
+    ];
+    const s = await buildSnapshot(ctx({ gh, targetBranch: "v2" }));
+    expect(s.prs.map((p) => p.number)).toEqual([10]);
+    expect(s.targetBranch).toBe("v2");
+    const onMain = await buildSnapshot(ctx({ gh }));
+    expect(onMain.prs.map((p) => p.number)).toEqual([11]);
+    expect(onMain.targetBranch).toBe("main");
   });
 });
 

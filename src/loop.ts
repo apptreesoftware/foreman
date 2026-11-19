@@ -186,7 +186,11 @@ export async function ensureLogin(ctx: Ctx): Promise<void> {
 
 export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
   const issues = await ctx.gh.listIssues("open");
-  const prs = (await ctx.gh.listOpenPRs()).filter((p) => !p.isDraft);
+  // A PR aimed at any other branch is not the foreman's: dropped here, it is never paired with a
+  // task, reviewed, rebased, rerun or merged, and never moves the idle fingerprint.
+  const prs = (await ctx.gh.listOpenPRs()).filter(
+    (p) => !p.isDraft && p.baseRefName === ctx.targetBranch,
+  );
   const epics: Epic[] = [];
   for (const e of issues.filter((i) => i.labels.includes("epic"))) {
     const specPath = parseSpecPath(e.body);
@@ -208,7 +212,15 @@ export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
     if (open && open.claim.host !== ctx.cfg.host)
       branchLastCommitAt[i.number] = await ctx.gh.branchLastCommitAt(branchFor(i.number, i.title));
   }
-  return { host: ctx.cfg.host, now: ctx.now(), issues, prs, epics, branchLastCommitAt };
+  return {
+    host: ctx.cfg.host,
+    now: ctx.now(),
+    issues,
+    prs,
+    epics,
+    branchLastCommitAt,
+    targetBranch: ctx.targetBranch,
+  };
 }
 
 async function setStatus(ctx: Ctx, issue: Issue, status: Issue["status"] & string): Promise<void> {
@@ -410,7 +422,8 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   }
   const prs = await gh.listOpenPRs();
   const branch =
-    prs.find((p) => p.number === r.pr)?.headRefName ?? branchFor(r.issue.number, r.issue.title);
+    prs.find((p) => p.number === r.pr && p.baseRefName === ctx.targetBranch)?.headRefName ??
+    branchFor(r.issue.number, r.issue.title);
   const held: { hook: HookFn | null } = { hook: null };
   let setup: SessionSetup;
   try {
@@ -782,9 +795,9 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   const specPath = parseSpecPath(epic.body) ?? "";
   const nn = planPhaseNumber(epic.labels, specPath);
   // Nothing else in the daemon refreshes repoDir, so a plan PR merged minutes ago is only
-  // visible after this fetch; a failed fetch falls back to the last known origin/main.
+  // visible after this fetch; a failed fetch falls back to the last known origin/<target>.
   if (!(await fetchOrigin(ctx.exec, cfg.repoDir)))
-    log("warn", "fetch failed; reading the plan from the last known origin/main", {
+    log("warn", `fetch failed; reading the plan from the last known origin/${ctx.targetBranch}`, {
       epic: epicNumber,
     });
   const file = (await ctx.planFiles())
@@ -795,7 +808,7 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   if (!text) {
     // Deliberately no `plan applied` comment: planApplied() reads that as done and the epic
     // would never get its tasks. Leave the epic untouched so the next tick retries.
-    log("warn", "approved plan file not on origin/main; retrying next tick", {
+    log("warn", `approved plan file not on origin/${ctx.targetBranch}; retrying next tick`, {
       epic: epicNumber,
       phase: nn ?? null,
     });
@@ -1113,7 +1126,7 @@ export async function execute(
       });
       return "continue";
     case "apply_plan":
-      // A plan whose file is not on origin/main yet is left for the next tick, and that is not
+      // A plan whose file is not on origin/<target> yet is left for the next tick, and that is not
       // work: counting it would make the loop hot until the plan PR merges.
       return (await applyPlan(ctx, action.epic, snapshot)) ? "continue" : "noop";
   }

@@ -1,6 +1,7 @@
 import { effortOf, modelOf } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
 import { mergeDecision } from "./merge.ts";
+import { targetOf } from "./phase.ts";
 import { issuePhase, validatorRequired } from "./pick.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import type { PipelineRow, StageState } from "./state-file.ts";
@@ -36,7 +37,7 @@ export function describePipeline(
     else if (role === "validator") validate = "active";
     else if (review === "done" && !validatorRequired(i.labels, repo.validator.skipLabels))
       validate = "skipped";
-    const merge: StageState = pr && mergeDecision(pr, i).ok ? "active" : "pending";
+    const merge: StageState = pr && mergeDecision(pr, i, targetOf(s)).ok ? "active" : "pending";
 
     rows.push({
       issue: i.number,

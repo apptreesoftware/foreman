@@ -14,6 +14,7 @@ import {
   planIssuesPath,
   planPhaseNumber,
   planPlaceholderErrors,
+  planPR,
 } from "./phase.ts";
 
 describe("parsers", () => {
@@ -227,6 +228,30 @@ describe("applyPlanActions", () => {
   });
   it("applies straight away when no plan PR is open, as when it was merged by hand", () => {
     expect(run([pr({ number: 300, issue: 201 })])).toEqual([{ type: "apply_plan", epic: 200 }]);
+  });
+  it("ignores a plan PR aimed at another branch than the target", () => {
+    const s = (base: string) =>
+      snapshot({
+        targetBranch: "v2",
+        epics: [approved],
+        issues: [epicIssue],
+        prs: [planPr({ baseRefName: base })],
+      });
+    expect(planPR(s("main"), 200)).toBeNull();
+    expect(planPR(s("v2"), 200)?.number).toBe(279);
+    expect(applyPlanActions(s("main"))).toEqual([{ type: "apply_plan", epic: 200 }]);
+  });
+  it("names the target when a plan PR conflicts with it", () => {
+    expect(
+      applyPlanActions(
+        snapshot({
+          targetBranch: "v2",
+          epics: [approved],
+          issues: [epicIssue],
+          prs: [planPr({ baseRefName: "v2", mergeable: "CONFLICTING" })],
+        }),
+      )[0],
+    ).toMatchObject({ type: "plan_pr_stuck", reason: "conflicts with v2" });
   });
   it("ignores another epic's plan PR", () => {
     expect(run([planPr({ title: "docs(plan): phase 10 plan (#201)" })])).toEqual([
