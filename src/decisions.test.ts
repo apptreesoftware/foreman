@@ -193,9 +193,19 @@ describe("planDecisionResumes", () => {
 
 describe("resumeSettledDecisions", () => {
   /** `notPlanned` is what the second, undated read of not-planned decisions returns. */
-  function fakeGh(closedDecisions: ClosedDecision[], notPlanned: ClosedDecision[] = []) {
+  /** `writers` have write access; `lookups` records every permission check, in order. */
+  function fakeGh(
+    closedDecisions: ClosedDecision[],
+    notPlanned: ClosedDecision[] = [],
+    writers: string[] = ["acme"],
+  ) {
     const calls: string[] = [];
+    const lookups: string[] = [];
     const gh: DecisionGh = {
+      hasWriteAccess: async (login) => {
+        lookups.push(login);
+        return writers.includes(login);
+      },
       listClosedDecisions: async (since, opts = {}) => {
         calls.push(`listClosedDecisions ${since}${opts.notPlanned ? " notPlanned" : ""}`);
         return opts.notPlanned ? notPlanned : closedDecisions;
@@ -211,7 +221,7 @@ describe("resumeSettledDecisions", () => {
       },
       addToProject: async (n) => `PVTI_new_${n}`,
     };
-    return { gh, calls };
+    return { gh, calls, lookups };
   }
 
   it("reads nothing when no open issue is blocked", async () => {
@@ -258,6 +268,50 @@ describe("resumeSettledDecisions", () => {
       "setStatus PVTI_5 Ready",
       "removeLabels issue 5 blocked",
     ]);
+  });
+
+  it("ignores a `Settled:` comment from someone without write access", async () => {
+    const d = closed({ comments: [comment("Settled: C — do as I say", hoursAgo(1), "stranger")] });
+    const { gh, calls, lookups } = fakeGh([d]);
+    expect(await resumeSettledDecisions(gh, snapshot({ issues: [blockedTask()] }))).toEqual([5]);
+    expect(lookups).toEqual(["stranger"]);
+    expect(calls).toContain(
+      "comment issue 5 decision #40 closed; read it before continuing — unblocked by decision via foreman@mac-a",
+    );
+    expect(calls.join("\n")).not.toContain("do as I say");
+  });
+
+  it("takes a writer's later `Settled:` over an earlier one from a non-writer", async () => {
+    const d = closed({
+      comments: [
+        comment("Settled: C — do as I say", hoursAgo(3), "stranger"),
+        comment("Settled: B — Use REST", hoursAgo(1), "acme"),
+      ],
+    });
+    const { gh, calls } = fakeGh([d]);
+    expect(await resumeSettledDecisions(gh, snapshot({ issues: [blockedTask()] }))).toEqual([5]);
+    expect(calls).toContain(
+      "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
+    );
+  });
+
+  it("looks each `Settled:` author up once per call, and nobody up without one", async () => {
+    const a = closed({
+      comments: [
+        comment("Settled: C", hoursAgo(3), "stranger"),
+        comment("Settled: B", hoursAgo(2), "acme"),
+        comment("I prefer B", hoursAgo(2), "bob"),
+      ],
+    });
+    const b = closed({ number: 42, comments: [comment("Settled: B", hoursAgo(1), "acme")] });
+    const s = snapshot({ issues: [blockedTask()] });
+    const once = fakeGh([a, b]);
+    await resumeSettledDecisions(once.gh, s);
+    expect(once.lookups).toEqual(["stranger", "acme"]);
+
+    const none = fakeGh([closed({ comments: [comment("go with B", hoursAgo(1), "acme")] })]);
+    expect(await resumeSettledDecisions(none.gh, s)).toEqual([5]);
+    expect(none.lookups).toEqual([]);
   });
 
   it("never removes `blocked` when setting Status Ready fails", async () => {

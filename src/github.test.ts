@@ -497,6 +497,34 @@ describe("GitHub bootstrap calls", () => {
     expect(query).toContain('{name: "B", color: GRAY');
   });
 
+  it("hasWriteAccess is true for admin or write, false for read or a failed lookup", async () => {
+    const calls: string[][] = [];
+    expect(
+      await new GitHub(cfg, exec({ stdout: "admin\n" }, calls), false).hasWriteAccess("jane"),
+    ).toBe(true);
+    expect(calls[0]).toEqual([
+      "gh",
+      "api",
+      `repos/${cfg.repo}/collaborators/jane/permission`,
+      "--jq",
+      ".permission",
+    ]);
+    const answer = async (r: Partial<ExecResult>) =>
+      new GitHub(cfg, exec(r), false).hasWriteAccess("jane");
+    expect(await answer({ stdout: "write\n" })).toBe(true);
+    expect(await answer({ stdout: "read\n" })).toBe(false);
+    expect(await answer({ stdout: "none\n" })).toBe(false);
+    expect(await answer({ code: 1, stdout: "admin\n", stderr: "HTTP 404: Not Found" })).toBe(false);
+  });
+
+  it("hasWriteAccess asks nothing for a login that cannot name a user", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, exec({ stdout: "admin\n" }, calls), false);
+    expect(await gh.hasWriteAccess("")).toBe(false);
+    expect(await gh.hasWriteAccess("../../orgs/acme")).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
   it("fileOnDefaultBranch is the contents API's exit code", async () => {
     const calls: string[][] = [];
     const gh = new GitHub(cfg, exec({ stdout: "abc\n" }, calls), false);

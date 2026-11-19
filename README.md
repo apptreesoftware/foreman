@@ -790,8 +790,8 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   `Blocks: #<issue>`. Close it as **completed** and, on its next tick, the foreman does what
   Unblock does to that issue and comments
   `decision #<d> settled: <answer> — unblocked by decision via foreman@<host>`, quoting the first
-  comment that starts `Settled: `, or `decision #<d> closed; read it before continuing` when there
-  is none. Close it as **not planned** to leave the task blocked; that wins over a completed
+  comment that starts `Settled: ` from someone with write access to the repository (anyone
+  else's is ignored), or `decision #<d> closed; read it before continuing` when there is none. Close it as **not planned** to leave the task blocked; that wins over a completed
   one, so if any decision opened since the task was last unblocked was closed as not planned, the
   task stays blocked even when another decision for it was completed, however long ago the
   not-planned one was closed. It waits while another open decision still names the same task, or

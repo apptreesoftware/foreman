@@ -562,6 +562,22 @@ export class GitHub {
     ]);
   }
 
+  /**
+   * Whether `login` may write to the repository: collaborator permission `admin` or `write`
+   * (`maintain` reports as `write` in that field). A read. A login that is not a plain GitHub
+   * username, a 404 or any other failed lookup answers false.
+   */
+  async hasWriteAccess(login: string): Promise<boolean> {
+    if (!/^[A-Za-z0-9-]+$/.test(login)) return false;
+    const r = await this.exec("gh", [
+      "api",
+      `repos/${this.cfg.repo}/collaborators/${login}/permission`,
+      "--jq",
+      ".permission",
+    ]);
+    return r.code === 0 && ["admin", "maintain", "write"].includes(r.stdout.trim());
+  }
+
   async fileOnDefaultBranch(path: string): Promise<boolean> {
     const r = await this.exec("gh", [
       "api",
@@ -792,6 +808,7 @@ export type GitHubApi = Pick<
   | "projectFields"
   | "setStatusOptions"
   | "fileOnDefaultBranch"
+  | "hasWriteAccess"
   | "dryRun"
 >;
 

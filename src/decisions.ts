@@ -15,15 +15,18 @@ export function parseBlocks(body: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+const firstLine = (c: Comment): string => (c.body.trim().split("\n")[0] ?? "").trim();
+const isSettled = (c: Comment): boolean => SETTLED.test(firstLine(c));
+
 /**
  * The answer to quote on the resumed task: the earliest `Settled:` comment wins, so two people
  * settling at once resolve to whoever was first. Null when the decision was answered some other
- * way, e.g. closed by hand on GitHub.
+ * way, e.g. closed by hand on GitHub. The caller drops `Settled:` comments by authors without
+ * write access first (`trustedSettled`).
  */
 export function settledAnswer(comments: Comment[]): string | null {
   for (const c of [...comments].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
-    const first = (c.body.trim().split("\n")[0] ?? "").trim();
-    const m = SETTLED.exec(first);
+    const m = SETTLED.exec(firstLine(c));
     if (m) return (m[1] as string).trim().slice(0, MAX_ANSWER);
   }
   return null;
@@ -89,7 +92,27 @@ export function planDecisionResumes(s: Snapshot, closed: ClosedDecision[]): Deci
 /** How far back closed decisions are read; an older one resumes nothing. */
 export const DECISION_LOOKBACK_DAYS = 7;
 
-export type DecisionGh = UnblockGh & Pick<GitHubApi, "listClosedDecisions">;
+export type DecisionGh = UnblockGh & Pick<GitHubApi, "listClosedDecisions" | "hasWriteAccess">;
+
+/**
+ * The decisions with every `Settled:` comment by an author without write access removed, as if it
+ * had never been written: on a public repository anyone can comment, and the answer is quoted to
+ * an unattended builder. Each author is looked up once; no `Settled:` comment, no lookup.
+ */
+async function trustedSettled(
+  gh: Pick<GitHubApi, "hasWriteAccess">,
+  decisions: ClosedDecision[],
+): Promise<ClosedDecision[]> {
+  const authors = new Set(
+    decisions.flatMap((d) => d.comments.filter(isSettled).map((c) => c.author)),
+  );
+  const writers = new Set<string>();
+  for (const a of authors) if (await gh.hasWriteAccess(a)) writers.add(a);
+  return decisions.map((d) => ({
+    ...d,
+    comments: d.comments.filter((c) => !isSettled(c) || writers.has(c.author)),
+  }));
+}
 
 /**
  * Resumes every blocked task whose decision was settled: a `decision #D …` ledger line per
@@ -98,8 +121,9 @@ export type DecisionGh = UnblockGh & Pick<GitHubApi, "listClosedDecisions">;
  * leaves the task blocked with the answer recorded rather than losing it; the owner's Unblock
  * then finishes the job by hand. Closed decisions are read for the last week; only when that
  * yields a candidate does a second read fetch every decision closed as not planned, however old,
- * so one closed before the window still holds its task. Returns the tasks resumed. Every write
- * goes through `gh`, so `dryRun` writes nothing.
+ * so one closed before the window still holds its task. Only a `Settled:` comment by someone with
+ * write access counts as the answer. Returns the tasks resumed. Every write goes through `gh`, so
+ * `dryRun` writes nothing.
  */
 export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promise<number[]> {
   // Nothing is blocked, so nothing can be resumed: an idle board spends no call on this.
@@ -113,7 +137,7 @@ export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promi
   const notPlanned = (await gh.listClosedDecisions(since, { notPlanned: true })).filter(
     (d) => !seen.has(d.number),
   );
-  const resumes = planDecisionResumes(s, [...recent, ...notPlanned]);
+  const resumes = planDecisionResumes(s, await trustedSettled(gh, [...recent, ...notPlanned]));
   for (const r of resumes) {
     for (const d of r.decisions)
       await gh.comment("issue", r.task, fmt.decisionUnblocked(s.host, d.number, d.answer));

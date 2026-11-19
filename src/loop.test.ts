@@ -58,6 +58,7 @@ function fakeGh(issues: Issue[], closedDecisions: ClosedDecision[] = []) {
     listOpenPRs: async () => [],
     subIssues: async () => [],
     branchLastCommitAt: async () => null,
+    hasWriteAccess: async () => true,
     setStatus: rec("setStatus"),
     addToProject: async () => "PVTI_new",
     comment: rec("comment"),
