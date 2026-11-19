@@ -351,7 +351,8 @@ export class GitHub {
         "--state",
         "closed",
         "--search",
-        opts.notPlanned ? 'reason:"not planned"' : `closed:>=${since}`,
+        // Capped at 100 below; newest first, so a recent one is never the one left out.
+        opts.notPlanned ? 'reason:"not planned" sort:created-desc' : `closed:>=${since}`,
         "--limit",
         "100",
         "--json",
@@ -567,9 +568,11 @@ export class GitHub {
   /**
    * Whether `login` may write to the repository: collaborator permission `admin` or `write`
    * (`maintain` reports as `write` in that field). A read. False when GitHub says so: any other
-   * permission, a 404 (no such user), or a login that is not a plain GitHub username, which is
-   * never sent. `"unknown"` when the lookup fails any other way (rate limit, 5xx, network), so the
-   * caller can retry rather than treat a hiccup as a no.
+   * permission, a 404 (no such user), a 403 that is not a rate limit (the token or the
+   * repository's settings refuse the lookup, which no retry fixes; logged as a warning), or a
+   * login that is not a plain GitHub username, which is never sent. `"unknown"` when the lookup
+   * fails any other way (rate limit, 5xx, network), so the caller can retry rather than treat a
+   * hiccup as a no.
    */
   async hasWriteAccess(login: string): Promise<boolean | "unknown"> {
     if (!/^[A-Za-z0-9-]+$/.test(login)) return false;
@@ -580,7 +583,15 @@ export class GitHub {
       ".permission",
     ]);
     if (r.code === 0) return ["admin", "maintain", "write"].includes(r.stdout.trim());
-    return /\(HTTP 404\)/.test(r.stderr) ? false : "unknown";
+    if (/\(HTTP 404\)/.test(r.stderr)) return false;
+    if (/\(HTTP 403\)/.test(r.stderr) && !/rate limit/i.test(r.stderr)) {
+      log("warn", "write-access lookup refused (HTTP 403): a token or configuration problem", {
+        login,
+        error: r.stderr.trim(),
+      });
+      return false;
+    }
+    return "unknown";
   }
 
   async fileOnDefaultBranch(path: string): Promise<boolean> {

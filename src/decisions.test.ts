@@ -62,18 +62,17 @@ const closed = (over: Partial<ClosedDecision> = {}): ClosedDecision => ({
 });
 
 describe("planDecisionResumes", () => {
-  it("resumes the blocked task with the settled answer and its PR", () => {
+  it("resumes the blocked task and its PR, naming the decision but quoting no answer", () => {
+    // The answer is chosen later from writers only; the plan carries nothing to quote.
     const s = snapshot({ issues: [blockedTask()], prs: [pr({ number: 77, issue: 5 })] });
     expect(planDecisionResumes(s, [closed()])).toEqual([
-      { task: 5, itemId: "PVTI_5", pr: 77, decisions: [{ number: 40, answer: "B — Use REST" }] },
+      { task: 5, itemId: "PVTI_5", pr: 77, decisions: [40] },
     ]);
   });
 
-  it("resumes with no answer when the decision was closed by hand", () => {
+  it("resumes a decision closed by hand with no comments", () => {
     const s = snapshot({ issues: [blockedTask()] });
-    expect(planDecisionResumes(s, [closed({ comments: [] })])[0]?.decisions).toEqual([
-      { number: 40, answer: null },
-    ]);
+    expect(planDecisionResumes(s, [closed({ comments: [] })])[0]?.decisions).toEqual([40]);
   });
 
   it("does nothing for a decision closed as not planned", () => {
@@ -102,7 +101,7 @@ describe("planDecisionResumes", () => {
       comments: [],
     });
     expect(planDecisionResumes(snapshot({ issues: [task] }), [stale, closed()])).toEqual([
-      { task: 5, itemId: "PVTI_5", pr: null, decisions: [{ number: 40, answer: "B — Use REST" }] },
+      { task: 5, itemId: "PVTI_5", pr: null, decisions: [40] },
     ]);
   });
 
@@ -183,10 +182,7 @@ describe("planDecisionResumes", () => {
         task: 5,
         itemId: "PVTI_5",
         pr: null,
-        decisions: [
-          { number: 40, answer: "B — Use REST" },
-          { number: 42, answer: "A" },
-        ],
+        decisions: [40, 42],
       },
     ]);
   });

@@ -37,10 +37,10 @@ export interface DecisionResume {
   itemId: string | null;
   pr: number | null;
   /**
-   * Every closed decision this resume consumes, lowest number first. `answer` trusts every
-   * commenter; `resumeSettledDecisions` quotes the answer from writers only instead.
+   * Every closed decision this resume consumes, lowest number first. Numbers only: the answer to
+   * quote depends on who has write access, which `resumeSettledDecisions` looks up.
    */
-  decisions: Array<{ number: number; answer: string | null }>;
+  decisions: number[];
 }
 
 /**
@@ -86,7 +86,7 @@ export function planDecisionResumes(s: Snapshot, closed: ClosedDecision[]): Deci
       pr: s.prs.find((p) => p.issue === n)?.number ?? null,
       decisions: [],
     };
-    r.decisions.push({ number: d.number, answer: settledAnswer(d.comments) });
+    r.decisions.push(d.number);
     byTask.set(n, r);
   }
   return [...byTask.values()].sort((a, b) => a.task - b.task);
@@ -171,7 +171,7 @@ export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promi
   const resumed: number[] = [];
   for (const r of planDecisionResumes(s, all)) {
     const lines: string[] = [];
-    for (const { number } of r.decisions) {
+    for (const number of r.decisions) {
       const t = await trustedAnswer(access, byNumber.get(number) as ClosedDecision);
       if (t === "unknown") break;
       lines.push(fmt.decisionUnblocked(s.host, number, t.answer, t.followOnly));
@@ -182,10 +182,7 @@ export async function resumeSettledDecisions(gh: DecisionGh, s: Snapshot): Promi
     }
     for (const line of lines) await gh.comment("issue", r.task, line);
     await unblockEdits(gh, { issue: r.task, itemId: r.itemId, pr: r.pr }, { blockedLast: true });
-    log("info", "decision resumed task", {
-      task: r.task,
-      decisions: r.decisions.map((d) => d.number),
-    });
+    log("info", "decision resumed task", { task: r.task, decisions: r.decisions });
     resumed.push(r.task);
   }
   return resumed;

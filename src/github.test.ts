@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Exec, ExecResult } from "./exec.ts";
 import {
   effortOf,
@@ -531,6 +531,26 @@ describe("GitHub bootstrap calls", () => {
       "unknown",
     );
     expect(await answer({ code: 1, stderr: "error connecting to api.github.com" })).toBe("unknown");
+    expect(
+      await answer({
+        code: 1,
+        stderr: "gh: You have exceeded a secondary rate limit. Please wait (HTTP 403)",
+      }),
+    ).toBe("unknown");
+  });
+
+  it("hasWriteAccess is false, with a warning, on a 403 that is not a rate limit", async () => {
+    const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      const r = { code: 1, stderr: "gh: Resource not accessible by integration (HTTP 403)" };
+      expect(await new GitHub(cfg, exec(r), false).hasWriteAccess("jane")).toBe(false);
+      const logged = out.mock.calls.map((c) => String(c[0])).join("");
+      expect(logged).toContain('"level":"warn"');
+      expect(logged).toContain("token or configuration");
+      expect(logged).toContain('"login":"jane"');
+    } finally {
+      out.mockRestore();
+    }
   });
 
   it("hasWriteAccess asks nothing for a login that cannot name a user", async () => {
@@ -646,7 +666,7 @@ describe("listClosedDecisions", () => {
         "--state",
         "closed",
         "--search",
-        'reason:"not planned"',
+        'reason:"not planned" sort:created-desc',
         "--limit",
         "100",
         "--json",
