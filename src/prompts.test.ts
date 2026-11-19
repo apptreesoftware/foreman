@@ -39,6 +39,13 @@ describe("composeRolePrompt", () => {
     expect(p).toContain("docs/plans docs/**/*.md");
     expect(p).not.toMatch(/\{\{\w+\}\}/);
   });
+  it("fills {{targetBranch}}, with main when the caller names none", () => {
+    const withBase = { ...parts, base: "## Role: builder\ngh pr create --base {{targetBranch}}\n" };
+    expect(composeRolePrompt("builder", withBase)).toContain("gh pr create --base main");
+    const v2 = composeRolePrompt("builder", { ...withBase, targetBranch: "v2" });
+    expect(v2).toContain("gh pr create --base v2");
+    expect(v2).not.toMatch(/\{\{\w+\}\}/);
+  });
   it("omits the House rules and role sections when the repository has none", () => {
     const p = composeRolePrompt("builder", { ...parts, rules: null, roleRules: null });
     expect(p).not.toContain("## House rules");
@@ -134,6 +141,14 @@ describe("writeSessionFiles", () => {
       "Write(//Users/me/.worktrees/123/.claude/**)",
     ]);
     for (const r of [...rules, ...worktreeDenies(fixtureRepo)]) expect(r).not.toMatch(/\(\/\/\//);
+  });
+  it("the shipped role prompts name the target branch", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "state-"));
+    const out = writeSessionFiles(stateDir, fixtureRepo, "builder", defaultRepoConfig(), "v2");
+    const prompt = readFileSync(out.promptPath, "utf8");
+    expect(prompt).toContain("gh pr create --base v2");
+    expect(prompt).toContain("git merge origin/v2");
+    expect(prompt).not.toContain("{{targetBranch}}");
   });
   it("PACKAGE_ROOT holds roles/ and settings/", () => {
     expect(existsSync(join(PACKAGE_ROOT, "roles", "ground-rules.md"))).toBe(true);

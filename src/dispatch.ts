@@ -199,7 +199,7 @@ export function buildPrompt(
     `Role: ${req.role}. Repository: ${cfg.repo}. Host: ${cfg.host}. Session: ${req.sessionId}.`,
     `Task issue: #${req.issue} — ${req.title}.`,
     req.pr ? `Pull request: #${req.pr}.` : "Pull request: none yet.",
-    `Worktree (your cwd): ${req.worktree}. Branch: ${req.branch}. Never touch main.`,
+    `Worktree (your cwd): ${req.worktree}. Branch: ${req.branch}. Never touch ${targetBranch}.`,
     `Spec: ${req.specPath ?? "see the issue body"}.`,
     ...req.promptLines,
   ];

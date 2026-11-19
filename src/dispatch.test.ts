@@ -117,6 +117,12 @@ describe("buildArgs / buildPrompt", () => {
     expect(p).toContain("conflicts with trunk");
     expect(p).not.toContain("origin/main");
   });
+  it("the session header names the branch never to touch", () => {
+    expect(buildPrompt(req, cfg, CHECKS)).toContain("Never touch main.");
+    const p = buildPrompt(req, cfg, CHECKS, "v2");
+    expect(p).toContain("Never touch v2.");
+    expect(p).not.toContain("Never touch main");
+  });
   it("switches to --resume on resume", () => {
     const a = buildArgs({ ...req, resume: true }, cfg).join(" ");
     expect(a).toContain("--resume 33333333-3333-3333-3333-333333333333");

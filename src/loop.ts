@@ -341,7 +341,7 @@ async function prepareSession(
   // `.foreman/rules.md`, `.foreman/roles/<role>.md` and `.foreman/settings.json`, written where
   // `claude -p` is pointed at them. Regenerated per dispatch, so an edit to either side lands on
   // the next session without restarting the daemon.
-  const files = writeSessionFiles(ctx.stateDir, worktree, r.role, ctx.repo);
+  const files = writeSessionFiles(ctx.stateDir, worktree, r.role, ctx.repo, ctx.targetBranch);
   return { worktree, sessionId, resume, notes, sessionEnv, files, hook };
 }
 

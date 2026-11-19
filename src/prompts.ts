@@ -37,13 +37,16 @@ export interface PromptParts {
   checks: string[];
   plansDir: string;
   specGlob: string;
+  /** The branch the foreman builds into; `main` when absent. */
+  targetBranch?: string;
 }
 
 function fill(text: string, p: PromptParts): string {
   return text
     .replaceAll("{{checks}}", p.checks.map((c) => `\`${c}\``).join(", "))
     .replaceAll("{{plansDir}}", p.plansDir)
-    .replaceAll("{{specGlob}}", p.specGlob);
+    .replaceAll("{{specGlob}}", p.specGlob)
+    .replaceAll("{{targetBranch}}", p.targetBranch ?? "main");
 }
 
 export function composeRolePrompt(role: Role, p: PromptParts): string {
@@ -130,6 +133,7 @@ export function writeSessionFiles(
   worktree: string,
   role: Role,
   repo: RepoConfig,
+  targetBranch = "main",
 ): { promptPath: string; settingsPath: string } {
   const repoRules = readRepoRules(worktree, role);
   const prompt = composeRolePrompt(role, {
@@ -139,6 +143,7 @@ export function writeSessionFiles(
     checks: repo.checks,
     plansDir: repo.plans.dir,
     specGlob: repo.plans.specGlob,
+    targetBranch,
   });
   const composed = composeSettings(readBaseSettings(), repoRules.settings);
   // Appended after the merge, so a repository `allow` cannot pre-empt them either.
