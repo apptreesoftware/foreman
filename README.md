@@ -209,8 +209,9 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
 1. **Preflight.** Refuses to run if an API-billing environment variable is set, if
    `~/.foreman/<name>/STOP` exists, if `claude auth status` is not a `claude.ai` login, if `gh auth
    status` fails or its token lacks the `project` scope, if GitHub reports fewer than
-   `minGraphqlPoints` GraphQL points left, if a configured `targetBranch` is not on `origin`, or if
-   today's session count has reached `maxSessionsPerDay`. Then it runs the repository's
+   `minGraphqlPoints` GraphQL points left, if a configured `targetBranch` is not on `origin` (or,
+   with none configured, GitHub has not yet said what the default branch is), or if today's
+   session count has reached `maxSessionsPerDay`. Then it runs the repository's
    `preflight` hook (§5).
 2. **Resume check.** If an issue on the board is In Progress and claimed by this host, that
    session is resumed instead of anything new being picked.

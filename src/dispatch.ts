@@ -291,7 +291,10 @@ export async function ensureWorktree(
       await git(["worktree", "add", "-B", branch, dir, `origin/${branch}`]);
       await exec("git", ["-C", dir, "branch", `--set-upstream-to=origin/${branch}`]);
     } else {
-      await git(["worktree", "add", "-B", branch, dir, `origin/${targetBranch}`]);
+      // --no-track: a new branch must not track the target, or a bare `git push` under
+      // `push.default=upstream` lands on it. The first `git push -u origin <branch>` sets the
+      // real upstream; until then a reused worktree's `pull --ff-only` below warns and carries on.
+      await git(["worktree", "add", "--no-track", "-B", branch, dir, `origin/${targetBranch}`]);
     }
   } else {
     const r = await exec("git", ["-C", dir, "pull", "--ff-only"]);

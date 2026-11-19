@@ -41,7 +41,7 @@ import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts
 import { graphqlBudget, preflight } from "./preflight.ts";
 import { writeSessionFiles } from "./prompts.ts";
 import { ledgerInterrupt } from "./release.ts";
-import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
+import { defaultRepoConfig, type RepoConfig, resolveTargetBranch } from "./repo-config.ts";
 import {
   endReason,
   exhaustedResetAt,
@@ -107,7 +107,8 @@ export interface Ctx {
   repo: RepoConfig;
   /**
    * The branch the foreman builds into: `.foreman/config.json` `targetBranch`, else the repo's
-   * GitHub default branch (`main`, `trunk`, ...).
+   * GitHub default branch (`main`, `trunk`, ...). Empty while that lookup has not succeeded yet:
+   * `runOnce` retries it and parks until it does, rather than guess.
    */
   targetBranch: string;
   /** This foreman instance's name (`-p`/`FOREMAN_INSTANCE`/cwd match); passed to every hook. */
@@ -128,7 +129,9 @@ export function realCtx(
   instance = "default",
   hookLog: Ctx["hookLog"] = fileHookLog(stateDir),
 ): Ctx {
-  return {
+  // The closures read `ctx.targetBranch` when they run, not the parameter: a daemon that started
+  // before the default branch could be resolved fills it in on a later tick.
+  const ctx: Ctx = {
     cfg,
     gh,
     ...control,
@@ -155,10 +158,10 @@ export function realCtx(
     login,
     readFile: (p) => (existsSync(p) ? readFileSync(p, "utf8") : null),
     planFiles: () =>
-      listPlanFilesOnMain(realExec, cfg.repoDir, repo.plans.dir, `origin/${targetBranch}`),
-    readPlanFile: (p) => readPlanFileOnMain(realExec, cfg.repoDir, p, `origin/${targetBranch}`),
+      listPlanFilesOnMain(realExec, cfg.repoDir, repo.plans.dir, `origin/${ctx.targetBranch}`),
+    readPlanFile: (p) => readPlanFileOnMain(realExec, cfg.repoDir, p, `origin/${ctx.targetBranch}`),
     ensureWorktree: (c, issue, branch, exec) =>
-      realEnsureWorktree(c, issue, branch, exec, undefined, repo.setup, targetBranch),
+      realEnsureWorktree(c, issue, branch, exec, undefined, repo.setup, ctx.targetBranch),
     removeWorktree: realRemoveWorktree,
     transcriptExists: (w, s) => existsSync(transcriptPath(w, s)),
     now: () => new Date().toISOString(),
@@ -167,6 +170,24 @@ export function realCtx(
     instance,
     hookLog,
   };
+  return ctx;
+}
+
+/** Why a tick parks while the default branch is still unknown. */
+export const UNRESOLVED_TARGET = "could not resolve the default branch";
+
+/**
+ * Resolves `ctx.targetBranch` for a daemon that started while `gh` could not answer. No-op once
+ * it is set, so a healthy daemon, or a repository that names its `targetBranch`, never asks. A
+ * failure leaves it empty for the next tick to try again.
+ */
+export async function ensureTargetBranch(ctx: Ctx): Promise<void> {
+  if (ctx.targetBranch) return;
+  try {
+    ctx.targetBranch = await resolveTargetBranch(ctx.repo, () => ctx.gh.defaultBranch());
+  } catch {
+    // still unknown; try again next tick
+  }
 }
 
 /**
@@ -195,6 +216,10 @@ export function workablePR(p: PullRequest, target: string): boolean {
 }
 
 export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
+  // Without a target every PR would be filtered out, which reads as "nothing open" rather than
+  // "unknown"; `runOnce` parks first, so this only guards the page's and ctl's own snapshots.
+  await ensureTargetBranch(ctx);
+  if (!ctx.targetBranch) throw new Error(UNRESOLVED_TARGET);
   const issues = await ctx.gh.listIssues("open");
   // A PR aimed at any other branch, or from a protected one, is not the foreman's: dropped here,
   // it is never paired with a task, reviewed, rebased, rerun or merged, and never moves the idle
@@ -1178,7 +1203,7 @@ export function snapshotFingerprint(s: Snapshot): string {
 export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   // Read per tick, so raising the cap from the page un-parks the daemon on the next tick rather
   // than needing a restart to reload foreman.json.
-  const pre = await preflight(
+  const checked = await preflight(
     { ...ctx.cfg, maxSessionsPerDay: capFor(ctx) },
     {
       env: process.env,
@@ -1197,6 +1222,12 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
         : null,
     },
   );
+  // Only once preflight has seen `gh` authenticated is a failed default-branch lookup worth
+  // retrying; until one succeeds the tick parks instead of guessing a branch, which would hide
+  // every PR from the snapshot and open new ones against the wrong base.
+  if (checked.ok) await ensureTargetBranch(ctx);
+  const pre: typeof checked =
+    checked.ok && !ctx.targetBranch ? { ok: false, reason: UNRESOLVED_TARGET } : checked;
   ctx.state?.patch({ lastPreflight: { ok: pre.ok, reason: pre.ok ? null : pre.reason } });
   // Preflight fails on every tick of a parked spell, so the notifier — not the loop — decides
   // whether this transition is worth a push.

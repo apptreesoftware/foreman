@@ -1509,6 +1509,70 @@ describe("runOnce with a target branch origin does not have", () => {
   });
 });
 
+describe("runOnce before the default branch is known", () => {
+  const okExec: Exec = async () => ({
+    code: 0,
+    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
+    stderr: "",
+  });
+  it("parks, without reading the board, while the lookup keeps failing", async () => {
+    const { gh } = fakeGh([]);
+    let listed = 0;
+    gh.listIssues = async () => {
+      listed++;
+      return [];
+    };
+    gh.defaultBranch = async () => {
+      throw new Error("gh: rate limited");
+    };
+    const n = recordNotify();
+    const c = ctx({
+      gh,
+      exec: okExec,
+      notify: n.port,
+      targetBranch: "",
+      stateDir: mkdtempSync(join(tmpdir(), "tt-loop-unresolved-")),
+    });
+    expect(await runOnce(c)).toEqual({ didWork: false, action: null });
+    expect(n.parked).toEqual(["could not resolve the default branch"]);
+    expect(listed).toBe(0);
+    expect(c.targetBranch).toBe("");
+  });
+  it("resolves it on the first tick the lookup succeeds, and then never asks again", async () => {
+    const { gh } = fakeGh([]);
+    let asked = 0;
+    gh.defaultBranch = async () => {
+      asked++;
+      return "trunk";
+    };
+    gh.listOpenPRs = async () => [pr({ number: 30, issue: 1, baseRefName: "trunk" })];
+    const n = recordNotify();
+    const c = ctx({
+      gh,
+      exec: okExec,
+      notify: n.port,
+      targetBranch: "",
+      stateDir: mkdtempSync(join(tmpdir(), "tt-loop-resolved-")),
+    });
+    await runOnce(c);
+    expect(c.targetBranch).toBe("trunk");
+    expect(n.parked).toEqual([null]);
+    expect((await buildSnapshot(c)).prs.map((p) => p.number)).toEqual([30]);
+    expect(asked).toBe(1);
+  });
+  it("a configured targetBranch is never looked up", async () => {
+    const { gh } = fakeGh([]);
+    let asked = 0;
+    gh.defaultBranch = async () => {
+      asked++;
+      return "main";
+    };
+    const c = ctx({ gh, targetBranch: "v2", repo: { ...defaultRepoConfig(), targetBranch: "v2" } });
+    await buildSnapshot(c);
+    expect(asked).toBe(0);
+  });
+});
+
 describe("runOnce abort mid-plan", () => {
   it("stops between actions once the signal aborts, so a second mergeable PR is never merged", async () => {
     const i1 = issue({ number: 1, status: "In Review" });

@@ -94,13 +94,14 @@ export async function runDaemon(
   );
   // A configured `targetBranch` is used as written, with no gh call. Otherwise, same reasoning as
   // the login block below: a failed, not-yet-authenticated or rate-limited `gh` must not keep the
-  // daemon from starting. "main" is the fallback until a later tick's own gh calls succeed;
-  // nothing here is a write, so a wrong guess costs nothing but a retried rebase.
-  let targetBranch = "main";
+  // daemon from starting. Nor is a guess safe: the target decides which PRs the snapshot keeps
+  // and what `--base` a new one gets. Left empty, `runOnce` retries the lookup each tick and
+  // parks with "could not resolve the default branch" until it succeeds.
+  let targetBranch = "";
   try {
     targetBranch = await resolveTargetBranch(repo, () => gh.defaultBranch());
   } catch (err) {
-    log("warn", `gh default branch unavailable; assuming ${targetBranch}`, {
+    log("warn", "gh default branch unavailable; retrying it each tick", {
       error: err instanceof Error ? err.message : String(err),
     });
   }
