@@ -35,12 +35,29 @@ export const RepoConfigSchema = z
     limits: LimitsSchema.prefault({}),
     /** The page's model buttons and the accepted `model:<name>` labels. */
     models: z.array(z.string().min(1)).min(1).default(["opus", "sonnet", "haiku", "fable"]),
+    /**
+     * The branch the foreman builds into: worktrees start from it, PRs target it, and PRs aimed
+     * anywhere else are ignored. Absent means the repository's GitHub default branch.
+     */
+    targetBranch: z.string().min(1).optional(),
   })
   .strict();
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 
 export function defaultRepoConfig(): RepoConfig {
   return RepoConfigSchema.parse({});
+}
+
+/**
+ * The branch this repository's work targets: `targetBranch` when the repository names one, which
+ * needs no GitHub call, else the GitHub default branch. A failing lookup throws; the caller
+ * decides the fallback.
+ */
+export async function resolveTargetBranch(
+  repo: RepoConfig,
+  defaultBranch: () => Promise<string>,
+): Promise<string> {
+  return repo.targetBranch ?? (await defaultBranch());
 }
 
 export function repoConfigPath(dir: string): string {

@@ -175,7 +175,7 @@ function ctx(over: Partial<Ctx>): Ctx {
     stopMode: () => null,
     state: null,
     repo: defaultRepoConfig(),
-    defaultBranch: "main",
+    targetBranch: "main",
     instance: "widgets",
     hookLog: () => {},
     ...over,

@@ -85,9 +85,9 @@ export interface Ctx {
   copyDir: (src: string, dest: string) => Promise<void>;
   login: string;
   readFile: (absPath: string) => string | null;
-  /** Repo-relative `*.issues.json` paths on `origin/<defaultBranch>`. */
+  /** Repo-relative `*.issues.json` paths on `origin/<targetBranch>`. */
   planFiles: () => Promise<string[]>;
-  /** Content of a repo-relative path on `origin/<defaultBranch>`, or null when it is not there. */
+  /** Content of a repo-relative path on `origin/<targetBranch>`, or null when it is not there. */
   readPlanFile: (repoRelPath: string) => Promise<string | null>;
   ensureWorktree: (
     cfg: ForemanConfig,
@@ -105,8 +105,11 @@ export interface Ctx {
   state: Pick<StateStore, "patch" | "get"> | null;
   /** `.foreman/config.json` from the served repo; defaults when the repo has none. */
   repo: RepoConfig;
-  /** The repo's default branch, as `git`/GitHub name it (`main`, `trunk`, ...). */
-  defaultBranch: string;
+  /**
+   * The branch the foreman builds into: `.foreman/config.json` `targetBranch`, else the repo's
+   * GitHub default branch (`main`, `trunk`, ...).
+   */
+  targetBranch: string;
   /** This foreman instance's name (`-p`/`FOREMAN_INSTANCE`/cwd match); passed to every hook. */
   instance: string;
   /** Appends one line per hook run to `<stateDir>/logs/hooks.log`. */
@@ -121,7 +124,7 @@ export function realCtx(
   stateDir: string,
   control: { signal: AbortSignal; stopMode: () => StopMode | null; state: Ctx["state"] },
   repo: RepoConfig = defaultRepoConfig(),
-  defaultBranch = "main",
+  targetBranch = "main",
   instance = "default",
   hookLog: Ctx["hookLog"] = fileHookLog(stateDir),
 ): Ctx {
@@ -152,15 +155,15 @@ export function realCtx(
     login,
     readFile: (p) => (existsSync(p) ? readFileSync(p, "utf8") : null),
     planFiles: () =>
-      listPlanFilesOnMain(realExec, cfg.repoDir, repo.plans.dir, `origin/${defaultBranch}`),
-    readPlanFile: (p) => readPlanFileOnMain(realExec, cfg.repoDir, p, `origin/${defaultBranch}`),
+      listPlanFilesOnMain(realExec, cfg.repoDir, repo.plans.dir, `origin/${targetBranch}`),
+    readPlanFile: (p) => readPlanFileOnMain(realExec, cfg.repoDir, p, `origin/${targetBranch}`),
     ensureWorktree: (c, issue, branch, exec) =>
-      realEnsureWorktree(c, issue, branch, exec, undefined, repo.setup, defaultBranch),
+      realEnsureWorktree(c, issue, branch, exec, undefined, repo.setup, targetBranch),
     removeWorktree: realRemoveWorktree,
     transcriptExists: (w, s) => existsSync(transcriptPath(w, s)),
     now: () => new Date().toISOString(),
     repo,
-    defaultBranch,
+    targetBranch,
     instance,
     hookLog,
   };
@@ -509,7 +512,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
         spawn: ctx.spawn,
         signal: ctx.signal,
         checks: ctx.repo.checks,
-        defaultBranch: ctx.defaultBranch,
+        targetBranch: ctx.targetBranch,
         onSpawn: (pid) => setCurrent({ childPid: pid }),
         onActivity,
         onAttempt: async (a) => {

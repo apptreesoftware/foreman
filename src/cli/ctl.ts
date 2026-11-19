@@ -10,7 +10,7 @@ import { buildSnapshot, realCtx } from "../loop.ts";
 import { describeNext, formatNext } from "../next.ts";
 import type { InterruptInput } from "../release.ts";
 import { ledgerInterrupt } from "../release.ts";
-import { loadRepoConfigSafe } from "../repo-config.ts";
+import { loadRepoConfigSafe, resolveTargetBranch } from "../repo-config.ts";
 import { readSessions } from "../sessions.ts";
 import { readState } from "../state-file.ts";
 import { describeStatus, formatStatus } from "../status.ts";
@@ -86,7 +86,7 @@ export async function runCtl(
       realExec,
       true,
     );
-    const defaultBranch = await gh.defaultBranch();
+    const targetBranch = await resolveTargetBranch(repo, () => gh.defaultBranch());
     const ctx = realCtx(
       cfg,
       gh,
@@ -99,7 +99,7 @@ export async function runCtl(
         state: null,
       },
       repo,
-      defaultBranch,
+      targetBranch,
       instance.name,
     );
     process.stdout.write(formatNext(describeNext(await buildSnapshot(ctx), repo)));

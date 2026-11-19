@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { defaultRepoConfig, loadRepoConfig, loadRepoConfigSafe } from "./repo-config.ts";
+import {
+  defaultRepoConfig,
+  loadRepoConfig,
+  loadRepoConfigSafe,
+  resolveTargetBranch,
+} from "./repo-config.ts";
 
 function repo(json?: string): string {
   const dir = mkdtempSync(join(tmpdir(), "repo-"));
@@ -52,6 +57,44 @@ describe("repo config", () => {
   it("a thrown message starts with the file path", () => {
     const dir = repo('{"cheks": []}');
     expect(() => loadRepoConfig(dir)).toThrow(join(dir, ".foreman", "config.json"));
+  });
+});
+
+describe("targetBranch", () => {
+  it("is absent by default, so the scaffold never writes it", () => {
+    expect(defaultRepoConfig().targetBranch).toBeUndefined();
+    expect("targetBranch" in defaultRepoConfig()).toBe(false);
+    expect(JSON.stringify(defaultRepoConfig())).not.toContain("targetBranch");
+  });
+  it("is read when set", () => {
+    expect(loadRepoConfig(repo('{"targetBranch": "v2"}')).targetBranch).toBe("v2");
+  });
+  it("refuses an empty name", () => {
+    expect(() => loadRepoConfig(repo('{"targetBranch": ""}'))).toThrow(/targetBranch/);
+  });
+});
+
+describe("resolveTargetBranch", () => {
+  it("a configured branch wins and asks GitHub nothing", async () => {
+    let asked = 0;
+    const gh = async () => {
+      asked++;
+      return "main";
+    };
+    expect(await resolveTargetBranch({ ...defaultRepoConfig(), targetBranch: "v2" }, gh)).toBe(
+      "v2",
+    );
+    expect(asked).toBe(0);
+  });
+  it("absent, it is the repository's GitHub default branch", async () => {
+    expect(await resolveTargetBranch(defaultRepoConfig(), async () => "trunk")).toBe("trunk");
+  });
+  it("absent, a failing lookup throws for the caller to handle", async () => {
+    await expect(
+      resolveTargetBranch(defaultRepoConfig(), async () => {
+        throw new Error("gh down");
+      }),
+    ).rejects.toThrow("gh down");
   });
 });
 

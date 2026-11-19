@@ -14,7 +14,7 @@ import { applyUnblock, applyUnblockToBoard } from "../needs-you.ts";
 import { describeNext } from "../next.ts";
 import { applyOwnerAction, applyOwnerActionToBoard } from "../owner.ts";
 import { checkEnv, preflight } from "../preflight.ts";
-import { loadRepoConfigSafe } from "../repo-config.ts";
+import { loadRepoConfigSafe, resolveTargetBranch } from "../repo-config.ts";
 import { boardTitles, describeSessionHistory } from "../session-history.ts";
 import { readSessions } from "../sessions.ts";
 import { initialState, MODEL_DEFAULT, readState, StateStore } from "../state-file.ts";
@@ -91,14 +91,15 @@ export async function runDaemon(
     realExec,
     dryRun,
   );
-  // Same reasoning as the login block below: a failed, not-yet-authenticated or rate-limited `gh`
-  // must not keep the daemon from starting. "main" is the fallback until a later tick's own gh
-  // calls succeed; nothing here is a write, so a wrong guess costs nothing but a retried rebase.
-  let defaultBranch = "main";
+  // A configured `targetBranch` is used as written, with no gh call. Otherwise, same reasoning as
+  // the login block below: a failed, not-yet-authenticated or rate-limited `gh` must not keep the
+  // daemon from starting. "main" is the fallback until a later tick's own gh calls succeed;
+  // nothing here is a write, so a wrong guess costs nothing but a retried rebase.
+  let targetBranch = "main";
   try {
-    defaultBranch = await gh.defaultBranch();
+    targetBranch = await resolveTargetBranch(repo, () => gh.defaultBranch());
   } catch (err) {
-    log("warn", "gh default branch unavailable; assuming main", {
+    log("warn", `gh default branch unavailable; assuming ${targetBranch}`, {
       error: err instanceof Error ? err.message : String(err),
     });
   }
@@ -117,7 +118,7 @@ export async function runDaemon(
         state: null,
       },
       repo,
-      defaultBranch,
+      targetBranch,
       instance.name,
       hookLog,
     );
@@ -188,7 +189,7 @@ export async function runDaemon(
       state: store,
     },
     repo,
-    defaultBranch,
+    targetBranch,
     instance.name,
     hookLog,
   );
