@@ -60,7 +60,8 @@ describe("mergeDecision on a PR aimed at another branch", () => {
 describe("blockActions on a task whose only PR targets another branch", () => {
   const offTarget = (over = {}) =>
     pr({ number: 7, issue: 20, baseRefName: "main", headRefName: "feat/20-x", ...over });
-  const reason = "PR #7 targets main, not v2; re-aim it (gh pr edit 7 --base v2) and press Unblock";
+  const reason =
+    "PR #7 targets main, not v2; re-aim it (gh pr edit 7 --base v2), or drop the task from its body, and press Unblock";
   it("blocks an In Review task once, naming the base and the fix", () => {
     const s = snapshot({ targetBranch: "v2", issues: [inReview()], offTargetPRs: [offTarget()] });
     expect(blockActions(s)).toEqual([{ type: "block", issue: 20, reason }]);
@@ -125,7 +126,7 @@ describe("blockActions on a task whose only PR targets another branch", () => {
         type: "block",
         issue: 20,
         reason:
-          "PR #7 targets release/1.2, not main; re-aim it (gh pr edit 7 --base main) and press Unblock",
+          "PR #7 targets release/1.2, not main; re-aim it (gh pr edit 7 --base main), or drop the task from its body, and press Unblock",
       },
     ]);
   });

@@ -171,6 +171,47 @@ describe("describeWaiting", () => {
       ["human", "epic #12 plan PR #279 cannot merge: checks failed"],
     ]);
   });
+  it("an approved plan whose only plan PR targets another branch waits on the owner", () => {
+    const approved = epic({
+      number: 12,
+      phase: 0,
+      labels: ["epic", "phase:0", "plan-approved", "needs-owner"],
+    });
+    const off = pr({
+      number: 279,
+      title: "docs(plan): phase 00 plan (#12)",
+      issue: null,
+      baseRefName: "main",
+      updatedAt: hoursAgo(5),
+    });
+    const s = (prs: ReturnType<typeof pr>[]) =>
+      snapshot({
+        targetBranch: "v2",
+        issues: [issue({ number: 12, labels: approved.labels })],
+        epics: [approved],
+        prs,
+        offTargetPRs: [off],
+      });
+    expect(describeWaiting(s([]), base)).toEqual([
+      {
+        kind: "human",
+        subject: "epic #12",
+        detail: "epic #12 plan PR #279 targets main, not v2",
+        since: hoursAgo(5),
+      },
+    ]);
+    // An on-target plan PR is the one waited on; the stray one says nothing.
+    const onTarget = pr({
+      number: 280,
+      title: "docs(plan): phase 00 plan (#12)",
+      issue: null,
+      baseRefName: "v2",
+      checks: "pending",
+    });
+    expect(describeWaiting(s([onTarget]), base).map((x) => x.detail)).toEqual([
+      "epic #12 plan PR #280 merges when its checks pass",
+    ]);
+  });
   it("human: a non-epic needs-owner or decision issue, with its title", () => {
     const s = snapshot({
       issues: [

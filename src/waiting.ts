@@ -2,6 +2,8 @@ import { parentEpicOf, parseDependsOn } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
 import {
   buildingEpic,
+  newestPlanPR,
+  offTargetWhy,
   planAwaitingOwner,
   planPR,
   planPrState,
@@ -102,6 +104,19 @@ export function describeWaiting(
           detail: `epic #${e.number} plan PR #${p.number} merges when its checks pass`,
           since: p.updatedAt,
         });
+      else if (!p) {
+        // A plan PR aimed at another branch never merges into the target; only the owner can
+        // re-aim it.
+        const off = newestPlanPR(s.offTargetPRs ?? [], e.number);
+        const why = off && offTargetWhy(off, targetOf(s));
+        if (off && why)
+          out.push({
+            kind: "human",
+            subject: `epic #${e.number}`,
+            detail: `epic #${e.number} plan PR #${off.number} ${why}`,
+            since: off.updatedAt,
+          });
+      }
       continue;
     }
     // A drafted plan and a closed phase both park the epic on `needs-owner`; `plan-approved`

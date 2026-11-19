@@ -399,7 +399,7 @@ describe("execute", () => {
       ctx({ gh, notify: n.port, targetBranch: "v2" }),
     );
     const reason =
-      "PR #5 targets main, not v2; re-aim it (gh pr edit 5 --base v2) and press Unblock";
+      "PR #5 targets main, not v2; re-aim it (gh pr edit 5 --base v2), or drop the task from its body, and press Unblock";
     expect(asked).toEqual([5]);
     expect(calls).not.toContain("setStatus PVTI_1 In Review");
     expect(calls).toContain("addLabels issue 1 blocked");

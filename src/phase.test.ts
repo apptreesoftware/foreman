@@ -245,25 +245,35 @@ describe("applyPlanActions", () => {
     const off = planPr({ baseRefName: "main" });
     const s = (issues = [epicIssue], o = off) =>
       snapshot({ targetBranch: "v2", epics: [approved], issues, prs: [], offTargetPRs: [o] });
+    const reason =
+      "targets main, not v2; re-aim it (gh pr edit 279 --base v2). Merging it by hand would land it on main, not v2";
     expect(applyPlanActions(s())).toEqual([
-      {
-        type: "plan_pr_stuck",
-        epic: 200,
-        pr: 279,
-        sha: off.headSha,
-        reason: "targets main, not v2",
-      },
+      { type: "plan_pr_stuck", epic: 200, pr: 279, sha: off.headSha, reason },
       { type: "apply_plan", epic: 200 },
     ]);
-    const reported = issue({
-      ...epicIssue,
-      comments: [comment(fmt.planPrStuck("mac-a", 279, off.headSha, "targets main, not v2"))],
-    });
+    // The ledger's own "merge it by hand" comes after the warning that it lands on main.
+    const line = fmt.planPrStuck("mac-a", 279, off.headSha, reason);
+    expect(line).toContain("gh pr edit 279 --base v2");
+    expect(line).toContain("Merging it by hand would land it on main, not v2");
+    const reported = issue({ ...epicIssue, comments: [comment(line)] });
     expect(applyPlanActions(s([reported]))).toEqual([{ type: "apply_plan", epic: 200 }]);
     const pushed = planPr({ baseRefName: "main", headSha: "f".repeat(40) });
     expect(applyPlanActions(s([reported], pushed))[0]).toMatchObject({
       type: "plan_pr_stuck",
       sha: pushed.headSha,
+    });
+  });
+  it("a plan PR from a protected head aimed at the target gets the plain reason", () => {
+    const off = planPr({ baseRefName: "v2", headRefName: "main" });
+    const s = snapshot({
+      targetBranch: "v2",
+      epics: [approved],
+      issues: [epicIssue],
+      offTargetPRs: [off],
+    });
+    expect(applyPlanActions(s)[0]).toMatchObject({
+      type: "plan_pr_stuck",
+      reason: "comes from main, a protected branch",
     });
   });
   it("an off-target plan PR says nothing while one on the target is open", () => {

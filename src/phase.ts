@@ -185,7 +185,7 @@ export function offTargetBlockReason(p: Refs & { number: number }, target: strin
   const why = offTargetWhy(p, target);
   if (!why) return null;
   return p.baseRefName !== target
-    ? `PR #${p.number} ${why}; re-aim it (gh pr edit ${p.number} --base ${target}) and press Unblock`
+    ? `PR #${p.number} ${why}; re-aim it (gh pr edit ${p.number} --base ${target}), or drop the task from its body, and press Unblock`
     : `PR #${p.number} ${why}; open the task's work from its own branch instead, or drop the task from the PR's body, and press Unblock`;
 }
 
@@ -202,7 +202,8 @@ export function planPR(s: Snapshot, epic: number): PullRequest | null {
   );
 }
 
-function newestPlanPR(prs: PullRequest[], epic: number): PullRequest | null {
+/** The newest of `prs` titled as this epic's plan PR, whatever its base. */
+export function newestPlanPR(prs: PullRequest[], epic: number): PullRequest | null {
   return (
     prs
       .filter((p) => p.title.startsWith("docs(plan):") && p.title.includes(`(#${epic})`))
@@ -242,15 +243,21 @@ export function applyPlanActions(s: Snapshot): Action[] {
       // A plan PR aimed at another branch never merges into the target, and nothing else would
       // say so: told once per head commit, as a red one is. apply_plan still runs, for a plan
       // that reached the target some other way.
+      // The ledger line ends "merge it by hand", which for a PR on another base lands the plan
+      // there; the reason says so ahead of it.
+      const target = targetOf(s);
       const off = newestPlanPR(s.offTargetPRs ?? [], e.number);
-      const why = off && offTargetWhy(off, targetOf(s));
+      const why = off && offTargetWhy(off, target);
       if (off && why && !planPrStuckReported(ei.comments, off.number, off.headSha))
         out.push({
           type: "plan_pr_stuck",
           epic: e.number,
           pr: off.number,
           sha: off.headSha,
-          reason: why,
+          reason:
+            off.baseRefName !== target
+              ? `${why}; re-aim it (gh pr edit ${off.number} --base ${target}). Merging it by hand would land it on ${off.baseRefName}, not ${target}`
+              : why,
         });
       // Merged already, by hand or on an earlier tick; apply_plan reads the file from origin.
       out.push({ type: "apply_plan", epic: e.number });
