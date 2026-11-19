@@ -168,9 +168,12 @@ export async function preflight(cfg: ForemanConfig, deps: PreflightDeps): Promis
       "--exit-code",
       "--heads",
       "origin",
-      t,
+      `refs/heads/${t}`,
     ]);
-    if (r.code !== 0) return { ok: false, reason: `target branch ${t} not found on origin` };
+    // `--exit-code` answers 2 for "no matching ref"; anything else is git failing to ask at all.
+    if (r.code === 2) return { ok: false, reason: `target branch ${t} not found on origin` };
+    if (r.code !== 0)
+      return { ok: false, reason: `could not reach origin to check target branch ${t}` };
   }
 
   const used = countSessionsToday(deps.stateDir, deps.now);

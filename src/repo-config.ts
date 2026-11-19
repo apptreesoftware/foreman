@@ -5,6 +5,19 @@ import { z } from "zod";
 /** Where a repository keeps what the foreman needs to know about it (spec §5). */
 export const REPO_DIRNAME = ".foreman";
 
+/**
+ * A plain branch name, as `git` and `gh pr create --base` take it. It is interpolated into git
+ * argv, permission rules and prompts, so anything that could read as an option (`-x`), a full or
+ * remote ref (`refs/…`, `origin/…`), a glob or a shell metacharacter is refused outright.
+ */
+const BranchNameSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9._/-]+$/, "only letters, digits and . _ / - are allowed")
+  .refine((s) => !s.startsWith("-"), "must not start with -")
+  .refine((s) => !s.startsWith("refs/"), "name the branch, not refs/heads/<branch>")
+  .refine((s) => !s.startsWith("origin/"), "name the branch, not origin/<branch>");
+
 const LimitsSchema = z
   .object({
     fixRounds: z.number().int().min(1).default(2),
@@ -39,7 +52,7 @@ export const RepoConfigSchema = z
      * The branch the foreman builds into: worktrees start from it, PRs target it, and PRs aimed
      * anywhere else are ignored. Absent means the repository's GitHub default branch.
      */
-    targetBranch: z.string().min(1).optional(),
+    targetBranch: BranchNameSchema.optional(),
   })
   .strict();
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;

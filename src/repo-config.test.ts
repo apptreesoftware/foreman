@@ -72,6 +72,34 @@ describe("targetBranch", () => {
   it("refuses an empty name", () => {
     expect(() => loadRepoConfig(repo('{"targetBranch": ""}'))).toThrow(/targetBranch/);
   });
+  it("accepts ordinary branch names", () => {
+    for (const name of ["v2", "release/v2", "feature.x_y-z", "V2.0"])
+      expect(loadRepoConfig(repo(JSON.stringify({ targetBranch: name }))).targetBranch).toBe(name);
+  });
+  /** It lands in git argv, `--base`, permission rules and prompts, so only a plain name will do. */
+  it("refuses a name that is an option, a full ref, a remote ref, or has odd characters", () => {
+    for (const name of [
+      "-v2",
+      "--force",
+      "refs/heads/v2",
+      "origin/v2",
+      "v 2",
+      " v2",
+      "v2\t",
+      "v2*",
+      "v2;rm",
+      "v2:main",
+      "v~2",
+      "v2)",
+    ]) {
+      const dir = repo(JSON.stringify({ targetBranch: name }));
+      expect(() => loadRepoConfig(dir), JSON.stringify(name)).toThrow(/targetBranch/);
+      // The daemon refuses it the way it refuses any bad key: one line naming the file.
+      const r = loadRepoConfigSafe(dir);
+      expect(r.error, JSON.stringify(name)).toContain(join(dir, ".foreman", "config.json"));
+      expect(r.config.targetBranch).toBeUndefined();
+    }
+  });
 });
 
 describe("resolveTargetBranch", () => {

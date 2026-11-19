@@ -180,13 +180,23 @@ describe("preflight", () => {
     it("passes when origin has the target branch", async () => {
       const { calls, exec } = withRemote(0);
       expect((await preflight(cfg, deps({ exec, targetBranch: "v2" }))).ok).toBe(true);
-      expect(calls).toEqual([`git -C ${noHooksRepo} ls-remote --exit-code --heads origin v2`]);
+      // The full ref, so `release/v2` on origin does not satisfy a target of `v2`.
+      expect(calls).toEqual([
+        `git -C ${noHooksRepo} ls-remote --exit-code --heads origin refs/heads/v2`,
+      ]);
     });
-    it("parks, naming the branch, when origin does not have it", async () => {
+    it("parks, naming the branch, when origin does not have it (exit 2)", async () => {
       const { exec } = withRemote(2);
       expect(await preflight(cfg, deps({ exec, targetBranch: "v2" }))).toEqual({
         ok: false,
         reason: "target branch v2 not found on origin",
+      });
+    });
+    it("parks with a different reason when origin cannot be reached", async () => {
+      const { exec } = withRemote(128);
+      expect(await preflight(cfg, deps({ exec, targetBranch: "v2" }))).toEqual({
+        ok: false,
+        reason: "could not reach origin to check target branch v2",
       });
     });
   });

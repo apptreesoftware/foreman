@@ -66,7 +66,7 @@ import {
   type StopMode,
 } from "./state-file.ts";
 import type { Activity } from "./stream.ts";
-import type { Action, Epic, Issue, Role, Snapshot } from "./types.ts";
+import type { Action, Epic, Issue, PullRequest, Role, Snapshot } from "./types.ts";
 
 /** Activity lands in state.json at most this often; the feed file is appended per event. */
 export const ACTIVITY_FLUSH_MS = 2000;
@@ -184,12 +184,23 @@ export async function ensureLogin(ctx: Ctx): Promise<void> {
   }
 }
 
+/**
+ * Whether an open PR is the foreman's to work: aimed at the target branch, from a branch that is
+ * neither the target nor `main`/`master`. A human "merge main into v2" PR (base v2, head main)
+ * that names a task in its body would otherwise be paired with it: a fix or rebase round would
+ * build its worktree on main and push there, and a merge would delete main with the head branch.
+ */
+export function workablePR(p: PullRequest, target: string): boolean {
+  return p.baseRefName === target && ![target, "main", "master"].includes(p.headRefName);
+}
+
 export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
   const issues = await ctx.gh.listIssues("open");
-  // A PR aimed at any other branch is not the foreman's: dropped here, it is never paired with a
-  // task, reviewed, rebased, rerun or merged, and never moves the idle fingerprint.
+  // A PR aimed at any other branch, or from a protected one, is not the foreman's: dropped here,
+  // it is never paired with a task, reviewed, rebased, rerun or merged, and never moves the idle
+  // fingerprint.
   const prs = (await ctx.gh.listOpenPRs()).filter(
-    (p) => !p.isDraft && p.baseRefName === ctx.targetBranch,
+    (p) => !p.isDraft && workablePR(p, ctx.targetBranch),
   );
   const epics: Epic[] = [];
   for (const e of issues.filter((i) => i.labels.includes("epic"))) {
@@ -422,7 +433,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   }
   const prs = await gh.listOpenPRs();
   const branch =
-    prs.find((p) => p.number === r.pr && p.baseRefName === ctx.targetBranch)?.headRefName ??
+    prs.find((p) => p.number === r.pr && workablePR(p, ctx.targetBranch))?.headRefName ??
     branchFor(r.issue.number, r.issue.title);
   const held: { hook: HookFn | null } = { hook: null };
   let setup: SessionSetup;

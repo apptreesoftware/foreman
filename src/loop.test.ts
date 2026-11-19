@@ -364,6 +364,26 @@ describe("execute", () => {
     expect(branches).toEqual(["feat/1-thing"]);
     expect(inputs[0]).toContain("Never touch v2.");
   });
+  it("claim: a PR whose head is a protected branch never lends it to the worktree", async () => {
+    const i = issue({ number: 1, title: "Thing", status: "In Review" });
+    const { gh } = fakeGh([i]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 9, issue: 1, baseRefName: "v2", headRefName: "main" }),
+    ];
+    const branches: string[] = [];
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: 9, round: 2 },
+      ctx({
+        gh,
+        targetBranch: "v2",
+        ensureWorktree: async (_c, _i, branch) => {
+          branches.push(branch);
+          return "/work/1";
+        },
+      }),
+    );
+    expect(branches).toEqual(["feat/1-thing"]);
+  });
   it("claim: comments, assigns, sets In Progress, dispatches, applies pr_opened", async () => {
     const i = issue({ number: 1 });
     const { gh, calls } = fakeGh([i]);
@@ -1434,6 +1454,22 @@ describe("buildSnapshot", () => {
     const onMain = await buildSnapshot(ctx({ gh }));
     expect(onMain.prs.map((p) => p.number)).toEqual([11]);
     expect(onMain.targetBranch).toBe("main");
+  });
+  /**
+   * A human "merge main into v2" PR has base v2 and head main. Paired with a task, a fix or
+   * rebase round would build its worktree on main and push to it, and a merge would delete it.
+   */
+  it("drops a PR whose head is the target, main or master, and keeps a task branch", async () => {
+    const { gh } = fakeGh([]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 20, issue: 1, baseRefName: "v2", headRefName: "main" }),
+      pr({ number: 21, issue: 1, baseRefName: "v2", headRefName: "v2" }),
+      pr({ number: 22, issue: 1, baseRefName: "v2", headRefName: "master" }),
+      pr({ number: 23, issue: 1, baseRefName: "v2", headRefName: "feat/1-thing" }),
+      pr({ number: 24, issue: 1, baseRefName: "v2", headRefName: "human/sync-docs" }),
+    ];
+    const s = await buildSnapshot(ctx({ gh, targetBranch: "v2" }));
+    expect(s.prs.map((p) => p.number)).toEqual([23, 24]);
   });
 });
 
