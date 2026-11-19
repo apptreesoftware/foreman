@@ -45,8 +45,13 @@ export async function runEpicNew(
     realExec,
     false,
   );
-  if (!(await gh.fileOnDefaultBranch(o.spec)))
-    throw new Error(`${o.spec} is not on the default branch of ${cfg.repo}`);
+  // The spec has to be where the foreman builds: the target branch when the repository names one.
+  if (!(await gh.fileOnDefaultBranch(o.spec, repo.targetBranch)))
+    throw new Error(
+      `${o.spec} is not on ${
+        repo.targetBranch === undefined ? "the default branch" : `branch ${repo.targetBranch}`
+      } of ${cfg.repo}`,
+    );
   const phaseLabel = `phase:${o.phase}`;
   if (!(await gh.listLabels()).includes(phaseLabel))
     await gh.createLabel({ name: phaseLabel, color: "1D76DB", description: `Phase ${o.phase}` });

@@ -533,4 +533,14 @@ describe("GitHub bootstrap calls", () => {
       false,
     );
   });
+  it("fileOnDefaultBranch checks a named branch instead when given a ref", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, exec({ stdout: "abc\n" }, calls), false);
+    expect(await gh.fileOnDefaultBranch("docs/a.md", "v2")).toBe(true);
+    expect(await gh.fileOnDefaultBranch("docs/a.md", "release/v2")).toBe(true);
+    expect(calls.map((c) => c[2])).toEqual([
+      `repos/${cfg.repo}/contents/docs/a.md?ref=v2`,
+      `repos/${cfg.repo}/contents/docs/a.md?ref=release%2Fv2`,
+    ]);
+  });
 });

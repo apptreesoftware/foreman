@@ -506,10 +506,12 @@ export class GitHub {
     ]);
   }
 
-  async fileOnDefaultBranch(path: string): Promise<boolean> {
+  /** Whether `path` exists on the default branch, or on branch `ref` when one is named. */
+  async fileOnDefaultBranch(path: string, ref?: string): Promise<boolean> {
+    const query = ref === undefined ? "" : `?ref=${encodeURIComponent(ref)}`;
     const r = await this.exec("gh", [
       "api",
-      `repos/${this.cfg.repo}/contents/${path}`,
+      `repos/${this.cfg.repo}/contents/${path}${query}`,
       "--jq",
       ".sha",
     ]);
