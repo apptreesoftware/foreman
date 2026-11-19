@@ -69,6 +69,11 @@ export interface Snapshot {
   branchLastCommitAt: Record<number, string | null>; // issue → ISO of last commit on its branch
   /** The branch the foreman builds into; `prs` holds only PRs aimed at it. Absent means `main`. */
   targetBranch?: string;
+  /**
+   * The open non-draft PRs left out of `prs`: aimed at another branch, or from a protected one.
+   * Never worked; read only to tell the owner why a task or plan PR goes nowhere. Absent is none.
+   */
+  offTargetPRs?: PullRequest[];
 }
 
 export type Action =

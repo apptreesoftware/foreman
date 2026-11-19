@@ -241,6 +241,44 @@ describe("applyPlanActions", () => {
     expect(planPR(s("v2"), 200)?.number).toBe(279);
     expect(applyPlanActions(s("main"))).toEqual([{ type: "apply_plan", epic: 200 }]);
   });
+  it("reports a plan PR aimed at another branch once per head commit, and still tries to apply", () => {
+    const off = planPr({ baseRefName: "main" });
+    const s = (issues = [epicIssue], o = off) =>
+      snapshot({ targetBranch: "v2", epics: [approved], issues, prs: [], offTargetPRs: [o] });
+    expect(applyPlanActions(s())).toEqual([
+      {
+        type: "plan_pr_stuck",
+        epic: 200,
+        pr: 279,
+        sha: off.headSha,
+        reason: "targets main, not v2",
+      },
+      { type: "apply_plan", epic: 200 },
+    ]);
+    const reported = issue({
+      ...epicIssue,
+      comments: [comment(fmt.planPrStuck("mac-a", 279, off.headSha, "targets main, not v2"))],
+    });
+    expect(applyPlanActions(s([reported]))).toEqual([{ type: "apply_plan", epic: 200 }]);
+    const pushed = planPr({ baseRefName: "main", headSha: "f".repeat(40) });
+    expect(applyPlanActions(s([reported], pushed))[0]).toMatchObject({
+      type: "plan_pr_stuck",
+      sha: pushed.headSha,
+    });
+  });
+  it("an off-target plan PR says nothing while one on the target is open", () => {
+    const s = snapshot({
+      targetBranch: "v2",
+      epics: [approved],
+      issues: [epicIssue],
+      prs: [planPr({ number: 280, baseRefName: "v2" })],
+      offTargetPRs: [planPr({ baseRefName: "main" })],
+    });
+    expect(applyPlanActions(s)).toEqual([
+      { type: "merge_plan", epic: 200, pr: 280 },
+      { type: "apply_plan", epic: 200 },
+    ]);
+  });
   it("names the target when a plan PR conflicts with it", () => {
     expect(
       applyPlanActions(

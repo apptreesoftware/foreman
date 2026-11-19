@@ -161,6 +161,34 @@ export function targetOf(s: Snapshot): string {
   return s.targetBranch ?? "main";
 }
 
+type Refs = Pick<PullRequest, "baseRefName" | "headRefName">;
+
+/**
+ * Why a PR is not the foreman's to work, or null when it is: aimed at another branch than the
+ * target, or from the target, `main` or `master`. A human "merge main into v2" PR (base v2, head
+ * main) that names a task in its body would otherwise be paired with it: a fix or rebase round
+ * would build its worktree on main and push there, and a merge would delete main with the head.
+ */
+export function offTargetWhy(p: Refs, target: string): string | null {
+  if (p.baseRefName !== target)
+    return `targets ${p.baseRefName || "an unknown base"}, not ${target}`;
+  if ([target, "main", "master"].includes(p.headRefName))
+    return `comes from ${p.headRefName}, a protected branch`;
+  return null;
+}
+
+/**
+ * The `blocked by` reason for a task whose PR is off-target, with the fix the owner makes before
+ * pressing Unblock; null when the PR is the foreman's.
+ */
+export function offTargetBlockReason(p: Refs & { number: number }, target: string): string | null {
+  const why = offTargetWhy(p, target);
+  if (!why) return null;
+  return p.baseRefName !== target
+    ? `PR #${p.number} ${why}; re-aim it (gh pr edit ${p.number} --base ${target}) and press Unblock`
+    : `PR #${p.number} ${why}; open the task's work from its own branch instead, or drop the task from the PR's body, and press Unblock`;
+}
+
 /**
  * The open PR the planner opened for this epic, by the title `planner.md` prescribes:
  * `docs(plan): phase NN plan (#<epic>)`, aimed at the target branch. The newest wins when a
@@ -168,14 +196,16 @@ export function targetOf(s: Snapshot): string {
  */
 export function planPR(s: Snapshot, epic: number): PullRequest | null {
   const target = targetOf(s);
+  return newestPlanPR(
+    s.prs.filter((p) => p.baseRefName === target),
+    epic,
+  );
+}
+
+function newestPlanPR(prs: PullRequest[], epic: number): PullRequest | null {
   return (
-    s.prs
-      .filter(
-        (p) =>
-          p.baseRefName === target &&
-          p.title.startsWith("docs(plan):") &&
-          p.title.includes(`(#${epic})`),
-      )
+    prs
+      .filter((p) => p.title.startsWith("docs(plan):") && p.title.includes(`(#${epic})`))
       .sort((a, b) => b.number - a.number)[0] ?? null
   );
 }
@@ -209,6 +239,19 @@ export function applyPlanActions(s: Snapshot): Action[] {
     if (!ei || openClaim(ei.comments) || !planUnapplied(e, s.issues)) continue;
     const p = planPR(s, e.number);
     if (!p) {
+      // A plan PR aimed at another branch never merges into the target, and nothing else would
+      // say so: told once per head commit, as a red one is. apply_plan still runs, for a plan
+      // that reached the target some other way.
+      const off = newestPlanPR(s.offTargetPRs ?? [], e.number);
+      const why = off && offTargetWhy(off, targetOf(s));
+      if (off && why && !planPrStuckReported(ei.comments, off.number, off.headSha))
+        out.push({
+          type: "plan_pr_stuck",
+          epic: e.number,
+          pr: off.number,
+          sha: off.headSha,
+          reason: why,
+        });
       // Merged already, by hand or on an earlier tick; apply_plan reads the file from origin.
       out.push({ type: "apply_plan", epic: e.number });
       continue;

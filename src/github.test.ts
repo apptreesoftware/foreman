@@ -297,6 +297,24 @@ describe("GitHub reads", () => {
     expect(calls[0]?.join(" ")).toMatch(/--json \S*\bbaseRefName\b/);
     expect(prs[0]?.baseRefName).toBe("");
   });
+  it("prRefs reads one PR's base and head, and nothing else", async () => {
+    const calls: string[][] = [];
+    const exec: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return {
+        code: 0,
+        stdout: JSON.stringify({ baseRefName: "main", headRefName: "feat/2-x" }),
+        stderr: "",
+      };
+    };
+    expect(await new GitHub(cfg, exec, false).prRefs(7)).toEqual({
+      baseRefName: "main",
+      headRefName: "feat/2-x",
+    });
+    expect(calls).toEqual([
+      ["gh", "pr", "view", "7", "--repo", cfg.repo, "--json", "baseRefName,headRefName"],
+    ]);
+  });
   it("resolves status option ids from field-list", async () => {
     const gh = new GitHub(cfg, fakeExec([]), false);
     const f = await gh.statusField();

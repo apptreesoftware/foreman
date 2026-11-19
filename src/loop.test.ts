@@ -81,6 +81,7 @@ function fakeGh(issues: Issue[]) {
     projectFields: async () => ({ projectId: "PVT_1", status: null }),
     setStatusOptions: rec("setStatusOptions"),
     fileOnDefaultBranch: async () => true,
+    prRefs: async () => ({ baseRefName: "main", headRefName: "feat/1-x" }),
   };
   return { gh, calls };
 }
@@ -383,6 +384,68 @@ describe("execute", () => {
       }),
     );
     expect(branches).toEqual(["feat/1-thing"]);
+  });
+  it("pr_opened on a PR aimed at another branch blocks the task instead of moving it to In Review", async () => {
+    const i = issue({ number: 1, title: "Thing" });
+    const { gh, calls } = fakeGh([i]);
+    const asked: number[] = [];
+    gh.prRefs = async (n) => {
+      asked.push(n);
+      return { baseRefName: "main", headRefName: "feat/1-thing" };
+    };
+    const n = recordNotify();
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, notify: n.port, targetBranch: "v2" }),
+    );
+    const reason =
+      "PR #5 targets main, not v2; re-aim it (gh pr edit 5 --base v2) and press Unblock";
+    expect(asked).toEqual([5]);
+    expect(calls).not.toContain("setStatus PVTI_1 In Review");
+    expect(calls).toContain("addLabels issue 1 blocked");
+    expect(calls).toContain(`comment issue 1 blocked by foreman@mac-a: ${reason}`);
+    expect(calls).toContain("unassign 1 matthewtsmith");
+    expect(n.events).toEqual([{ kind: "blocked", issue: 1, title: "Thing", reason }]);
+  });
+  it("pr_opened on a PR from a protected branch blocks the task, even aimed at the target", async () => {
+    const i = issue({ number: 1, title: "Thing" });
+    const { gh, calls } = fakeGh([i]);
+    gh.prRefs = async () => ({ baseRefName: "v2", headRefName: "main" });
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, targetBranch: "v2" }),
+    );
+    expect(calls).not.toContain("setStatus PVTI_1 In Review");
+    expect(calls).toContain("addLabels issue 1 blocked");
+    expect(
+      calls.some((c) =>
+        c.startsWith("comment issue 1 blocked by foreman@mac-a: PR #5 comes from main"),
+      ),
+    ).toBe(true);
+  });
+  it("pr_opened on a PR aimed at the target moves the task to In Review as before", async () => {
+    const i = issue({ number: 1, title: "Thing" });
+    const { gh, calls } = fakeGh([i]);
+    gh.prRefs = async () => ({ baseRefName: "v2", headRefName: "feat/1-thing" });
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, targetBranch: "v2" }),
+    );
+    expect(calls).toContain("setStatus PVTI_1 In Review");
+    expect(calls).not.toContain("addLabels issue 1 blocked");
+  });
+  it("pr_opened still moves to In Review when the PR's base cannot be read", async () => {
+    const i = issue({ number: 1, title: "Thing" });
+    const { gh, calls } = fakeGh([i]);
+    gh.prRefs = async () => {
+      throw new Error("gh: rate limited");
+    };
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, targetBranch: "v2" }),
+    );
+    // The snapshot's off-target rule blocks it on the next tick if the base was wrong after all.
+    expect(calls).toContain("setStatus PVTI_1 In Review");
   });
   it("claim: comments, assigns, sets In Progress, dispatches, applies pr_opened", async () => {
     const i = issue({ number: 1 });
@@ -1470,6 +1533,18 @@ describe("buildSnapshot", () => {
     ];
     const s = await buildSnapshot(ctx({ gh, targetBranch: "v2" }));
     expect(s.prs.map((p) => p.number)).toEqual([23, 24]);
+  });
+  it("keeps the dropped non-draft PRs as off-target, for the rules that say why", async () => {
+    const { gh } = fakeGh([]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 30, issue: 1, baseRefName: "v2" }),
+      pr({ number: 31, issue: 2, baseRefName: "main" }),
+      pr({ number: 32, issue: 3, baseRefName: "v2", headRefName: "main" }),
+      pr({ number: 33, issue: 4, baseRefName: "main", isDraft: true }),
+    ];
+    const s = await buildSnapshot(ctx({ gh, targetBranch: "v2" }));
+    expect(s.prs.map((p) => p.number)).toEqual([30]);
+    expect(s.offTargetPRs?.map((p) => p.number)).toEqual([31, 32]);
   });
 });
 

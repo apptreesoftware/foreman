@@ -30,6 +30,8 @@ import { createNotifier, type NotifyPort, noopNotify } from "./notify.ts";
 import {
   fillPlanBody,
   hasPlanPlaceholder,
+  offTargetBlockReason,
+  offTargetWhy,
   PlanIssuesSchema,
   parseDirectionCritical,
   parseSpecPath,
@@ -207,12 +209,10 @@ export async function ensureLogin(ctx: Ctx): Promise<void> {
 
 /**
  * Whether an open PR is the foreman's to work: aimed at the target branch, from a branch that is
- * neither the target nor `main`/`master`. A human "merge main into v2" PR (base v2, head main)
- * that names a task in its body would otherwise be paired with it: a fix or rebase round would
- * build its worktree on main and push there, and a merge would delete main with the head branch.
+ * neither the target nor `main`/`master` (`offTargetWhy` says why not).
  */
 export function workablePR(p: PullRequest, target: string): boolean {
-  return p.baseRefName === target && ![target, "main", "master"].includes(p.headRefName);
+  return offTargetWhy(p, target) === null;
 }
 
 export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
@@ -221,12 +221,12 @@ export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
   await ensureTargetBranch(ctx);
   if (!ctx.targetBranch) throw new Error(UNRESOLVED_TARGET);
   const issues = await ctx.gh.listIssues("open");
-  // A PR aimed at any other branch, or from a protected one, is not the foreman's: dropped here,
-  // it is never paired with a task, reviewed, rebased, rerun or merged, and never moves the idle
-  // fingerprint.
-  const prs = (await ctx.gh.listOpenPRs()).filter(
-    (p) => !p.isDraft && workablePR(p, ctx.targetBranch),
-  );
+  // A PR aimed at any other branch, or from a protected one, is not the foreman's: kept out of
+  // `prs`, it is never paired with a task, reviewed, rebased, rerun or merged, and never moves the
+  // idle fingerprint. It is kept aside only so the planner can say why its task goes nowhere.
+  const open = (await ctx.gh.listOpenPRs()).filter((p) => !p.isDraft);
+  const prs = open.filter((p) => workablePR(p, ctx.targetBranch));
+  const offTargetPRs = open.filter((p) => !workablePR(p, ctx.targetBranch));
   const epics: Epic[] = [];
   for (const e of issues.filter((i) => i.labels.includes("epic"))) {
     const specPath = parseSpecPath(e.body);
@@ -256,6 +256,7 @@ export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
     epics,
     branchLastCommitAt,
     targetBranch: ctx.targetBranch,
+    offTargetPRs,
   };
 }
 
@@ -752,9 +753,20 @@ async function applyOutcome(
     return;
   }
   switch (res.outcome.outcome) {
-    case "pr_opened":
+    case "pr_opened": {
+      // A PR aimed at another branch would never be paired with the task: In Review, it would
+      // sit there for ever with nothing saying why. Blocked now, the owner sees the fix.
+      const reason = pr === null ? null : await offTargetPrOpened(ctx, pr);
+      if (reason) {
+        await gh.addLabels("issue", n, ["blocked"]);
+        await gh.comment("issue", n, `blocked by foreman@${cfg.host}: ${reason}`);
+        await gh.unassign(n, ctx.login);
+        await ctx.notify.send({ kind: "blocked", issue: n, title: r.issue.title, reason });
+        break;
+      }
       await setStatus(ctx, r.issue, "In Review");
       break;
+    }
     case "blocked":
       await gh.addLabels("issue", n, ["blocked"]);
       await gh.comment("issue", n, `blocked by ${r.role}: ${res.outcome.notes}`);
@@ -811,6 +823,24 @@ async function applyOutcome(
         pr: res.outcome.pr,
       });
       break;
+  }
+}
+
+/**
+ * The block reason when the PR a builder reports is not the foreman's to work, else null. A
+ * failed read is null too: the task goes to In Review as before, and the snapshot's off-target
+ * rule blocks it on the next tick if the base was wrong after all.
+ */
+async function offTargetPrOpened(ctx: Ctx, pr: number): Promise<string | null> {
+  try {
+    const refs = await ctx.gh.prRefs(pr);
+    return offTargetBlockReason({ number: pr, ...refs }, ctx.targetBranch);
+  } catch (e) {
+    log("warn", "could not read the PR's base; moving to In Review unchecked", {
+      pr,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
   }
 }
 

@@ -362,6 +362,22 @@ export class GitHub {
     }));
   }
 
+  /** One PR's base and head branch: what a builder's `pr_opened` is checked against. */
+  async prRefs(n: number): Promise<{ baseRefName: string; headRefName: string }> {
+    const p = JSON.parse(
+      await this.gh([
+        "pr",
+        "view",
+        String(n),
+        "--repo",
+        this.cfg.repo,
+        "--json",
+        "baseRefName,headRefName",
+      ]),
+    ) as { baseRefName?: string; headRefName?: string };
+    return { baseRefName: p.baseRefName ?? "", headRefName: p.headRefName ?? "" };
+  }
+
   /**
    * Reruns the failed jobs of the newest FAILED workflow run for `sha`, and answers with its run id
    * (or null when GitHub has no failed run for that commit). Filtered on `status=failure`, because
@@ -712,6 +728,7 @@ export type GitHubApi = Pick<
   | "listIssues"
   | "getIssue"
   | "listOpenPRs"
+  | "prRefs"
   | "subIssues"
   | "branchLastCommitAt"
   | "setStatus"
