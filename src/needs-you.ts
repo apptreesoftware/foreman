@@ -29,16 +29,19 @@ export function needsYouItems(s: Snapshot): NeedsYouItem[] {
 export type UnblockGh = Pick<GitHubApi, "removeLabels" | "comment" | "setStatus" | "addToProject">;
 
 /**
- * The Unblock gate: the GitHub edits an owner otherwise makes by hand (drop the label, clear the
- * failing verdicts on the PR, set Status Ready) plus a ledger comment, so the picker considers the
- * issue again on the next tick. The issue is not un-assigned or re-labelled `agent-ready` —
- * whatever the builder left is what the next session picks up.
+ * The GitHub edits an owner otherwise makes by hand to unblock an issue: drop the label, clear
+ * the failing verdicts on the PR, set Status Ready. The issue is not un-assigned or re-labelled
+ * `agent-ready` — whatever the builder left is what the next session picks up.
+ *
+ * `blockedLast` drops `blocked` after every other edit, so a failure partway through leaves the
+ * issue still blocked; the owner's Unblock keeps the original order.
  */
-export async function applyUnblock(
+export async function unblockEdits(
   gh: UnblockGh,
-  i: { issue: number; itemId: string | null; host: string; pr: number | null },
-): Promise<string> {
-  await gh.removeLabels("issue", i.issue, ["blocked"]);
+  i: { issue: number; itemId: string | null; pr: number | null },
+  opts: { blockedLast?: boolean } = {},
+): Promise<void> {
+  if (!opts.blockedLast) await gh.removeLabels("issue", i.issue, ["blocked"]);
   // The fix-round count stays spent, so a `reviewer:changes` or `validator:failed` left on the PR
   // re-blocks the issue the moment the builder's push returns it to In Review, before any verdict
   // on the new commit. Cleared, the next verdict decides.
@@ -46,6 +49,18 @@ export async function applyUnblock(
   // An issue that is somehow off the project board has no status to set until it is on it.
   const itemId = i.itemId ?? (await gh.addToProject(i.issue));
   await gh.setStatus(itemId, "Ready");
+  if (opts.blockedLast) await gh.removeLabels("issue", i.issue, ["blocked"]);
+}
+
+/**
+ * The Unblock gate: `unblockEdits` plus a ledger comment, so the picker considers the issue again
+ * on the next tick.
+ */
+export async function applyUnblock(
+  gh: UnblockGh,
+  i: { issue: number; itemId: string | null; host: string; pr: number | null },
+): Promise<string> {
+  await unblockEdits(gh, i);
   await gh.comment("issue", i.issue, fmt.unblocked(i.host));
   return `#${i.issue} unblocked and moved to Ready; the next tick may claim it`;
 }

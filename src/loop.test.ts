@@ -28,7 +28,7 @@ import {
 import type { LabelledIssue, NotifyEvent, NotifyPort } from "./notify.ts";
 import { defaultRepoConfig } from "./repo-config.ts";
 import { plan } from "./state.ts";
-import type { Issue } from "./types.ts";
+import type { ClosedDecision, Issue } from "./types.ts";
 
 const cfg = parseConfig(
   JSON.stringify({
@@ -41,7 +41,7 @@ const cfg = parseConfig(
   }),
 );
 
-function fakeGh(issues: Issue[]) {
+function fakeGh(issues: Issue[], closedDecisions: ClosedDecision[] = []) {
   const calls: string[] = [];
   const rec =
     (name: string) =>
@@ -52,9 +52,14 @@ function fakeGh(issues: Issue[]) {
     dryRun: false,
     listIssues: async () => issues,
     getIssue: async (n) => issues.find((i) => i.number === n) as Issue,
+    listClosedDecisions: async (since: string) => {
+      calls.push(`listClosedDecisions ${since}`);
+      return closedDecisions;
+    },
     listOpenPRs: async () => [],
     subIssues: async () => [],
     branchLastCommitAt: async () => null,
+    hasWriteAccess: async () => true,
     setStatus: rec("setStatus"),
     addToProject: async () => "PVTI_new",
     comment: rec("comment"),
@@ -2154,6 +2159,61 @@ describe("notifications", () => {
     await runOnce(ctx({ gh, exec: okExec, notify: n.port, stateDir: tmp() }));
     expect(n.decisions).toEqual([[1, 40]]);
     expect(n.parked).toEqual([null]);
+  });
+
+  const settledFixture = () => {
+    const task = issue({
+      number: 5,
+      labels: ["phase:1", "blocked"],
+      comments: [comment("blocked by builder: see #40", hoursAgo(4))],
+    });
+    return fakeGh(
+      [task],
+      [
+        {
+          number: 40,
+          author: "acme",
+          body: "Blocks: #5",
+          stateReason: "COMPLETED",
+          createdAt: hoursAgo(5),
+          closedAt: hoursAgo(1),
+          comments: [comment("Settled: B — Use REST", hoursAgo(1))],
+        },
+      ],
+    );
+  };
+
+  it("runOnce resumes a task whose decision was settled, and counts it as work", async () => {
+    const { gh, calls } = settledFixture();
+    const out = await runOnce(
+      ctx({ gh, exec: okExec, notify: recordNotify().port, stateDir: tmp() }),
+    );
+    // Work resets the idle backoff, so the claim follows on the next poll.
+    expect(out.didWork).toBe(true);
+    expect(calls).toContain("removeLabels issue 5 blocked");
+    expect(calls).toContain("setStatus PVTI_5 Ready");
+    expect(calls).toContain(
+      "comment issue 5 decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
+    );
+  });
+
+  it("a dry-run decision resume is not work", async () => {
+    const { gh } = settledFixture();
+    const out = await runOnce(
+      ctx({ gh, exec: okExec, notify: recordNotify().port, stateDir: tmp(), dryRun: true }),
+    );
+    expect(out.didWork).toBe(false);
+  });
+
+  it("runOnce survives a failed decision read", async () => {
+    const task = issue({ number: 5, labels: ["phase:1", "blocked"] });
+    const { gh } = fakeGh([task]);
+    gh.listClosedDecisions = async () => {
+      throw new Error("gh issue list failed (1): HTTP 502");
+    };
+    await expect(
+      runOnce(ctx({ gh, exec: okExec, notify: recordNotify().port, stateDir: tmp() })),
+    ).resolves.toBeDefined();
   });
 
   it("a failed preflight parks with its reason and skips the decision sync", async () => {

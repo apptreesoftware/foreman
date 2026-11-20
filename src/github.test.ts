@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Exec, ExecResult } from "./exec.ts";
 import {
   effortOf,
@@ -542,6 +542,70 @@ describe("GitHub bootstrap calls", () => {
     expect(query).toContain('{name: "B", color: GRAY');
   });
 
+  it("hasWriteAccess is true for admin or write, false for read, none or not found", async () => {
+    const calls: string[][] = [];
+    expect(
+      await new GitHub(cfg, exec({ stdout: "admin\n" }, calls), false).hasWriteAccess("jane"),
+    ).toBe(true);
+    expect(calls[0]).toEqual([
+      "gh",
+      "api",
+      `repos/${cfg.repo}/collaborators/jane/permission`,
+      "--jq",
+      ".permission",
+    ]);
+    const answer = async (r: Partial<ExecResult>) =>
+      new GitHub(cfg, exec(r), false).hasWriteAccess("jane");
+    expect(await answer({ stdout: "write\n" })).toBe(true);
+    expect(await answer({ stdout: "read\n" })).toBe(false);
+    expect(await answer({ stdout: "none\n" })).toBe(false);
+    expect(
+      await answer({
+        code: 1,
+        stdout: '{"message":"jane is not a user","status":"404"}',
+        stderr: "gh: jane is not a user (HTTP 404)",
+      }),
+    ).toBe(false);
+  });
+
+  it("hasWriteAccess is unknown when the lookup fails for any other reason", async () => {
+    const answer = async (r: Partial<ExecResult>) =>
+      new GitHub(cfg, exec(r), false).hasWriteAccess("jane");
+    expect(await answer({ code: 1, stderr: "gh: Server Error (HTTP 502)" })).toBe("unknown");
+    expect(await answer({ code: 1, stderr: "gh: API rate limit exceeded (HTTP 403)" })).toBe(
+      "unknown",
+    );
+    expect(await answer({ code: 1, stderr: "error connecting to api.github.com" })).toBe("unknown");
+    expect(
+      await answer({
+        code: 1,
+        stderr: "gh: You have exceeded a secondary rate limit. Please wait (HTTP 403)",
+      }),
+    ).toBe("unknown");
+  });
+
+  it("hasWriteAccess is false, with a warning, on a 403 that is not a rate limit", async () => {
+    const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      const r = { code: 1, stderr: "gh: Resource not accessible by integration (HTTP 403)" };
+      expect(await new GitHub(cfg, exec(r), false).hasWriteAccess("jane")).toBe(false);
+      const logged = out.mock.calls.map((c) => String(c[0])).join("");
+      expect(logged).toContain('"level":"warn"');
+      expect(logged).toContain("token or configuration");
+      expect(logged).toContain('"login":"jane"');
+    } finally {
+      out.mockRestore();
+    }
+  });
+
+  it("hasWriteAccess asks nothing for a login that cannot name a user", async () => {
+    const calls: string[][] = [];
+    const gh = new GitHub(cfg, exec({ stdout: "admin\n" }, calls), false);
+    expect(await gh.hasWriteAccess("")).toBe(false);
+    expect(await gh.hasWriteAccess("../../orgs/acme")).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
   it("fileOnDefaultBranch is the contents API's exit code", async () => {
     const calls: string[][] = [];
     const gh = new GitHub(cfg, exec({ stdout: "abc\n" }, calls), false);
@@ -559,6 +623,110 @@ describe("GitHub bootstrap calls", () => {
     expect(calls.map((c) => c[2])).toEqual([
       `repos/${cfg.repo}/contents/docs/a.md?ref=v2`,
       `repos/${cfg.repo}/contents/docs/a.md?ref=release%2Fv2`,
+    ]);
+  });
+});
+
+describe("listClosedDecisions", () => {
+  it("reads closed decision issues since a date and maps their comments", async () => {
+    const calls: string[][] = [];
+    const exec: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return {
+        code: 0,
+        stderr: "",
+        stdout: JSON.stringify([
+          {
+            number: 40,
+            author: { login: "acme" },
+            body: "## Question\nX?\n\nBlocks: #5",
+            stateReason: "COMPLETED",
+            createdAt: "2026-09-02T09:00:00Z",
+            closedAt: "2026-09-03T11:00:00Z",
+            comments: [
+              { author: { login: "jane" }, body: "Settled: B", createdAt: "2026-09-03T10:59:00Z" },
+            ],
+          },
+          {
+            number: 41,
+            author: null,
+            body: null,
+            stateReason: "",
+            createdAt: "2026-09-01T09:00:00Z",
+            closedAt: "2026-09-02T11:00:00Z",
+            comments: [{ author: null, body: "noted", createdAt: "2026-09-02T10:00:00Z" }],
+          },
+        ]),
+      };
+    };
+    const out = await new GitHub(cfg, exec, false).listClosedDecisions("2026-08-27");
+    expect(calls).toEqual([
+      [
+        "gh",
+        "issue",
+        "list",
+        "--repo",
+        "acme/widgets",
+        "--label",
+        "decision",
+        "--state",
+        "closed",
+        "--search",
+        "closed:>=2026-08-27",
+        "--limit",
+        "100",
+        "--json",
+        "number,author,body,stateReason,createdAt,closedAt,comments",
+      ],
+    ]);
+    expect(out).toEqual([
+      {
+        number: 40,
+        author: "acme",
+        body: "## Question\nX?\n\nBlocks: #5",
+        stateReason: "COMPLETED",
+        createdAt: "2026-09-02T09:00:00Z",
+        closedAt: "2026-09-03T11:00:00Z",
+        comments: [{ author: "jane", body: "Settled: B", createdAt: "2026-09-03T10:59:00Z" }],
+      },
+      {
+        number: 41,
+        author: "",
+        body: "",
+        stateReason: null,
+        createdAt: "2026-09-01T09:00:00Z",
+        closedAt: "2026-09-02T11:00:00Z",
+        comments: [{ author: "", body: "noted", createdAt: "2026-09-02T10:00:00Z" }],
+      },
+    ]);
+  });
+
+  it("reads every decision closed as not planned, with no date bound", async () => {
+    const calls: string[][] = [];
+    const exec: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return { code: 0, stderr: "", stdout: "[]" };
+    };
+    const gh = new GitHub(cfg, exec, false);
+    expect(await gh.listClosedDecisions("2026-08-27", { notPlanned: true })).toEqual([]);
+    expect(calls).toEqual([
+      [
+        "gh",
+        "issue",
+        "list",
+        "--repo",
+        "acme/widgets",
+        "--label",
+        "decision",
+        "--state",
+        "closed",
+        "--search",
+        'reason:"not planned" sort:created-desc',
+        "--limit",
+        "100",
+        "--json",
+        "number,author,body,stateReason,createdAt,closedAt,comments",
+      ],
     ]);
   });
 });

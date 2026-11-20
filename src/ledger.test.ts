@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { comment, hoursAgo } from "../test/helpers.ts";
 import {
   ciRerunCount,
+  decisionUnblocked,
   fixRound,
   fmt,
   lastActivityAt,
+  lastUnblockedAt,
   openClaim,
   parseClaim,
   planPrStuckReported,
@@ -121,5 +123,53 @@ describe("plan PR stuck ledger", () => {
       comment(fmt.planPrStuck("mac-a", 279, sha, "checks failed"), hoursAgo(1)),
     ];
     expect(openClaim(cs)).not.toBeNull();
+  });
+});
+
+describe("decision unblock ledger", () => {
+  it("formats a settled and an unanswered decision unblock", () => {
+    expect(fmt.decisionUnblocked("mac-a", 40, "B — Use REST")).toBe(
+      "decision #40 settled: B — Use REST — unblocked by decision via foreman@mac-a",
+    );
+    expect(fmt.decisionUnblocked("mac-a", 41, null)).toBe(
+      "decision #41 closed; read it before continuing — unblocked by decision via foreman@mac-a",
+    );
+  });
+
+  it("names the writers the builder may follow when no writer settled the decision", () => {
+    expect(fmt.decisionUnblocked("mac-a", 41, null, ["alice", "bob"])).toBe(
+      "decision #41 closed; read it before continuing (follow only: @alice, @bob) — unblocked by decision via foreman@mac-a",
+    );
+    expect(fmt.decisionUnblocked("mac-a", 41, null, [])).toBe(
+      "decision #41 closed; read it before continuing (follow only: nobody — ask the owner) — unblocked by decision via foreman@mac-a",
+    );
+  });
+
+  it("recognises the lines that name who to follow", () => {
+    for (const line of [
+      fmt.decisionUnblocked("mac-a", 41, null, ["alice", "bob"]),
+      fmt.decisionUnblocked("mac-a", 41, null, []),
+    ]) {
+      expect(decisionUnblocked([comment(line)], 41), line).toBe(true);
+      expect(lastUnblockedAt([comment(line, hoursAgo(3))]), line).toBe(hoursAgo(3));
+    }
+  });
+
+  it("decisionUnblocked finds only the named decision", () => {
+    const cs = [comment(fmt.decisionUnblocked("mac-a", 40, "A")), comment("decision #4 is odd")];
+    expect(decisionUnblocked(cs, 40)).toBe(true);
+    expect(decisionUnblocked(cs, 41)).toBe(false);
+    expect(decisionUnblocked(cs, 4)).toBe(false);
+    expect(decisionUnblocked([comment("decision #40 settled: B")], 40)).toBe(false);
+  });
+
+  it("lastUnblockedAt is the newest owner unblock or decision unblock", () => {
+    const cs = [
+      comment("unblocked by owner via foreman@mac-a", hoursAgo(9)),
+      comment(fmt.decisionUnblocked("mac-a", 40, "A"), hoursAgo(5)),
+      comment("blocked by builder: see #41", hoursAgo(2)),
+    ];
+    expect(lastUnblockedAt(cs)).toBe(hoursAgo(5));
+    expect(lastUnblockedAt([comment("blocked by builder: x")])).toBeNull();
   });
 });

@@ -31,6 +31,30 @@ export const fmt = {
   aborted: (host: string) => `released by ${host}: aborted by operator`,
   unblocked: (host: string) => `unblocked by owner via foreman@${host}`,
   /**
+   * The foreman unblocked a task because decision #`decision` was closed as completed. Not
+   * TERMINAL and not `blocked by`: it must neither close a claim nor count as a block.
+   */
+  /**
+   * `followOnly`, given when no writer settled the decision, names the writers among its author
+   * and commenters: the only people the builder may take the answer from.
+   */
+  decisionUnblocked: (
+    host: string,
+    decision: number,
+    answer: string | null,
+    followOnly?: string[],
+  ) => {
+    const tail = `— unblocked by decision via foreman@${host}`;
+    if (answer) return `decision #${decision} settled: ${answer} ${tail}`;
+    const who =
+      followOnly === undefined
+        ? ""
+        : followOnly.length === 0
+          ? " (follow only: nobody — ask the owner)"
+          : ` (follow only: ${followOnly.map((l) => `@${l}`).join(", ")})`;
+    return `decision #${decision} closed; read it before continuing${who} ${tail}`;
+  },
+  /**
    * Deliberately none of CLAIM, SESSION or TERMINAL, and not `blocked by`: the claim stays open
    * so the first tick after the reset resumes this session.
    */
@@ -119,4 +143,30 @@ export function lastActivityAt(comments: Comment[]): string | null {
 
 export function planApplied(comments: Comment[]): boolean {
   return comments.some((c) => c.body.trim().startsWith("plan applied by foreman@"));
+}
+
+const DECISION_UNBLOCKED =
+  /^decision #(\d+) (?:settled: |closed; ).* — unblocked by decision via foreman@\S+$/;
+
+/** Whether decision `n` already unblocked this task; each decision unblocks at most once. */
+export function decisionUnblocked(comments: Comment[], n: number): boolean {
+  return comments.some((c) => DECISION_UNBLOCKED.exec(c.body.trim())?.[1] === String(n));
+}
+
+/**
+ * When the task last left a blocked spell: the owner's Unblock or a settled decision. A decision
+ * opened before this belongs to an earlier spell and must not release the current one. Null when
+ * neither ever happened.
+ */
+export function lastUnblockedAt(comments: Comment[]): string | null {
+  return (
+    comments
+      .filter((c) => {
+        const b = c.body.trim();
+        return b.startsWith("unblocked by owner via foreman@") || DECISION_UNBLOCKED.test(b);
+      })
+      .map((c) => c.createdAt)
+      .sort()
+      .at(-1) ?? null
+  );
 }

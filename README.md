@@ -245,9 +245,9 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
    number, then rebase, review and validate jobs before fix rounds, then new builds; among builds,
    one whose **Touches** section overlaps an issue that already has an open PR sorts after one
    that does not, then `size:S` before `M` before `L`. A phase with `limits.blockedPerPhase` (2)
-   or more open `blocked` tasks starts **no new builds** until the owner unblocks one — review,
-   fix, validate and rebase jobs still run there — because every blocked task is owner work and
-   stacking more branches on the same files only breeds conflicts.
+   or more open `blocked` tasks starts **no new builds** until one is unblocked, by the owner or
+   a settled decision — review, fix, validate and rebase jobs still run there — because every
+   blocked task is owner work and stacking more branches on the same files only breeds conflicts.
 7. **Claim.** The foreman comments `claimed by <host> at <iso> role=<role> round=<n>`, assigns
    itself, and (for a first-round build) sets Status In Progress. If another host's claim comment
    landed in the same window, the alphabetically first host keeps it; the others comment `released
@@ -319,6 +319,7 @@ plan on retry instead of duplicating it.
 |---|---|
 | builder `pr_opened` | issue → In Review |
 | builder `blocked` | issue `blocked`, unassigned |
+| (foreman) `decision` issue with `Blocks: #N` closed as completed | #N unblocked → Ready, `decision #<d> settled: <answer> — unblocked by decision via foreman@<host>` |
 | reviewer `approved` / `changes_requested` | PR `reviewer:approved` / `reviewer:changes` |
 | validator `passed` / `failed` | PR `validator:passed` / `validator:failed` |
 | (foreman) issue carries a `validator.skipLabels` label | PR `validator:skipped` |
@@ -398,6 +399,8 @@ reclaimed from <host> by <host> at <iso>
 merged by foreman@<host>
 ci rerun by foreman@<host> for <sha>
 unblocked by owner via foreman@<host>
+decision #<d> settled: <answer> — unblocked by decision via foreman@<host>
+decision #<d> closed; read it before continuing (follow only: @<login>, …) — unblocked by decision via foreman@<host>
 plan PR #<pr> cannot merge at <sha>: <reason>. Fix it or merge it by hand (foreman@<host>)
 ```
 
@@ -828,6 +831,40 @@ All of these work from any terminal on the Mac. Inside a configured `repoDir` yo
   `validator:failed` from the issue's PR, sets Status **Ready** and comments
   `unblocked by owner via foreman@<host>` — fix whatever caused the block first, because nothing
   else about the issue changes.
+- **Settled decisions unblock their task:** a builder's decision issue ends in
+  `Blocks: #<issue>`. Close it as **completed** and, on its next tick, the foreman does what
+  Unblock does to that issue and comments
+  `decision #<d> settled: <answer> — unblocked by decision via foreman@<host>`, quoting the first
+  comment that starts `Settled: ` from someone with write access to the repository (anyone
+  else's is ignored). When there is none it comments
+  `decision #<d> closed; read it before continuing (follow only: @<login>, …)`, naming the
+  writers among the decision's author and commenters (`nobody — ask the owner` when there are
+  none); the builder follows only what they wrote, and when that does not settle it opens a
+  new decision linking this one and returns `blocked`. The builder trusts a `decision #<d> …`
+  line only from the login that posted its own `session …` line, and acts only on the ones
+  posted since the task's latest `blocked by …` line, so an Unblock is never undone by an old
+  one. Write access is looked up once per person per tick, only on a tick that resumes
+  something; if GitHub cannot answer (rate limit, outage) that task waits for the next tick,
+  while a refusal that is not a rate limit counts as no write access and is logged as a token
+  or configuration problem. Closing a decision as completed without a `Settled:` comment from
+  someone with write access means: go with its recommendation. Close it as not planned to keep
+  the task blocked; that wins over a completed
+  one, so if any decision opened since the task was last unblocked was closed as not planned, the
+  task stays blocked even when another decision for it was completed, however long ago the
+  not-planned one was closed. It waits while another open decision still names the same task, or
+  while a role session still holds a claim on the task; it ignores completed decisions closed
+  more than about a week ago (the cutoff is a calendar date, so the window is 7–8 days) and any
+  decision opened before the task was last unblocked. It writes those ledger lines
+  first, then clears the PR's failing verdicts and sets Status Ready, and lifts the block last, so
+  any failure leaves the task blocked with the answer recorded, ready for Unblock. Decisions
+  written before this layout have no `Blocks:` line and still need Unblock.
+
+  **Known gaps:** removing `blocked` by hand on GitHub, rather than through Unblock, writes no
+  ledger line. In that case a settled decision from before can release a later, unrelated block.
+  Two foremen on one repository can both unblock the same task, which writes duplicate ledger
+  lines and is harmless. There is also a narrow window where another Mac unblocks a task between
+  this Mac's builder session finishing and this Mac recording the builder's block; the task is
+  then blocked again and needs Unblock.
 - **Stop the launchd agent entirely:** `launchctl bootout gui/$(id -u)/com.apptreesoftware.foreman.widgets`,
   or `foreman -p widgets launchd uninstall`.
 

@@ -7,7 +7,16 @@ import {
   MODEL_LABEL_PREFIX,
   ModelSchema,
 } from "./state-file.ts";
-import type { CheckState, Comment, Issue, Mergeable, PullRequest, Size, Status } from "./types.ts";
+import type {
+  CheckState,
+  ClosedDecision,
+  Comment,
+  Issue,
+  Mergeable,
+  PullRequest,
+  Size,
+  Status,
+} from "./types.ts";
 
 export interface GhConfig {
   repo: string;
@@ -319,6 +328,58 @@ export class GitHub {
     return this.toIssue(raw);
   }
 
+  /**
+   * `decision` issues closed on or after `since` (YYYY-MM-DD), with the open and close times and
+   * close reason the resume needs. With `notPlanned`, `since` is ignored and the read is instead
+   * every `decision` issue closed as not planned, however long ago: one of those holds its task
+   * blocked even when it closed before the dated window. `gh issue list --search` is one GraphQL
+   * `search` query of at most 100 issues, so it does spend the hourly GraphQL budget; the loop
+   * only calls it on a tick that has a blocked issue to resume.
+   */
+  async listClosedDecisions(
+    since: string,
+    opts: { notPlanned?: boolean } = {},
+  ): Promise<ClosedDecision[]> {
+    const raw = JSON.parse(
+      await this.gh([
+        "issue",
+        "list",
+        "--repo",
+        this.cfg.repo,
+        "--label",
+        "decision",
+        "--state",
+        "closed",
+        "--search",
+        // Capped at 100 below; newest first, so a recent one is never the one left out.
+        opts.notPlanned ? 'reason:"not planned" sort:created-desc' : `closed:>=${since}`,
+        "--limit",
+        "100",
+        "--json",
+        "number,author,body,stateReason,createdAt,closedAt,comments",
+      ]),
+    ) as Array<{
+      number: number;
+      author: { login: string } | null;
+      body: string | null;
+      stateReason: string | null;
+      createdAt: string;
+      closedAt: string;
+      comments: Array<{ author: { login: string } | null; body: string; createdAt: string }>;
+    }>;
+    return raw.map((i) => ({
+      number: i.number,
+      author: i.author?.login ?? "",
+      body: i.body ?? "",
+      stateReason: i.stateReason || null,
+      createdAt: i.createdAt,
+      closedAt: i.closedAt,
+      comments: i.comments.map(
+        (c): Comment => ({ author: c.author?.login ?? "", body: c.body, createdAt: c.createdAt }),
+      ),
+    }));
+  }
+
   async listOpenPRs(): Promise<PullRequest[]> {
     const raw = JSON.parse(
       await this.gh([
@@ -520,6 +581,35 @@ export class GitHub {
       "-f",
       `query=mutation { updateProjectV2Field(input: {fieldId: "${fieldId}", singleSelectOptions: [${options}]}) { projectV2Field { ... on ProjectV2SingleSelectField { id } } } }`,
     ]);
+  }
+
+  /**
+   * Whether `login` may write to the repository: collaborator permission `admin` or `write`
+   * (`maintain` reports as `write` in that field). A read. False when GitHub says so: any other
+   * permission, a 404 (no such user), a 403 that is not a rate limit (the token or the
+   * repository's settings refuse the lookup, which no retry fixes; logged as a warning), or a
+   * login that is not a plain GitHub username, which is never sent. `"unknown"` when the lookup
+   * fails any other way (rate limit, 5xx, network), so the caller can retry rather than treat a
+   * hiccup as a no.
+   */
+  async hasWriteAccess(login: string): Promise<boolean | "unknown"> {
+    if (!/^[A-Za-z0-9-]+$/.test(login)) return false;
+    const r = await this.exec("gh", [
+      "api",
+      `repos/${this.cfg.repo}/collaborators/${login}/permission`,
+      "--jq",
+      ".permission",
+    ]);
+    if (r.code === 0) return ["admin", "maintain", "write"].includes(r.stdout.trim());
+    if (/\(HTTP 404\)/.test(r.stderr)) return false;
+    if (/\(HTTP 403\)/.test(r.stderr) && !/rate limit/i.test(r.stderr)) {
+      log("warn", "write-access lookup refused (HTTP 403): a token or configuration problem", {
+        login,
+        error: r.stderr.trim(),
+      });
+      return false;
+    }
+    return "unknown";
   }
 
   /** Whether `path` exists on the default branch, or on branch `ref` when one is named. */
@@ -727,6 +817,7 @@ export type GitHubApi = Pick<
   GitHub,
   | "listIssues"
   | "getIssue"
+  | "listClosedDecisions"
   | "listOpenPRs"
   | "prRefs"
   | "subIssues"
@@ -754,6 +845,7 @@ export type GitHubApi = Pick<
   | "projectFields"
   | "setStatusOptions"
   | "fileOnDefaultBranch"
+  | "hasWriteAccess"
   | "dryRun"
 >;
 
