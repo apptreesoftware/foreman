@@ -513,8 +513,12 @@ Base and repository `allow` lists are concatenated and deduplicated, and so are 
 then anything on the combined deny list is removed from the allow list. **A repository rule can
 add to either list but can never remove a base deny.** The base file denies `gh pr merge`, `gh pr
 close`, `gh api`, pushes to the default branch, force pushes, `git worktree remove`, `sudo`, `rm
--rf` of home, and reads of `~/.ssh`, `~/.aws` and `~/.claude*`. Anything stack-specific — `pnpm`,
-`docker`, a browser MCP — is not in the base file; add it here.
+-rf` of home, and reads of `~/.ssh`, `~/.aws`, `~/.claude.json` and everything under `~/.claude`
+except `~/.claude/plugins/cache`, `~/.claude/plugins/marketplaces`, `~/.claude/skills` and
+`~/.claude/CLAUDE.md`. Those stay readable because a skill a session loads tells it to read the
+skill's own reference files, and they are installed there. Credentials, settings, transcripts,
+shell snapshots and plugin data stay denied. Anything stack-specific — `pnpm`, `docker`, a browser
+MCP — is not in the base file; add it here.
 
 The foreman also appends four denies of its own, per dispatch, for the session's own worktree:
 `Edit`/`Write` of `<worktree>/.foreman/**` and `<worktree>/.claude/**`. A session cannot widen the
