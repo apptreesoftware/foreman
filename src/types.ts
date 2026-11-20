@@ -31,6 +31,11 @@ export interface PullRequest {
   body: string;
   headRefName: string;
   /**
+   * The branch the PR merges into. Only PRs aimed at the target branch are the foreman's; empty
+   * when GitHub did not say, which no target matches.
+   */
+  baseRefName: string;
+  /**
    * The head commit. A CI rerun is budgeted per sha, so a new push starts the count over
    * on its own without anything having to remember what the last one was.
    */
@@ -62,6 +67,13 @@ export interface Snapshot {
   prs: PullRequest[]; // open, non-draft
   epics: Epic[];
   branchLastCommitAt: Record<number, string | null>; // issue → ISO of last commit on its branch
+  /** The branch the foreman builds into; `prs` holds only PRs aimed at it. Absent means `main`. */
+  targetBranch?: string;
+  /**
+   * The open non-draft PRs left out of `prs`: aimed at another branch, or from a protected one.
+   * Never worked; read only to tell the owner why a task or plan PR goes nowhere. Absent is none.
+   */
+  offTargetPRs?: PullRequest[];
 }
 
 export type Action =
@@ -76,7 +88,7 @@ export type Action =
       role: Role;
       pr: number | null;
       round: number;
-      /** A builder round that only merges origin/main; does not count as a fix round. */
+      /** A builder round that only merges origin/<target>; does not count as a fix round. */
       rebase?: boolean;
     }
   | { type: "release"; issue: number; reason: string }

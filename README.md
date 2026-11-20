@@ -128,7 +128,8 @@ Open the phase epic — the one human-made issue per phase, and the only entry p
 foreman -p widgets epic new --title "Phase 1: accounts" --phase 1 --spec docs/specs/accounts.md --agent-ready
 ```
 
-The spec path must exist on the default branch and match `plans.specGlob`. The issue is created
+The spec path must exist on the target branch (the default branch, unless `targetBranch` names
+another) and match `plans.specGlob`. The issue is created
 with labels `epic`, `phase:1` and (with `--agent-ready`) `agent-ready`, body `## Spec\n<path>`, and
 added to the board at **Backlog**. Without `--agent-ready` the planner will not touch it until you
 add the label by hand — that is the go-ahead.
@@ -163,6 +164,44 @@ names — so the API-billing variables never reach it; and if one is set anyway,
 to start and exits 2. The `PATH` includes the directory of the `node` that ran `launchd install`,
 so role sessions on an `nvm`-only Mac still find `node` and `npx`.
 
+### Building on a branch other than the default
+
+By default the foreman builds into the repository's GitHub default branch. To build a long-lived
+branch instead — a `v2` rewrite while `main` keeps shipping — set `targetBranch` in
+`.foreman/config.json`. Worktrees then start from `origin/v2`, builder and planner PRs open with
+`--base v2`, the rebase and fix rounds merge `origin/v2`, approved plans are read from `origin/v2`,
+and `foreman epic new` looks for the spec on `v2`. A pull request aimed at any other branch is
+ignored entirely: never paired with a task, reviewed, rebased, rerun or merged, even when its body
+says `Closes #N` for a foreman task. Role sessions are denied pushing to, checking out, switching
+to and deleting `v2`, as they are `main` and `master`.
+
+Give the daemon a dedicated clone checked out on the target branch, and commit `.foreman/` only
+there, so the default branch never sees it:
+
+```bash
+git clone git@github.com:acme/widgets.git ~/Projects/widgets-v2
+git -C ~/Projects/widgets-v2 switch v2
+foreman add widgets-v2 --repo acme/widgets --repo-dir ~/Projects/widgets-v2
+foreman -p widgets-v2 init
+# add "targetBranch": "v2" to .foreman/config.json, then commit .foreman/ on v2 and push
+```
+
+Never point this instance at the clone another instance serves; that rule holds here as anywhere.
+
+Until `v2` exists on GitHub the daemon parks, and preflight says
+`target branch v2 not found on origin`.
+
+Three limits come with building on a branch other than the default:
+
+- **CI must run on pull requests to the target branch.** A workflow filtered to
+  `pull_request: branches: [main]` never reports on a PR to `v2`: task PRs sit at `checks none`
+  and are never merged, and plan PRs, which merge on `checks none`, merge unchecked.
+- **`Closes #N` does not close or link the issue.** GitHub honours it only for PRs into the default
+  branch. The foreman closes the issue itself after every merge, as it always does, so the board
+  is unaffected; the PR just does not show as linked on the issue.
+- **Branch protection can refuse the merge.** A rule on `v2` that the foreman's `gh` login cannot
+  satisfy makes `gh pr merge` fail, and that shows up as a failed tick.
+
 ## 4. The process
 
 Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
@@ -170,11 +209,13 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
 1. **Preflight.** Refuses to run if an API-billing environment variable is set, if
    `~/.foreman/<name>/STOP` exists, if `claude auth status` is not a `claude.ai` login, if `gh auth
    status` fails or its token lacks the `project` scope, if GitHub reports fewer than
-   `minGraphqlPoints` GraphQL points left, or if today's session count has reached
-   `maxSessionsPerDay`. Then it runs the repository's `preflight` hook (§5).
+   `minGraphqlPoints` GraphQL points left, if a configured `targetBranch` is not on `origin` (or,
+   with none configured, GitHub has not yet said what the default branch is), or if today's
+   session count has reached `maxSessionsPerDay`. Then it runs the repository's
+   `preflight` hook (§5).
 2. **Resume check.** If an issue on the board is In Progress and claimed by this host, that
    session is resumed instead of anything new being picked.
-3. **Merge sweep.** For every open, non-draft PR whose issue is In Review: if CI is green, the PR
+3. **Merge sweep.** For every open, non-draft PR into the target branch whose issue is In Review: if CI is green, the PR
    carries `reviewer:approved`, and it carries `validator:passed` or `validator:skipped`, the
    foreman squash-merges, closes the issue, sets Status Done and comments `merged by
    foreman@<host>`.
@@ -190,7 +231,7 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
    (no `plan applied by foreman@<host>` comment), the foreman looks for its open plan PR, titled
    `docs(plan): phase NN plan (#<epic>)`. Green checks, or none at all: it squash-merges the PR
    and applies the plan in the same tick. Checks still running: it waits for the next tick. Red
-   checks or a conflict with the default branch: it comments
+   checks or a conflict with the target branch: it comments
    `plan PR #<pr> cannot merge at <sha>: <reason>. Fix it or merge it by hand (foreman@<host>)` on
    the epic once per head commit, and the epic shows on **Needs you** until the PR is fixed or
    merged. With no plan PR open, it applies the plan straight away. None of this starts a session,
@@ -199,7 +240,7 @@ Every `pollSeconds` (default 300) the daemon wakes and runs one iteration:
    line in the body, no open claim, every "Depends on" issue closed, and a phase epic that is not
    `foreman:pause`d. Open PRs needing review or validation are candidates too, and so is an
    approved PR whose branch GitHub reports as `CONFLICTING`: that gets a **rebase** round — a
-   builder session that only merges the default branch, runs the checks and pushes — at the
+   builder session that only merges the target branch, runs the checks and pushes — at the
    current fix-round number, so it never counts toward `limits.fixRounds`. Priority: lowest phase
    number, then rebase, review and validate jobs before fix rounds, then new builds; among builds,
    one whose **Touches** section overlaps an issue that already has an open PR sorts after one
@@ -283,7 +324,7 @@ plan on retry instead of duplicating it.
 | (foreman) issue carries a `validator.skipLabels` label | PR `validator:skipped` |
 | (foreman) green CI + approved + validated | squash merge, issue closed → Done, `merged by foreman@<host>` |
 | third change request | issue `blocked` |
-| (foreman) approved PR `CONFLICTING` on GitHub | builder rebase round (merges the default branch, no fix-round bump) |
+| (foreman) approved PR `CONFLICTING` on GitHub | builder rebase round (merges the target branch, no fix-round bump) |
 | (foreman) red CI, rerun budget unspent | rerun the failed jobs, `ci rerun by foreman@<host> for <sha>` (no session) |
 | (foreman) red CI, rerun spent | builder fix round; `blocked` once `limits.fixRounds` are gone |
 | phase-closer `phase_closed` | epic → In Review, `needs-owner` |
@@ -406,7 +447,7 @@ Every key is optional; the file may be `{}`. These are the defaults:
 |---|---|---|
 | `setup` | `"pnpm install"` | Run once when a worktree is created. `null` skips it. |
 | `checks` | `pnpm lint/typecheck/test` | What a rebase round runs, and what every role prompt means by "the checks". |
-| `plans.dir` | `docs/superpowers/plans` | Where the planner writes `<date>-phase-NN-plan.md` and `.issues.json`, and where `apply_plan` looks on the default branch. |
+| `plans.dir` | `docs/superpowers/plans` | Where the planner writes `<date>-phase-NN-plan.md` and `.issues.json`, and where `apply_plan` looks on the target branch. |
 | `plans.specGlob` | `docs/**/*.md` | What a `## Spec` path must match. `**` spans path segments, `*` stays inside one. |
 | `validator.skipLabels` | `[]` | A PR whose issue carries one of these gets `validator:skipped` instead of a validator session. Use it for work with nothing to drive — infrastructure, schema, docs. |
 | `limits.fixRounds` | 2 | Change requests before the issue is `blocked`. |
@@ -415,6 +456,7 @@ Every key is optional; the file may be `{}`. These are the defaults:
 | `limits.staleHours` | 2 | Silence on an In Progress claim before another Mac may reclaim it. |
 | `limits.attempts` | 3 | Dispatch attempts for one session before the issue is `blocked`. |
 | `models` | opus, sonnet, haiku, fable | The page's model buttons, the `model:<name>` labels `init` creates, and the names `foreman model` accepts. |
+| `targetBranch` | absent: the GitHub default branch | The branch the foreman builds into. Worktrees start from it, PRs target it, and PRs aimed anywhere else are ignored. See [Building on a branch other than the default](#building-on-a-branch-other-than-the-default). |
 
 A strict schema: an unknown key is an error, not a warning. The daemon refuses to start on a bad
 file and names it on stderr (`foreman: /path/.foreman/config.json: <what is wrong>`, exit 2, so it
@@ -432,7 +474,7 @@ A repository with no application to install or run, for instance a docs reposito
 
 Appended to every role prompt under a `## House rules` heading, after the base prompt and before
 any per-role section. The base prompts carry the pipeline's own contract — never `cd` out of the
-worktree, never touch the default branch, never merge, idempotent GitHub writes, the ledger and
+worktree, never touch the target branch, never merge, idempotent GitHub writes, the ledger and
 Progress comment formats, the fix-round rules, the PR body template, the outcome JSON. `rules.md`
 carries what is true of *this* repository and nothing else:
 
@@ -477,7 +519,10 @@ close`, `gh api`, pushes to the default branch, force pushes, `git worktree remo
 The foreman also appends four denies of its own, per dispatch, for the session's own worktree:
 `Edit`/`Write` of `<worktree>/.foreman/**` and `<worktree>/.claude/**`. A session cannot widen the
 next session's permissions, rewrite the House rules the reviewer reads, or add a Claude Code hook
-on its own branch. Those files are changed the way everything else is: by a human, in a PR.
+on its own branch. Those files are changed the way everything else is: by a human, in a PR. When
+the target branch is neither `main` nor `master`, it also appends the base file's seven
+`main`/`master` rules for the target branch: push, `HEAD:<target>`, checkout, switch and
+`branch -D`.
 
 ### Hooks
 
@@ -934,7 +979,7 @@ branch.
   no workflow that runs on `pull_request`, so there is no green check to merge on and nothing will
   ever produce one. Add any CI workflow. `checks none` is not `checks failure`: it earns no rerun
   and no fix round either, so the PR simply sits there.
-- **`approved plan file not on origin/main; retrying next tick`, for ever.** The plan PR really is
+- **`approved plan file not on origin/<target>; retrying next tick`, for ever.** The plan PR really is
   not merged yet — its title is not `docs(plan): phase NN plan (#<epic>)`, so the foreman did not
   find it to merge — or the plan file's `NN` does not match the epic's `phase:N` label. The foreman
   looks for `<plans.dir>/<date>-phase-NN-plan.issues.json` where `NN` is that label, zero-padded;
@@ -942,7 +987,7 @@ branch.
 - **`loop iteration failed` with `…plan.issues.json: task K ("…") names {{task:J}}; the plan has
   N tasks`.** The approved plan names a task position it does not have, so the foreman refuses
   the whole plan before writing anything and every tick fails the same way. Fix the placeholder in
-  the `.issues.json` on the default branch; the next tick applies the plan.
+  the `.issues.json` on the target branch; the next tick applies the plan.
 - **`~/.foreman/<name>/artifacts/<pr>/` is empty after a validation run.** The foreman only copies
   what the validator left in `<worktree>/.validation-artifacts/<pr>/`, and only on a
   `passed`/`failed` outcome — a session that died without an outcome archives nothing. Look for the

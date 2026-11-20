@@ -135,7 +135,7 @@ export function jobCandidates(s: Snapshot, repo: RepoConfig = defaultRepoConfig(
       const round = fixRound(i.comments) + 1;
       if (round <= repo.limits.fixRounds) out.push({ kind: "fix", round, ...base });
     } else if (has("reviewer:changes") || has("validator:failed")) {
-      // The fix round merges origin/main itself (builder.md), so a conflict never queues twice.
+      // The fix round merges origin/<target> itself (builder.md), so a conflict never queues twice.
       const round = fixRound(i.comments) + 1;
       if (round <= repo.limits.fixRounds) out.push({ kind: "fix", round, ...base });
     } else if (!has("reviewer:approved")) out.push({ kind: "review", round: 1, ...base });

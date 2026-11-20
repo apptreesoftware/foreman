@@ -30,6 +30,8 @@ import { createNotifier, type NotifyPort, noopNotify } from "./notify.ts";
 import {
   fillPlanBody,
   hasPlanPlaceholder,
+  offTargetBlockReason,
+  offTargetWhy,
   PlanIssuesSchema,
   parseDirectionCritical,
   parseSpecPath,
@@ -41,7 +43,7 @@ import { fetchOrigin, listPlanFilesOnMain, readPlanFileOnMain } from "./plans.ts
 import { graphqlBudget, preflight } from "./preflight.ts";
 import { writeSessionFiles } from "./prompts.ts";
 import { ledgerInterrupt } from "./release.ts";
-import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
+import { defaultRepoConfig, type RepoConfig, resolveTargetBranch } from "./repo-config.ts";
 import {
   endReason,
   exhaustedResetAt,
@@ -66,7 +68,7 @@ import {
   type StopMode,
 } from "./state-file.ts";
 import type { Activity } from "./stream.ts";
-import type { Action, Epic, Issue, Role, Snapshot } from "./types.ts";
+import type { Action, Epic, Issue, PullRequest, Role, Snapshot } from "./types.ts";
 
 /** Activity lands in state.json at most this often; the feed file is appended per event. */
 export const ACTIVITY_FLUSH_MS = 2000;
@@ -85,9 +87,9 @@ export interface Ctx {
   copyDir: (src: string, dest: string) => Promise<void>;
   login: string;
   readFile: (absPath: string) => string | null;
-  /** Repo-relative `*.issues.json` paths on `origin/<defaultBranch>`. */
+  /** Repo-relative `*.issues.json` paths on `origin/<targetBranch>`. */
   planFiles: () => Promise<string[]>;
-  /** Content of a repo-relative path on `origin/<defaultBranch>`, or null when it is not there. */
+  /** Content of a repo-relative path on `origin/<targetBranch>`, or null when it is not there. */
   readPlanFile: (repoRelPath: string) => Promise<string | null>;
   ensureWorktree: (
     cfg: ForemanConfig,
@@ -105,8 +107,12 @@ export interface Ctx {
   state: Pick<StateStore, "patch" | "get"> | null;
   /** `.foreman/config.json` from the served repo; defaults when the repo has none. */
   repo: RepoConfig;
-  /** The repo's default branch, as `git`/GitHub name it (`main`, `trunk`, ...). */
-  defaultBranch: string;
+  /**
+   * The branch the foreman builds into: `.foreman/config.json` `targetBranch`, else the repo's
+   * GitHub default branch (`main`, `trunk`, ...). Empty while that lookup has not succeeded yet:
+   * `runOnce` retries it and parks until it does, rather than guess.
+   */
+  targetBranch: string;
   /** This foreman instance's name (`-p`/`FOREMAN_INSTANCE`/cwd match); passed to every hook. */
   instance: string;
   /** Appends one line per hook run to `<stateDir>/logs/hooks.log`. */
@@ -121,11 +127,13 @@ export function realCtx(
   stateDir: string,
   control: { signal: AbortSignal; stopMode: () => StopMode | null; state: Ctx["state"] },
   repo: RepoConfig = defaultRepoConfig(),
-  defaultBranch = "main",
+  targetBranch = "main",
   instance = "default",
   hookLog: Ctx["hookLog"] = fileHookLog(stateDir),
 ): Ctx {
-  return {
+  // The closures read `ctx.targetBranch` when they run, not the parameter: a daemon that started
+  // before the default branch could be resolved fills it in on a later tick.
+  const ctx: Ctx = {
     cfg,
     gh,
     ...control,
@@ -152,18 +160,36 @@ export function realCtx(
     login,
     readFile: (p) => (existsSync(p) ? readFileSync(p, "utf8") : null),
     planFiles: () =>
-      listPlanFilesOnMain(realExec, cfg.repoDir, repo.plans.dir, `origin/${defaultBranch}`),
-    readPlanFile: (p) => readPlanFileOnMain(realExec, cfg.repoDir, p, `origin/${defaultBranch}`),
+      listPlanFilesOnMain(realExec, cfg.repoDir, repo.plans.dir, `origin/${ctx.targetBranch}`),
+    readPlanFile: (p) => readPlanFileOnMain(realExec, cfg.repoDir, p, `origin/${ctx.targetBranch}`),
     ensureWorktree: (c, issue, branch, exec) =>
-      realEnsureWorktree(c, issue, branch, exec, undefined, repo.setup, defaultBranch),
+      realEnsureWorktree(c, issue, branch, exec, undefined, repo.setup, ctx.targetBranch),
     removeWorktree: realRemoveWorktree,
     transcriptExists: (w, s) => existsSync(transcriptPath(w, s)),
     now: () => new Date().toISOString(),
     repo,
-    defaultBranch,
+    targetBranch,
     instance,
     hookLog,
   };
+  return ctx;
+}
+
+/** Why a tick parks while the default branch is still unknown. */
+export const UNRESOLVED_TARGET = "could not resolve the default branch";
+
+/**
+ * Resolves `ctx.targetBranch` for a daemon that started while `gh` could not answer. No-op once
+ * it is set, so a healthy daemon, or a repository that names its `targetBranch`, never asks. A
+ * failure leaves it empty for the next tick to try again.
+ */
+export async function ensureTargetBranch(ctx: Ctx): Promise<void> {
+  if (ctx.targetBranch) return;
+  try {
+    ctx.targetBranch = await resolveTargetBranch(ctx.repo, () => ctx.gh.defaultBranch());
+  } catch {
+    // still unknown; try again next tick
+  }
 }
 
 /**
@@ -181,9 +207,26 @@ export async function ensureLogin(ctx: Ctx): Promise<void> {
   }
 }
 
+/**
+ * Whether an open PR is the foreman's to work: aimed at the target branch, from a branch that is
+ * neither the target nor `main`/`master` (`offTargetWhy` says why not).
+ */
+export function workablePR(p: PullRequest, target: string): boolean {
+  return offTargetWhy(p, target) === null;
+}
+
 export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
+  // Without a target every PR would be filtered out, which reads as "nothing open" rather than
+  // "unknown"; `runOnce` parks first, so this only guards the page's and ctl's own snapshots.
+  await ensureTargetBranch(ctx);
+  if (!ctx.targetBranch) throw new Error(UNRESOLVED_TARGET);
   const issues = await ctx.gh.listIssues("open");
-  const prs = (await ctx.gh.listOpenPRs()).filter((p) => !p.isDraft);
+  // A PR aimed at any other branch, or from a protected one, is not the foreman's: kept out of
+  // `prs`, it is never paired with a task, reviewed, rebased, rerun or merged, and never moves the
+  // idle fingerprint. It is kept aside only so the planner can say why its task goes nowhere.
+  const open = (await ctx.gh.listOpenPRs()).filter((p) => !p.isDraft);
+  const prs = open.filter((p) => workablePR(p, ctx.targetBranch));
+  const offTargetPRs = open.filter((p) => !workablePR(p, ctx.targetBranch));
   const epics: Epic[] = [];
   for (const e of issues.filter((i) => i.labels.includes("epic"))) {
     const specPath = parseSpecPath(e.body);
@@ -205,7 +248,16 @@ export async function buildSnapshot(ctx: Ctx): Promise<Snapshot> {
     if (open && open.claim.host !== ctx.cfg.host)
       branchLastCommitAt[i.number] = await ctx.gh.branchLastCommitAt(branchFor(i.number, i.title));
   }
-  return { host: ctx.cfg.host, now: ctx.now(), issues, prs, epics, branchLastCommitAt };
+  return {
+    host: ctx.cfg.host,
+    now: ctx.now(),
+    issues,
+    prs,
+    epics,
+    branchLastCommitAt,
+    targetBranch: ctx.targetBranch,
+    offTargetPRs,
+  };
 }
 
 async function setStatus(ctx: Ctx, issue: Issue, status: Issue["status"] & string): Promise<void> {
@@ -338,7 +390,7 @@ async function prepareSession(
   // `.foreman/rules.md`, `.foreman/roles/<role>.md` and `.foreman/settings.json`, written where
   // `claude -p` is pointed at them. Regenerated per dispatch, so an edit to either side lands on
   // the next session without restarting the daemon.
-  const files = writeSessionFiles(ctx.stateDir, worktree, r.role, ctx.repo);
+  const files = writeSessionFiles(ctx.stateDir, worktree, r.role, ctx.repo, ctx.targetBranch);
   return { worktree, sessionId, resume, notes, sessionEnv, files, hook };
 }
 
@@ -407,7 +459,8 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
   }
   const prs = await gh.listOpenPRs();
   const branch =
-    prs.find((p) => p.number === r.pr)?.headRefName ?? branchFor(r.issue.number, r.issue.title);
+    prs.find((p) => p.number === r.pr && workablePR(p, ctx.targetBranch))?.headRefName ??
+    branchFor(r.issue.number, r.issue.title);
   const held: { hook: HookFn | null } = { hook: null };
   let setup: SessionSetup;
   try {
@@ -509,7 +562,7 @@ async function runRole(ctx: Ctx, r: RunRole): Promise<void> {
         spawn: ctx.spawn,
         signal: ctx.signal,
         checks: ctx.repo.checks,
-        defaultBranch: ctx.defaultBranch,
+        targetBranch: ctx.targetBranch,
         onSpawn: (pid) => setCurrent({ childPid: pid }),
         onActivity,
         onAttempt: async (a) => {
@@ -700,9 +753,20 @@ async function applyOutcome(
     return;
   }
   switch (res.outcome.outcome) {
-    case "pr_opened":
+    case "pr_opened": {
+      // A PR aimed at another branch would never be paired with the task: In Review, it would
+      // sit there for ever with nothing saying why. Blocked now, the owner sees the fix.
+      const reason = pr === null ? null : await offTargetPrOpened(ctx, pr);
+      if (reason) {
+        await gh.addLabels("issue", n, ["blocked"]);
+        await gh.comment("issue", n, `blocked by foreman@${cfg.host}: ${reason}`);
+        await gh.unassign(n, ctx.login);
+        await ctx.notify.send({ kind: "blocked", issue: n, title: r.issue.title, reason });
+        break;
+      }
       await setStatus(ctx, r.issue, "In Review");
       break;
+    }
     case "blocked":
       await gh.addLabels("issue", n, ["blocked"]);
       await gh.comment("issue", n, `blocked by ${r.role}: ${res.outcome.notes}`);
@@ -763,6 +827,24 @@ async function applyOutcome(
 }
 
 /**
+ * The block reason when the PR a builder reports is not the foreman's to work, else null. A
+ * failed read is null too: the task goes to In Review as before, and the snapshot's off-target
+ * rule blocks it on the next tick if the base was wrong after all.
+ */
+async function offTargetPrOpened(ctx: Ctx, pr: number): Promise<string | null> {
+  try {
+    const refs = await ctx.gh.prRefs(pr);
+    return offTargetBlockReason({ number: pr, ...refs }, ctx.targetBranch);
+  } catch (e) {
+    log("warn", "could not read the PR's base; moving to In Review unchecked", {
+      pr,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  }
+}
+
+/**
  * The phase-closer returns the review issue it opened in its notes ("review issue #55; DM sent");
  * the number is what the owner actually wants to open. Null when the notes name none, and the
  * notification falls back to linking the epic.
@@ -779,9 +861,9 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   const specPath = parseSpecPath(epic.body) ?? "";
   const nn = planPhaseNumber(epic.labels, specPath);
   // Nothing else in the daemon refreshes repoDir, so a plan PR merged minutes ago is only
-  // visible after this fetch; a failed fetch falls back to the last known origin/main.
+  // visible after this fetch; a failed fetch falls back to the last known origin/<target>.
   if (!(await fetchOrigin(ctx.exec, cfg.repoDir)))
-    log("warn", "fetch failed; reading the plan from the last known origin/main", {
+    log("warn", `fetch failed; reading the plan from the last known origin/${ctx.targetBranch}`, {
       epic: epicNumber,
     });
   const file = (await ctx.planFiles())
@@ -792,7 +874,7 @@ async function applyPlan(ctx: Ctx, epicNumber: number, snapshot?: Snapshot): Pro
   if (!text) {
     // Deliberately no `plan applied` comment: planApplied() reads that as done and the epic
     // would never get its tasks. Leave the epic untouched so the next tick retries.
-    log("warn", "approved plan file not on origin/main; retrying next tick", {
+    log("warn", `approved plan file not on origin/${ctx.targetBranch}; retrying next tick`, {
       epic: epicNumber,
       phase: nn ?? null,
     });
@@ -1110,7 +1192,7 @@ export async function execute(
       });
       return "continue";
     case "apply_plan":
-      // A plan whose file is not on origin/main yet is left for the next tick, and that is not
+      // A plan whose file is not on origin/<target> yet is left for the next tick, and that is not
       // work: counting it would make the loop hot until the plan PR merges.
       return (await applyPlan(ctx, action.epic, snapshot)) ? "continue" : "noop";
   }
@@ -1151,7 +1233,7 @@ export function snapshotFingerprint(s: Snapshot): string {
 export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
   // Read per tick, so raising the cap from the page un-parks the daemon on the next tick rather
   // than needing a restart to reload foreman.json.
-  const pre = await preflight(
+  const checked = await preflight(
     { ...ctx.cfg, maxSessionsPerDay: capFor(ctx) },
     {
       env: process.env,
@@ -1161,6 +1243,7 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
       repoDir: ctx.cfg.repoDir,
       instance: ctx.instance,
       hookLog: ctx.hookLog,
+      targetBranch: ctx.repo.targetBranch,
       pause: ctx.state
         ? {
             until: ctx.state.get().pausedUntil ?? null,
@@ -1169,6 +1252,12 @@ export async function runOnce(ctx: Ctx): Promise<TickOutcome> {
         : null,
     },
   );
+  // Only once preflight has seen `gh` authenticated is a failed default-branch lookup worth
+  // retrying; until one succeeds the tick parks instead of guessing a branch, which would hide
+  // every PR from the snapshot and open new ones against the wrong base.
+  if (checked.ok) await ensureTargetBranch(ctx);
+  const pre: typeof checked =
+    checked.ok && !ctx.targetBranch ? { ok: false, reason: UNRESOLVED_TARGET } : checked;
   ctx.state?.patch({ lastPreflight: { ok: pre.ok, reason: pre.ok ? null : pre.reason } });
   // Preflight fails on every tick of a parked spell, so the notifier — not the loop — decides
   // whether this transition is worth a push.

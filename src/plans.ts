@@ -1,16 +1,16 @@
 import type { Exec } from "./exec.ts";
 
 /**
- * The approved plan is read from `origin/main`, never from the clone's working tree: nothing
- * else in the daemon pulls `repoDir`, so a merged plan PR would otherwise stay invisible until
- * a human ran `git pull`.
+ * The approved plan is read from `origin/<target branch>`, never from the clone's working tree:
+ * nothing else in the daemon pulls `repoDir`, so a merged plan PR would otherwise stay invisible
+ * until a human ran `git pull`.
  */
 export async function fetchOrigin(exec: Exec, repoDir: string): Promise<boolean> {
   const r = await exec("git", ["-C", repoDir, "fetch", "origin", "--prune"]);
   return r.code === 0;
 }
 
-/** Repo-relative `*.issues.json` paths tracked on `ref` (e.g. `origin/main`). */
+/** Repo-relative `*.issues.json` paths tracked on `ref` (`origin/<target branch>`). */
 export async function listPlanFilesOnMain(
   exec: Exec,
   repoDir: string,
@@ -25,7 +25,7 @@ export async function listPlanFilesOnMain(
     .filter((l) => l.endsWith(".issues.json"));
 }
 
-/** Reads a repo-relative path at `ref` (e.g. `origin/main`); null when it is not there. */
+/** Reads a repo-relative path at `ref` (`origin/<target branch>`); null when it is not there. */
 export async function readPlanFileOnMain(
   exec: Exec,
   repoDir: string,

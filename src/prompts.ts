@@ -37,13 +37,16 @@ export interface PromptParts {
   checks: string[];
   plansDir: string;
   specGlob: string;
+  /** The branch the foreman builds into; `main` when absent. */
+  targetBranch?: string;
 }
 
 function fill(text: string, p: PromptParts): string {
   return text
     .replaceAll("{{checks}}", p.checks.map((c) => `\`${c}\``).join(", "))
     .replaceAll("{{plansDir}}", p.plansDir)
-    .replaceAll("{{specGlob}}", p.specGlob);
+    .replaceAll("{{specGlob}}", p.specGlob)
+    .replaceAll("{{targetBranch}}", p.targetBranch ?? "main");
 }
 
 export function composeRolePrompt(role: Role, p: PromptParts): string {
@@ -124,12 +127,32 @@ export function worktreeDenies(worktree: string): string[] {
   ]);
 }
 
+/**
+ * The base file denies pushing, checking out, switching to and deleting `main` and `master`. A
+ * repository whose `targetBranch` is another branch gets the same seven rules for that one, so a
+ * session cannot land work on it without a PR the foreman merges. Nothing for `main` or `master`,
+ * which are already denied.
+ */
+export function targetBranchDenies(target: string): string[] {
+  if (target === "main" || target === "master") return [];
+  return [
+    `Bash(git push origin ${target}*)`,
+    `Bash(git push -u origin ${target}*)`,
+    `Bash(git push * ${target}*)`,
+    `Bash(git push origin HEAD:${target}*)`,
+    `Bash(git checkout ${target}*)`,
+    `Bash(git switch ${target}*)`,
+    `Bash(git branch -D ${target}*)`,
+  ];
+}
+
 /** Spec §7: the files `claude -p` is pointed at, regenerated per dispatch from the worktree's `.foreman/`. */
 export function writeSessionFiles(
   stateDir: string,
   worktree: string,
   role: Role,
   repo: RepoConfig,
+  targetBranch = "main",
 ): { promptPath: string; settingsPath: string } {
   const repoRules = readRepoRules(worktree, role);
   const prompt = composeRolePrompt(role, {
@@ -139,6 +162,7 @@ export function writeSessionFiles(
     checks: repo.checks,
     plansDir: repo.plans.dir,
     specGlob: repo.plans.specGlob,
+    targetBranch,
   });
   const composed = composeSettings(readBaseSettings(), repoRules.settings);
   // Appended after the merge, so a repository `allow` cannot pre-empt them either.
@@ -146,7 +170,13 @@ export function writeSessionFiles(
     ...composed,
     permissions: {
       ...composed.permissions,
-      deny: [...new Set([...composed.permissions.deny, ...worktreeDenies(worktree)])],
+      deny: [
+        ...new Set([
+          ...composed.permissions.deny,
+          ...worktreeDenies(worktree),
+          ...targetBranchDenies(targetBranch),
+        ]),
+      ],
     },
   };
   mkdirSync(join(stateDir, "roles"), { recursive: true });

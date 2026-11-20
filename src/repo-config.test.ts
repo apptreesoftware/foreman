@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { defaultRepoConfig, loadRepoConfig, loadRepoConfigSafe } from "./repo-config.ts";
+import {
+  defaultRepoConfig,
+  loadRepoConfig,
+  loadRepoConfigSafe,
+  resolveTargetBranch,
+} from "./repo-config.ts";
 
 function repo(json?: string): string {
   const dir = mkdtempSync(join(tmpdir(), "repo-"));
@@ -52,6 +57,72 @@ describe("repo config", () => {
   it("a thrown message starts with the file path", () => {
     const dir = repo('{"cheks": []}');
     expect(() => loadRepoConfig(dir)).toThrow(join(dir, ".foreman", "config.json"));
+  });
+});
+
+describe("targetBranch", () => {
+  it("is absent by default, so the scaffold never writes it", () => {
+    expect(defaultRepoConfig().targetBranch).toBeUndefined();
+    expect("targetBranch" in defaultRepoConfig()).toBe(false);
+    expect(JSON.stringify(defaultRepoConfig())).not.toContain("targetBranch");
+  });
+  it("is read when set", () => {
+    expect(loadRepoConfig(repo('{"targetBranch": "v2"}')).targetBranch).toBe("v2");
+  });
+  it("refuses an empty name", () => {
+    expect(() => loadRepoConfig(repo('{"targetBranch": ""}'))).toThrow(/targetBranch/);
+  });
+  it("accepts ordinary branch names", () => {
+    for (const name of ["v2", "release/v2", "feature.x_y-z", "V2.0"])
+      expect(loadRepoConfig(repo(JSON.stringify({ targetBranch: name }))).targetBranch).toBe(name);
+  });
+  /** It lands in git argv, `--base`, permission rules and prompts, so only a plain name will do. */
+  it("refuses a name that is an option, a full ref, a remote ref, or has odd characters", () => {
+    for (const name of [
+      "-v2",
+      "--force",
+      "refs/heads/v2",
+      "origin/v2",
+      "v 2",
+      " v2",
+      "v2\t",
+      "v2*",
+      "v2;rm",
+      "v2:main",
+      "v~2",
+      "v2)",
+    ]) {
+      const dir = repo(JSON.stringify({ targetBranch: name }));
+      expect(() => loadRepoConfig(dir), JSON.stringify(name)).toThrow(/targetBranch/);
+      // The daemon refuses it the way it refuses any bad key: one line naming the file.
+      const r = loadRepoConfigSafe(dir);
+      expect(r.error, JSON.stringify(name)).toContain(join(dir, ".foreman", "config.json"));
+      expect(r.config.targetBranch).toBeUndefined();
+    }
+  });
+});
+
+describe("resolveTargetBranch", () => {
+  it("a configured branch wins and asks GitHub nothing", async () => {
+    let asked = 0;
+    const gh = async () => {
+      asked++;
+      return "main";
+    };
+    expect(await resolveTargetBranch({ ...defaultRepoConfig(), targetBranch: "v2" }, gh)).toBe(
+      "v2",
+    );
+    expect(asked).toBe(0);
+  });
+  it("absent, it is the repository's GitHub default branch", async () => {
+    expect(await resolveTargetBranch(defaultRepoConfig(), async () => "trunk")).toBe("trunk");
+  });
+  it("absent, a failing lookup throws for the caller to handle", async () => {
+    await expect(
+      resolveTargetBranch(defaultRepoConfig(), async () => {
+        throw new Error("gh down");
+      }),
+    ).rejects.toThrow("gh down");
   });
 });
 

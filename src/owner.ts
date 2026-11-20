@@ -1,4 +1,4 @@
-import { planPR, planPrState, planUnapplied } from "./phase.ts";
+import { planPR, planPrState, planUnapplied, targetOf } from "./phase.ts";
 import { pairReviews } from "./review-pairing.ts";
 import type { Board, OwnerAction, OwnerItem } from "./state-file.ts";
 import type { Snapshot } from "./types.ts";
@@ -40,7 +40,7 @@ export function ownerItems(s: Snapshot): OwnerItem[] {
       else if (!has("plan-approved") && !has("agent-ready")) actions.push("start_planning");
       actions.push(has("foreman:pause") ? "unpause" : "pause");
       const p = unapplied ? planPR(s, e.number) : null;
-      const st = p ? planPrState(p) : null;
+      const st = p ? planPrState(p, targetOf(s)) : null;
       return {
         epic: e.number,
         title: titleOf(e.number),

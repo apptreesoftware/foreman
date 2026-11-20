@@ -28,6 +28,12 @@ export interface PreflightDeps {
    * found the Claude usage limit spent. Absent or null means no pause.
    */
   pause?: { until: string | null; reason: string | null } | null;
+  /**
+   * `.foreman/config.json` `targetBranch`, only when the repository names one. Set, the daemon
+   * parks until `origin/<targetBranch>` exists, rather than blocking every issue at worktree
+   * setup. Absent, nothing is checked.
+   */
+  targetBranch?: string;
 }
 export type PreflightResult = { ok: true; warnings: string[] } | { ok: false; reason: string };
 
@@ -152,6 +158,23 @@ export async function preflight(cfg: ForemanConfig, deps: PreflightDeps): Promis
         budget.resetAt ? `, resets ${budget.resetAt}` : ""
       }`,
     };
+
+  if (deps.targetBranch !== undefined) {
+    const t = deps.targetBranch;
+    const r = await deps.exec("git", [
+      "-C",
+      deps.repoDir,
+      "ls-remote",
+      "--exit-code",
+      "--heads",
+      "origin",
+      `refs/heads/${t}`,
+    ]);
+    // `--exit-code` answers 2 for "no matching ref"; anything else is git failing to ask at all.
+    if (r.code === 2) return { ok: false, reason: `target branch ${t} not found on origin` };
+    if (r.code !== 0)
+      return { ok: false, reason: `could not reach origin to check target branch ${t}` };
+  }
 
   const used = countSessionsToday(deps.stateDir, deps.now);
   if (used >= cfg.maxSessionsPerDay)
