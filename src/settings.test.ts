@@ -118,11 +118,33 @@ describe("settings/headless.json, the base headless allowlist", () => {
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
       "Read(~/.claude.json)",
-      "Read(~/.claude/**)",
+      "Read(~/.claude/*.json)",
+      "Read(~/.claude/.*)",
+      "Read(~/.claude/projects/**)",
+      "Read(~/.claude/shell-snapshots/**)",
+      "Read(~/.claude/session-env/**)",
+      "Read(~/.claude/plugins/data/**)",
       "Edit(~/.claude/**)",
       "Write(~/.claude/**)",
     ])
       expect(deny, rule).toContain(rule);
+  });
+
+  /**
+   * A skill a session loads tells it to read the skill's own `references/*.md`, and installed
+   * plugins and skills live under `~/.claude/plugins/cache`, `~/.claude/plugins/marketplaces` and
+   * `~/.claude/skills`. A blanket `Read(~/.claude/**)` made every such read fail. A
+   * `Read(~/.claude/*)` is no narrower: it matches the `plugins` directory itself, and a denied
+   * directory denies everything under it. So the deny list names what must stay unreadable instead.
+   */
+  it("lets sessions read installed plugin and skill files", () => {
+    expect(deny).not.toContain("Read(~/.claude/**)");
+    expect(deny).not.toContain("Read(~/.claude/*)");
+    expect(deny.some((r) => /^Read\(~\/\.claude\/(plugins|skills)(\/\*\*)?\)$/.test(r))).toBe(
+      false,
+    );
+    expect(deny.some((r) => r.startsWith("Read(~/.claude/plugins/cache"))).toBe(false);
+    expect(deny.some((r) => r.startsWith("Read(~/.claude/plugins/marketplaces"))).toBe(false);
   });
 });
 
