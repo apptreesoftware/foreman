@@ -14,6 +14,7 @@ import {
   planIssuesPath,
   planPhaseNumber,
   planPlaceholderErrors,
+  planPR,
 } from "./phase.ts";
 
 describe("parsers", () => {
@@ -227,6 +228,78 @@ describe("applyPlanActions", () => {
   });
   it("applies straight away when no plan PR is open, as when it was merged by hand", () => {
     expect(run([pr({ number: 300, issue: 201 })])).toEqual([{ type: "apply_plan", epic: 200 }]);
+  });
+  it("ignores a plan PR aimed at another branch than the target", () => {
+    const s = (base: string) =>
+      snapshot({
+        targetBranch: "v2",
+        epics: [approved],
+        issues: [epicIssue],
+        prs: [planPr({ baseRefName: base })],
+      });
+    expect(planPR(s("main"), 200)).toBeNull();
+    expect(planPR(s("v2"), 200)?.number).toBe(279);
+    expect(applyPlanActions(s("main"))).toEqual([{ type: "apply_plan", epic: 200 }]);
+  });
+  it("reports a plan PR aimed at another branch once per head commit, and still tries to apply", () => {
+    const off = planPr({ baseRefName: "main" });
+    const s = (issues = [epicIssue], o = off) =>
+      snapshot({ targetBranch: "v2", epics: [approved], issues, prs: [], offTargetPRs: [o] });
+    const reason =
+      "targets main, not v2; re-aim it (gh pr edit 279 --base v2). Merging it by hand would land it on main, not v2";
+    expect(applyPlanActions(s())).toEqual([
+      { type: "plan_pr_stuck", epic: 200, pr: 279, sha: off.headSha, reason },
+      { type: "apply_plan", epic: 200 },
+    ]);
+    // The ledger's own "merge it by hand" comes after the warning that it lands on main.
+    const line = fmt.planPrStuck("mac-a", 279, off.headSha, reason);
+    expect(line).toContain("gh pr edit 279 --base v2");
+    expect(line).toContain("Merging it by hand would land it on main, not v2");
+    const reported = issue({ ...epicIssue, comments: [comment(line)] });
+    expect(applyPlanActions(s([reported]))).toEqual([{ type: "apply_plan", epic: 200 }]);
+    const pushed = planPr({ baseRefName: "main", headSha: "f".repeat(40) });
+    expect(applyPlanActions(s([reported], pushed))[0]).toMatchObject({
+      type: "plan_pr_stuck",
+      sha: pushed.headSha,
+    });
+  });
+  it("a plan PR from a protected head aimed at the target gets the plain reason", () => {
+    const off = planPr({ baseRefName: "v2", headRefName: "main" });
+    const s = snapshot({
+      targetBranch: "v2",
+      epics: [approved],
+      issues: [epicIssue],
+      offTargetPRs: [off],
+    });
+    expect(applyPlanActions(s)[0]).toMatchObject({
+      type: "plan_pr_stuck",
+      reason: "comes from main, a protected branch",
+    });
+  });
+  it("an off-target plan PR says nothing while one on the target is open", () => {
+    const s = snapshot({
+      targetBranch: "v2",
+      epics: [approved],
+      issues: [epicIssue],
+      prs: [planPr({ number: 280, baseRefName: "v2" })],
+      offTargetPRs: [planPr({ baseRefName: "main" })],
+    });
+    expect(applyPlanActions(s)).toEqual([
+      { type: "merge_plan", epic: 200, pr: 280 },
+      { type: "apply_plan", epic: 200 },
+    ]);
+  });
+  it("names the target when a plan PR conflicts with it", () => {
+    expect(
+      applyPlanActions(
+        snapshot({
+          targetBranch: "v2",
+          epics: [approved],
+          issues: [epicIssue],
+          prs: [planPr({ baseRefName: "v2", mergeable: "CONFLICTING" })],
+        }),
+      )[0],
+    ).toMatchObject({ type: "plan_pr_stuck", reason: "conflicts with v2" });
   });
   it("ignores another epic's plan PR", () => {
     expect(run([planPr({ title: "docs(plan): phase 10 plan (#201)" })])).toEqual([

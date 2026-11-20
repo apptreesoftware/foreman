@@ -9,6 +9,7 @@ import {
   validatorRequired,
 } from "./merge.ts";
 import { defaultRepoConfig } from "./repo-config.ts";
+import { plan } from "./state.ts";
 
 const ready = ["reviewer:approved", "validator:passed"];
 const inReview = (over = {}) =>
@@ -25,6 +26,109 @@ describe("validatorRequired", () => {
   });
   it("is true for every area with the default empty skip list", () => {
     expect(validatorRequired(["area:infra"], [])).toBe(true);
+  });
+});
+
+describe("mergeDecision on a PR aimed at another branch", () => {
+  it("refuses a PR whose base is not the target, naming both", () => {
+    const p = pr({ issue: 20, labels: ready, baseRefName: "main" });
+    expect(mergeDecision(p, inReview(), "v2")).toEqual({
+      ok: false,
+      reason: "targets main, not v2",
+    });
+    expect(mergeDecision({ ...p, baseRefName: "v2" }, inReview(), "v2").ok).toBe(true);
+    // No target named is today's: main.
+    expect(mergeDecision(p, inReview()).ok).toBe(true);
+  });
+  it("names the target when the branch conflicts with it", () => {
+    const p = pr({ issue: 20, labels: ready, baseRefName: "v2", mergeable: "CONFLICTING" });
+    expect(mergeDecision(p, inReview(), "v2")).toEqual({ ok: false, reason: "conflicts with v2" });
+  });
+  it("mergeActions merges only PRs on the snapshot's target", () => {
+    const s = snapshot({
+      targetBranch: "v2",
+      issues: [inReview(), inReview({ number: 21 })],
+      prs: [
+        pr({ number: 5, issue: 20, labels: ready, baseRefName: "v2" }),
+        pr({ number: 6, issue: 21, labels: ready, baseRefName: "main" }),
+      ],
+    });
+    expect(mergeActions(s)).toEqual([{ type: "merge", pr: 5, issue: 20 }]);
+  });
+});
+
+describe("blockActions on a task whose only PR targets another branch", () => {
+  const offTarget = (over = {}) =>
+    pr({ number: 7, issue: 20, baseRefName: "main", headRefName: "feat/20-x", ...over });
+  const reason =
+    "PR #7 targets main, not v2; re-aim it (gh pr edit 7 --base v2), or drop the task from its body, and press Unblock";
+  it("blocks an In Review task once, naming the base and the fix", () => {
+    const s = snapshot({ targetBranch: "v2", issues: [inReview()], offTargetPRs: [offTarget()] });
+    expect(blockActions(s)).toEqual([{ type: "block", issue: 20, reason }]);
+    expect(plan(s).filter((a) => a.type === "block")).toEqual([
+      { type: "block", issue: 20, reason },
+    ]);
+  });
+  it("blocks once even when two off-target PRs name the task", () => {
+    const s = snapshot({
+      targetBranch: "v2",
+      issues: [inReview()],
+      offTargetPRs: [offTarget(), offTarget({ number: 8 })],
+    });
+    expect(blockActions(s)).toHaveLength(1);
+  });
+  it("says nothing once the task is blocked", () => {
+    const s = snapshot({
+      targetBranch: "v2",
+      issues: [inReview({ labels: ["phase:1", "blocked"] })],
+      offTargetPRs: [offTarget()],
+    });
+    expect(blockActions(s)).toEqual([]);
+  });
+  it("leaves a task alone that also has a PR on the target", () => {
+    const s = snapshot({
+      targetBranch: "v2",
+      issues: [inReview()],
+      prs: [pr({ number: 9, issue: 20, baseRefName: "v2" })],
+      offTargetPRs: [offTarget()],
+    });
+    expect(blockActions(s)).toEqual([]);
+  });
+  it("treats a PR from main aimed at the target as off-target", () => {
+    const s = snapshot({
+      targetBranch: "v2",
+      issues: [inReview()],
+      offTargetPRs: [offTarget({ baseRefName: "v2", headRefName: "main" })],
+    });
+    const [a] = blockActions(s);
+    expect(a).toMatchObject({ type: "block", issue: 20 });
+    expect(a?.type === "block" && a.reason).toMatch(/^PR #7 comes from main, a protected branch/);
+  });
+  it("only touches a task the foreman has In Review, never an epic or a claimed one", () => {
+    const at = (over: object) =>
+      blockActions(
+        snapshot({ targetBranch: "v2", issues: [inReview(over)], offTargetPRs: [offTarget()] }),
+      );
+    expect(at({ status: "Ready" })).toEqual([]);
+    expect(at({ status: "Backlog" })).toEqual([]);
+    expect(at({ labels: ["epic", "phase:1"] })).toEqual([]);
+    expect(at({ comments: [comment(fmt.claimed("mac-b", hoursAgo(1), "reviewer", 1))] })).toEqual(
+      [],
+    );
+  });
+  it("without a target named, a PR aimed at a branch other than main blocks its task", () => {
+    const s = snapshot({
+      issues: [inReview()],
+      offTargetPRs: [offTarget({ baseRefName: "release/1.2" })],
+    });
+    expect(blockActions(s)).toEqual([
+      {
+        type: "block",
+        issue: 20,
+        reason:
+          "PR #7 targets release/1.2, not main; re-aim it (gh pr edit 7 --base main), or drop the task from its body, and press Unblock",
+      },
+    ]);
   });
 });
 

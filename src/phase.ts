@@ -68,7 +68,7 @@ export function parseSpecPath(body: string): string | null {
  * done so since before the label was authoritative. Deriving it from the spec path alone is how
  * `apply_plan` used to fail for every repository that names its specs anything else: the filter
  * matched no plan file, the epic never got its tasks, and the tick logged "approved plan file not
- * on origin/main" for ever.
+ * on origin/<target>" for ever.
  */
 export function planPhaseNumber(labels: string[], specPath: string): string | null {
   for (const l of labels) {
@@ -156,13 +156,56 @@ export function planUnapplied(e: Epic, issues: Issue[]): boolean {
   );
 }
 
+/** The branch a snapshot's PRs target: the foreman's target branch, `main` when unnamed. */
+export function targetOf(s: Snapshot): string {
+  return s.targetBranch ?? "main";
+}
+
+type Refs = Pick<PullRequest, "baseRefName" | "headRefName">;
+
+/**
+ * Why a PR is not the foreman's to work, or null when it is: aimed at another branch than the
+ * target, or from the target, `main` or `master`. A human "merge main into v2" PR (base v2, head
+ * main) that names a task in its body would otherwise be paired with it: a fix or rebase round
+ * would build its worktree on main and push there, and a merge would delete main with the head.
+ */
+export function offTargetWhy(p: Refs, target: string): string | null {
+  if (p.baseRefName !== target)
+    return `targets ${p.baseRefName || "an unknown base"}, not ${target}`;
+  if ([target, "main", "master"].includes(p.headRefName))
+    return `comes from ${p.headRefName}, a protected branch`;
+  return null;
+}
+
+/**
+ * The `blocked by` reason for a task whose PR is off-target, with the fix the owner makes before
+ * pressing Unblock; null when the PR is the foreman's.
+ */
+export function offTargetBlockReason(p: Refs & { number: number }, target: string): string | null {
+  const why = offTargetWhy(p, target);
+  if (!why) return null;
+  return p.baseRefName !== target
+    ? `PR #${p.number} ${why}; re-aim it (gh pr edit ${p.number} --base ${target}), or drop the task from its body, and press Unblock`
+    : `PR #${p.number} ${why}; open the task's work from its own branch instead, or drop the task from the PR's body, and press Unblock`;
+}
+
 /**
  * The open PR the planner opened for this epic, by the title `planner.md` prescribes:
- * `docs(plan): phase NN plan (#<epic>)`. The newest wins when a re-plan left two open.
+ * `docs(plan): phase NN plan (#<epic>)`, aimed at the target branch. The newest wins when a
+ * re-plan left two open.
  */
 export function planPR(s: Snapshot, epic: number): PullRequest | null {
+  const target = targetOf(s);
+  return newestPlanPR(
+    s.prs.filter((p) => p.baseRefName === target),
+    epic,
+  );
+}
+
+/** The newest of `prs` titled as this epic's plan PR, whatever its base. */
+export function newestPlanPR(prs: PullRequest[], epic: number): PullRequest | null {
   return (
-    s.prs
+    prs
       .filter((p) => p.title.startsWith("docs(plan):") && p.title.includes(`(#${epic})`))
       .sort((a, b) => b.number - a.number)[0] ?? null
   );
@@ -178,8 +221,8 @@ export type PlanPrState =
  * GitHub's own verdicts gate it: green or absent checks merge, running checks wait a tick, and red
  * checks or a conflict need the owner.
  */
-export function planPrState(pr: PullRequest): PlanPrState {
-  if (pr.mergeable === "CONFLICTING") return { state: "stuck", reason: "conflicts with main" };
+export function planPrState(pr: PullRequest, target = "main"): PlanPrState {
+  if (pr.mergeable === "CONFLICTING") return { state: "stuck", reason: `conflicts with ${target}` };
   if (pr.checks === "failure") return { state: "stuck", reason: "checks failed" };
   if (pr.checks === "pending") return { state: "pending" };
   return { state: "ready" };
@@ -197,11 +240,30 @@ export function applyPlanActions(s: Snapshot): Action[] {
     if (!ei || openClaim(ei.comments) || !planUnapplied(e, s.issues)) continue;
     const p = planPR(s, e.number);
     if (!p) {
+      // A plan PR aimed at another branch never merges into the target, and nothing else would
+      // say so: told once per head commit, as a red one is. apply_plan still runs, for a plan
+      // that reached the target some other way.
+      // The ledger line ends "merge it by hand", which for a PR on another base lands the plan
+      // there; the reason says so ahead of it.
+      const target = targetOf(s);
+      const off = newestPlanPR(s.offTargetPRs ?? [], e.number);
+      const why = off && offTargetWhy(off, target);
+      if (off && why && !planPrStuckReported(ei.comments, off.number, off.headSha))
+        out.push({
+          type: "plan_pr_stuck",
+          epic: e.number,
+          pr: off.number,
+          sha: off.headSha,
+          reason:
+            off.baseRefName !== target
+              ? `${why}; re-aim it (gh pr edit ${off.number} --base ${target}). Merging it by hand would land it on ${off.baseRefName}, not ${target}`
+              : why,
+        });
       // Merged already, by hand or on an earlier tick; apply_plan reads the file from origin.
       out.push({ type: "apply_plan", epic: e.number });
       continue;
     }
-    const st = planPrState(p);
+    const st = planPrState(p, targetOf(s));
     if (st.state === "ready")
       out.push(
         { type: "merge_plan", epic: e.number, pr: p.number },

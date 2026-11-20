@@ -61,7 +61,7 @@ export interface DispatchRequest {
   /** The composed role prompt and settings for this dispatch, written under the instance state dir. */
   promptPath: string;
   settingsPath: string;
-  /** A builder round that only merges origin/main into the PR branch. */
+  /** A builder round that only merges origin/<target branch> into the PR branch. */
   rebase: boolean;
   /** The issue's `effort:<level>` label; absent means `EFFORT_DEFAULT_LEVEL`. */
   effort?: EffortLevel;
@@ -69,11 +69,11 @@ export interface DispatchRequest {
 
 /**
  * The rebase round's prompt, naming the repo's own checks rather than a hardcoded trio, and
- * the repo's own default branch rather than a hardcoded `main`.
+ * the branch the foreman builds into rather than a hardcoded `main`.
  */
-export function rebaseNotes(checks: string[], defaultBranch = "main"): string {
+export function rebaseNotes(checks: string[], targetBranch = "main"): string {
   const cmds = checks.map((c) => `\`${c}\``).join(", ");
-  return `This is a rebase round: the PR is approved but its branch conflicts with ${defaultBranch}. Run \`git merge origin/${defaultBranch}\`, resolve every conflict keeping both sides' intent, run ${cmds}, commit the merge and push. Change nothing else, do not open a new PR, and return \`pr_opened\` with this PR's number.`;
+  return `This is a rebase round: the PR is approved but its branch conflicts with ${targetBranch}. Run \`git merge origin/${targetBranch}\`, resolve every conflict keeping both sides' intent, run ${cmds}, commit the merge and push. Change nothing else, do not open a new PR, and return \`pr_opened\` with this PR's number.`;
 }
 
 export interface SessionResult {
@@ -193,17 +193,17 @@ export function buildPrompt(
   req: DispatchRequest,
   cfg: ForemanConfig,
   checks: string[],
-  defaultBranch = "main",
+  targetBranch = "main",
 ): string {
   const lines = [
     `Role: ${req.role}. Repository: ${cfg.repo}. Host: ${cfg.host}. Session: ${req.sessionId}.`,
     `Task issue: #${req.issue} — ${req.title}.`,
     req.pr ? `Pull request: #${req.pr}.` : "Pull request: none yet.",
-    `Worktree (your cwd): ${req.worktree}. Branch: ${req.branch}. Never touch main.`,
+    `Worktree (your cwd): ${req.worktree}. Branch: ${req.branch}. Never touch ${targetBranch}.`,
     `Spec: ${req.specPath ?? "see the issue body"}.`,
     ...req.promptLines,
   ];
-  if (req.rebase) lines.push(rebaseNotes(checks, defaultBranch));
+  if (req.rebase) lines.push(rebaseNotes(checks, targetBranch));
   else if (req.round > 1)
     lines.push(
       `This is fix round ${req.round}. Address the reviewer/validator feedback on the PR before anything else.`,
@@ -211,7 +211,7 @@ export function buildPrompt(
   if (req.notes) lines.push(`Notes from the previous step:\n${req.notes}`);
   if (req.resume)
     lines.push(
-      `You are resuming interrupted work. Read your last Progress comment on the issue and \`git log origin/${defaultBranch}..HEAD\`, then continue from there. Do not redo finished steps.`,
+      `You are resuming interrupted work. Read your last Progress comment on the issue and \`git log origin/${targetBranch}..HEAD\`, then continue from there. Do not redo finished steps.`,
     );
   lines.push(
     "When completely done, return the outcome object required by the output schema. Do not return it early.",
@@ -274,7 +274,7 @@ export async function ensureWorktree(
   // Spec §13.5: the process defaults live in repo-config.ts and nowhere else, so a grep over
   // `src/` for a stack-specific string finds one file.
   setup: string | null = defaultRepoConfig().setup,
-  defaultBranch = "main",
+  targetBranch = "main",
 ): Promise<string> {
   const dir = join(cfg.workDir, String(issue));
   const git = async (args: string[], cwd = cfg.repoDir) => {
@@ -286,12 +286,15 @@ export async function ensureWorktree(
   if (!exists(dir)) {
     const remote = (await git(["ls-remote", "--heads", "origin", branch])).trim().length > 0;
     // -B (create-or-reset) survives a stale local branch left behind by a prior removeWorktree;
-    // every checkpoint pushes the branch (spec §6), so resetting it to the remote/origin-main tip is safe.
+    // every checkpoint pushes the branch (spec §6), so resetting it to the remote/target-branch tip is safe.
     if (remote) {
       await git(["worktree", "add", "-B", branch, dir, `origin/${branch}`]);
       await exec("git", ["-C", dir, "branch", `--set-upstream-to=origin/${branch}`]);
     } else {
-      await git(["worktree", "add", "-B", branch, dir, `origin/${defaultBranch}`]);
+      // --no-track: a new branch must not track the target, or a bare `git push` under
+      // `push.default=upstream` lands on it. The first `git push -u origin <branch>` sets the
+      // real upstream; until then a reused worktree's `pull --ff-only` below warns and carries on.
+      await git(["worktree", "add", "--no-track", "-B", branch, dir, `origin/${targetBranch}`]);
     }
   } else {
     const r = await exec("git", ["-C", dir, "pull", "--ff-only"]);
@@ -402,8 +405,8 @@ export interface DispatchDeps {
   onAttempt: (req: DispatchRequest) => Promise<void>;
   /** What a rebase round runs, named in the prompt in place of a hardcoded trio. */
   checks?: string[];
-  /** The repo's default branch, named in the prompt in place of a hardcoded `main`. */
-  defaultBranch?: string;
+  /** The branch the foreman builds into, named in the prompt in place of a hardcoded `main`. */
+  targetBranch?: string;
   signal?: AbortSignal;
   onSpawn?: (pid: number) => void;
   onActivity?: (activity: Activity, entries: FeedEntry[]) => void;
@@ -425,7 +428,7 @@ export async function runSession(
       req,
       cfg,
       deps.checks ?? defaultRepoConfig().checks,
-      deps.defaultBranch ?? "main",
+      deps.targetBranch ?? "main",
     ),
     timeoutMs: cfg.wallClockMinutes * 60_000,
     signal: deps.signal,
@@ -476,8 +479,8 @@ export async function runSession(
  * What a session started after a safeguard flag is told. It cannot resume the flagged
  * conversation, so it starts cold in a worktree that already holds the earlier work.
  */
-export function freshAfterFlagNotes(defaultBranch = "main"): string {
-  return `An earlier session on this task was stopped by an API safeguard flag and cannot be resumed, so this is a new session. The earlier work is already in this worktree: commits on this branch and any uncommitted changes. Run \`git status\` and \`git log origin/${defaultBranch}..HEAD\`, read your last Progress comment on the issue, and continue from the worktree's current state. Do not redo finished steps and do not discard uncommitted changes.`;
+export function freshAfterFlagNotes(targetBranch = "main"): string {
+  return `An earlier session on this task was stopped by an API safeguard flag and cannot be resumed, so this is a new session. The earlier work is already in this worktree: commits on this branch and any uncommitted changes. Run \`git status\` and \`git log origin/${targetBranch}..HEAD\`, read your last Progress comment on the issue, and continue from the worktree's current state. Do not redo finished steps and do not discard uncommitted changes.`;
 }
 
 /**
@@ -530,7 +533,7 @@ export async function dispatchWithRetry(
       end = Math.max(end, attempt + 2);
       sessionId = (deps.newSessionId ?? randomUUID)();
       resume = false;
-      notes = [freshAfterFlagNotes(deps.defaultBranch ?? "main"), req.notes]
+      notes = [freshAfterFlagNotes(deps.targetBranch ?? "main"), req.notes]
         .filter(Boolean)
         .join("\n");
       continue;

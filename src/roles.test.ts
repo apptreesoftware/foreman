@@ -36,9 +36,34 @@ describe("role prompts", () => {
   });
   it("shares the hard rules", () => {
     expect(groundRules).toContain("Never merge");
-    expect(groundRules).toContain("default branch");
+    expect(groundRules).toContain("target branch (`{{targetBranch}}`)");
     expect(groundRules).toContain("ANTHROPIC_API_KEY");
     expect(groundRules).toContain("Never `cd`");
+  });
+  /**
+   * `gh pr create` without `--base` opens against the GitHub default branch, which is the wrong
+   * branch for a repository whose `targetBranch` is something else.
+   */
+  it("every PR a role opens, and every merge it makes, is against the target branch", () => {
+    const builder = readFileSync(join(dir, "builder.md"), "utf8");
+    expect(builder).toContain("gh pr create --base {{targetBranch}}");
+    expect(builder).not.toContain("<default branch>");
+    expect(builder.match(/git merge origin\/\{\{targetBranch\}\}/g)?.length).toBe(3);
+    const planner = readFileSync(join(dir, "planner.md"), "utf8");
+    expect(planner).toContain("--base {{targetBranch}}");
+    for (const f of files) {
+      const text = readFileSync(join(dir, `${f}.md`), "utf8");
+      expect(text, f).not.toMatch(/(touch|push|reach|conflicts with) the default branch/);
+    }
+  });
+  /** GitHub records a closing PR only for the default branch, so the base-filtered search leads. */
+  it("phase-closer finds merged PRs by base first", () => {
+    const closer = readFileSync(join(dir, "phase-closer.md"), "utf8");
+    const byBase = closer.indexOf(
+      'gh pr list --state merged --base {{targetBranch}} --search "<n> in:body"',
+    );
+    expect(byBase).toBeGreaterThan(-1);
+    expect(byBase).toBeLessThan(closer.indexOf("closedByPullRequestsReferences"));
   });
   it("planner names the line the picker requires and the file the foreman applies", () => {
     const planner = readFileSync(join(dir, "planner.md"), "utf8");
@@ -117,7 +142,13 @@ describe("the base prompts say nothing about one particular repository", () => {
       const found = [...text.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
       // `{{issue}}` reaches the planner as written: it goes into the plan file, and apply_plan
       // fills it, not the composer.
-      const filled = ["checks", "plansDir", "specGlob", ...(f === "planner" ? ["issue"] : [])];
+      const filled = [
+        "checks",
+        "plansDir",
+        "specGlob",
+        "targetBranch",
+        ...(f === "planner" ? ["issue"] : []),
+      ];
       for (const p of found) expect(filled, `${f}.md uses {{${p}}}`).toContain(p);
     }
   });

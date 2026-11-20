@@ -13,7 +13,7 @@ The prompt's "task issue" is the **next phase's epic**, which has no approved pl
                   "labels": ["phase:N", "area:…", "size:S|M|L"] } ] }
    ```
    One entry per plan task, in dependency order. A task that is not created yet has no issue number, so never predict one: in a body, write `{{task:K}}` for the plan's K-th task (1-based, so a dependency reads `#{{task:3}}`) and `{{issue}}` for the task's own number (for example `e2e/{{issue}}-<slug>.spec.ts`). The foreman fills both with the real numbers when it creates the issues. Name an issue that already exists by its real number. In the plan's Markdown, call tasks "Task K", not by an issue number. Every body ends with the `Parent epic: #<epic>` line; the foreman ignores a task without it. Existing sub-issues (`gh issue list --search "Parent epic: #<epic> in:body" --state all --limit 100 --json number,title,state`) are updated by number, not duplicated. Do **not** include `agent-ready` in labels; the foreman adds it after approval.
-5. Commit on the given branch, push, open a PR titled `docs(plan): phase NN plan (#<epic>)` whose body starts with `Refs #<epic>` (not `Closes`) and summarises the assumptions. Comment on the epic: `Plan drafted: <pr url>. Label me plan-approved after review.`
+5. Commit on the given branch, push, open a PR with `gh pr create --base {{targetBranch}}` titled `docs(plan): phase NN plan (#<epic>)` whose body starts with `Refs #<epic>` (not `Closes`) and summarises the assumptions. Comment on the epic: `Plan drafted: <pr url>. Label me plan-approved after review.`
 6. Return `plan_drafted` with the PR number. The foreman notifies the owner.
 
-Never label `plan-approved` or `agent-ready`, never create task issues directly, never merge, never touch the default branch.
+Never label `plan-approved` or `agent-ready`, never create task issues directly, never merge, never touch the target branch (`{{targetBranch}}`).

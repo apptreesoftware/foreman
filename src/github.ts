@@ -392,13 +392,14 @@ export class GitHub {
         "--limit",
         "100",
         "--json",
-        "number,title,body,headRefName,headRefOid,labels,isDraft,mergeable,statusCheckRollup,updatedAt",
+        "number,title,body,headRefName,baseRefName,headRefOid,labels,isDraft,mergeable,statusCheckRollup,updatedAt",
       ]),
     ) as Array<{
       number: number;
       title: string;
       body: string;
       headRefName: string;
+      baseRefName?: string;
       headRefOid?: string;
       isDraft: boolean;
       mergeable?: string;
@@ -411,6 +412,7 @@ export class GitHub {
       title: p.title,
       body: p.body ?? "",
       headRefName: p.headRefName,
+      baseRefName: p.baseRefName ?? "",
       headSha: p.headRefOid ?? "",
       labels: names(p.labels),
       isDraft: p.isDraft,
@@ -419,6 +421,22 @@ export class GitHub {
       issue: parseClosesIssue(p.body ?? ""),
       updatedAt: p.updatedAt,
     }));
+  }
+
+  /** One PR's base and head branch: what a builder's `pr_opened` is checked against. */
+  async prRefs(n: number): Promise<{ baseRefName: string; headRefName: string }> {
+    const p = JSON.parse(
+      await this.gh([
+        "pr",
+        "view",
+        String(n),
+        "--repo",
+        this.cfg.repo,
+        "--json",
+        "baseRefName,headRefName",
+      ]),
+    ) as { baseRefName?: string; headRefName?: string };
+    return { baseRefName: p.baseRefName ?? "", headRefName: p.headRefName ?? "" };
   }
 
   /**
@@ -594,10 +612,12 @@ export class GitHub {
     return "unknown";
   }
 
-  async fileOnDefaultBranch(path: string): Promise<boolean> {
+  /** Whether `path` exists on the default branch, or on branch `ref` when one is named. */
+  async fileOnDefaultBranch(path: string, ref?: string): Promise<boolean> {
+    const query = ref === undefined ? "" : `?ref=${encodeURIComponent(ref)}`;
     const r = await this.exec("gh", [
       "api",
-      `repos/${this.cfg.repo}/contents/${path}`,
+      `repos/${this.cfg.repo}/contents/${path}${query}`,
       "--jq",
       ".sha",
     ]);
@@ -799,6 +819,7 @@ export type GitHubApi = Pick<
   | "getIssue"
   | "listClosedDecisions"
   | "listOpenPRs"
+  | "prRefs"
   | "subIssues"
   | "branchLastCommitAt"
   | "setStatus"

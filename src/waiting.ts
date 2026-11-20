@@ -1,6 +1,15 @@
 import { parentEpicOf, parseDependsOn } from "./github.ts";
 import { fixRound, openClaim } from "./ledger.ts";
-import { buildingEpic, planAwaitingOwner, planPR, planPrState, planUnapplied } from "./phase.ts";
+import {
+  buildingEpic,
+  newestPlanPR,
+  offTargetWhy,
+  planAwaitingOwner,
+  planPR,
+  planPrState,
+  planUnapplied,
+  targetOf,
+} from "./phase.ts";
 import { heldPhases, issuePhase } from "./pick.ts";
 import { defaultRepoConfig, type RepoConfig } from "./repo-config.ts";
 import { WAIT_KINDS, type WaitItem } from "./state-file.ts";
@@ -80,7 +89,7 @@ export function describeWaiting(
     // plan PR open, or a green one, the next tick applies it and nothing is waiting.
     if (planUnapplied(e, s.issues)) {
       const p = planPR(s, e.number);
-      const st = p ? planPrState(p) : null;
+      const st = p ? planPrState(p, targetOf(s)) : null;
       if (p && st?.state === "stuck")
         out.push({
           kind: "human",
@@ -95,6 +104,19 @@ export function describeWaiting(
           detail: `epic #${e.number} plan PR #${p.number} merges when its checks pass`,
           since: p.updatedAt,
         });
+      else if (!p) {
+        // A plan PR aimed at another branch never merges into the target; only the owner can
+        // re-aim it.
+        const off = newestPlanPR(s.offTargetPRs ?? [], e.number);
+        const why = off && offTargetWhy(off, targetOf(s));
+        if (off && why)
+          out.push({
+            kind: "human",
+            subject: `epic #${e.number}`,
+            detail: `epic #${e.number} plan PR #${off.number} ${why}`,
+            since: off.updatedAt,
+          });
+      }
       continue;
     }
     // A drafted plan and a closed phase both park the epic on `needs-owner`; `plan-approved`
@@ -200,7 +222,7 @@ export function describeWaiting(
       out.push({
         kind: "review_cycle",
         subject: `PR #${p.number}`,
-        detail: `PR #${p.number} conflicts with main; rebase queued`,
+        detail: `PR #${p.number} conflicts with ${targetOf(s)}; rebase queued`,
         since: p.updatedAt,
       });
   }

@@ -11,6 +11,7 @@ import type { GitHubApi } from "./github.ts";
 import { fmt, openClaim } from "./ledger.ts";
 import {
   ACTIVITY_FLUSH_MS,
+  buildSnapshot,
   type Ctx,
   effortFor,
   ensureLogin,
@@ -85,6 +86,7 @@ function fakeGh(issues: Issue[], closedDecisions: ClosedDecision[] = []) {
     projectFields: async () => ({ projectId: "PVT_1", status: null }),
     setStatusOptions: rec("setStatusOptions"),
     fileOnDefaultBranch: async () => true,
+    prRefs: async () => ({ baseRefName: "main", headRefName: "feat/1-x" }),
   };
   return { gh, calls };
 }
@@ -180,7 +182,7 @@ function ctx(over: Partial<Ctx>): Ctx {
     stopMode: () => null,
     state: null,
     repo: defaultRepoConfig(),
-    defaultBranch: "main",
+    targetBranch: "main",
     instance: "widgets",
     hookLog: () => {},
     ...over,
@@ -340,6 +342,115 @@ describe("execute", () => {
     expect(calls).not.toContain("setStatus PVTI_1 In Progress");
     expect(inputs[0]).toContain("rebase round");
     expect(inputs[0]).not.toContain("fix round");
+  });
+  it("claim: a PR aimed at another branch never lends its branch, and the prompt names the target", async () => {
+    const i = issue({ number: 1, title: "Thing", status: "In Review" });
+    const { gh } = fakeGh([i]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 9, issue: 1, baseRefName: "main", headRefName: "someone-elses-branch" }),
+    ];
+    const branches: string[] = [];
+    const inputs: string[] = [];
+    const spawn: Spawner = async (_cmd, _args, opts) => {
+      inputs.push(opts.input);
+      return okSpawn({ outcome: "approved", pr: 9, notes: "" })("", [], opts);
+    };
+    await execute(
+      { type: "claim", issue: 1, role: "reviewer", pr: 9, round: 1 },
+      ctx({
+        gh,
+        spawn,
+        targetBranch: "v2",
+        ensureWorktree: async (_c, _i, branch) => {
+          branches.push(branch);
+          return "/work/1";
+        },
+      }),
+    );
+    expect(branches).toEqual(["feat/1-thing"]);
+    expect(inputs[0]).toContain("Never touch v2.");
+  });
+  it("claim: a PR whose head is a protected branch never lends it to the worktree", async () => {
+    const i = issue({ number: 1, title: "Thing", status: "In Review" });
+    const { gh } = fakeGh([i]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 9, issue: 1, baseRefName: "v2", headRefName: "main" }),
+    ];
+    const branches: string[] = [];
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: 9, round: 2 },
+      ctx({
+        gh,
+        targetBranch: "v2",
+        ensureWorktree: async (_c, _i, branch) => {
+          branches.push(branch);
+          return "/work/1";
+        },
+      }),
+    );
+    expect(branches).toEqual(["feat/1-thing"]);
+  });
+  it("pr_opened on a PR aimed at another branch blocks the task instead of moving it to In Review", async () => {
+    const i = issue({ number: 1, title: "Thing" });
+    const { gh, calls } = fakeGh([i]);
+    const asked: number[] = [];
+    gh.prRefs = async (n) => {
+      asked.push(n);
+      return { baseRefName: "main", headRefName: "feat/1-thing" };
+    };
+    const n = recordNotify();
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, notify: n.port, targetBranch: "v2" }),
+    );
+    const reason =
+      "PR #5 targets main, not v2; re-aim it (gh pr edit 5 --base v2), or drop the task from its body, and press Unblock";
+    expect(asked).toEqual([5]);
+    expect(calls).not.toContain("setStatus PVTI_1 In Review");
+    expect(calls).toContain("addLabels issue 1 blocked");
+    expect(calls).toContain(`comment issue 1 blocked by foreman@mac-a: ${reason}`);
+    expect(calls).toContain("unassign 1 matthewtsmith");
+    expect(n.events).toEqual([{ kind: "blocked", issue: 1, title: "Thing", reason }]);
+  });
+  it("pr_opened on a PR from a protected branch blocks the task, even aimed at the target", async () => {
+    const i = issue({ number: 1, title: "Thing" });
+    const { gh, calls } = fakeGh([i]);
+    gh.prRefs = async () => ({ baseRefName: "v2", headRefName: "main" });
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, targetBranch: "v2" }),
+    );
+    expect(calls).not.toContain("setStatus PVTI_1 In Review");
+    expect(calls).toContain("addLabels issue 1 blocked");
+    expect(
+      calls.some((c) =>
+        c.startsWith("comment issue 1 blocked by foreman@mac-a: PR #5 comes from main"),
+      ),
+    ).toBe(true);
+  });
+  it("pr_opened on a PR aimed at the target moves the task to In Review as before", async () => {
+    const i = issue({ number: 1, title: "Thing" });
+    const { gh, calls } = fakeGh([i]);
+    gh.prRefs = async () => ({ baseRefName: "v2", headRefName: "feat/1-thing" });
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, targetBranch: "v2" }),
+    );
+    expect(calls).toContain("setStatus PVTI_1 In Review");
+    expect(calls).not.toContain("addLabels issue 1 blocked");
+  });
+  it("pr_opened still moves to In Review when the PR's base cannot be read", async () => {
+    const i = issue({ number: 1, title: "Thing" });
+    const { gh, calls } = fakeGh([i]);
+    gh.prRefs = async () => {
+      throw new Error("gh: rate limited");
+    };
+    await execute(
+      { type: "claim", issue: 1, role: "builder", pr: null, round: 1 },
+      ctx({ gh, targetBranch: "v2" }),
+    );
+    // The snapshot's off-target rule blocks it on the next tick if the base was wrong after all.
+    expect(calls).toContain("setStatus PVTI_1 In Review");
   });
   it("claim: comments, assigns, sets In Progress, dispatches, applies pr_opened", async () => {
     const i = issue({ number: 1 });
@@ -1394,6 +1505,151 @@ describe("runForever stop", () => {
       },
     });
     expect(locked).toBe(1);
+  });
+});
+
+describe("buildSnapshot", () => {
+  it("keeps only the PRs aimed at the target branch, and records the target", async () => {
+    const { gh } = fakeGh([]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 10, issue: 1, baseRefName: "v2" }),
+      pr({ number: 11, issue: 1, baseRefName: "main" }),
+      pr({ number: 12, issue: 1, baseRefName: "v2", isDraft: true }),
+    ];
+    const s = await buildSnapshot(ctx({ gh, targetBranch: "v2" }));
+    expect(s.prs.map((p) => p.number)).toEqual([10]);
+    expect(s.targetBranch).toBe("v2");
+    const onMain = await buildSnapshot(ctx({ gh }));
+    expect(onMain.prs.map((p) => p.number)).toEqual([11]);
+    expect(onMain.targetBranch).toBe("main");
+  });
+  /**
+   * A human "merge main into v2" PR has base v2 and head main. Paired with a task, a fix or
+   * rebase round would build its worktree on main and push to it, and a merge would delete it.
+   */
+  it("drops a PR whose head is the target, main or master, and keeps a task branch", async () => {
+    const { gh } = fakeGh([]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 20, issue: 1, baseRefName: "v2", headRefName: "main" }),
+      pr({ number: 21, issue: 1, baseRefName: "v2", headRefName: "v2" }),
+      pr({ number: 22, issue: 1, baseRefName: "v2", headRefName: "master" }),
+      pr({ number: 23, issue: 1, baseRefName: "v2", headRefName: "feat/1-thing" }),
+      pr({ number: 24, issue: 1, baseRefName: "v2", headRefName: "human/sync-docs" }),
+    ];
+    const s = await buildSnapshot(ctx({ gh, targetBranch: "v2" }));
+    expect(s.prs.map((p) => p.number)).toEqual([23, 24]);
+  });
+  it("keeps the dropped non-draft PRs as off-target, for the rules that say why", async () => {
+    const { gh } = fakeGh([]);
+    gh.listOpenPRs = async () => [
+      pr({ number: 30, issue: 1, baseRefName: "v2" }),
+      pr({ number: 31, issue: 2, baseRefName: "main" }),
+      pr({ number: 32, issue: 3, baseRefName: "v2", headRefName: "main" }),
+      pr({ number: 33, issue: 4, baseRefName: "main", isDraft: true }),
+    ];
+    const s = await buildSnapshot(ctx({ gh, targetBranch: "v2" }));
+    expect(s.prs.map((p) => p.number)).toEqual([30]);
+    expect(s.offTargetPRs?.map((p) => p.number)).toEqual([31, 32]);
+  });
+});
+
+describe("runOnce with a target branch origin does not have", () => {
+  it("parks with the branch named, before reading the board", async () => {
+    const { gh, calls } = fakeGh([]);
+    let listed = 0;
+    gh.listIssues = async () => {
+      listed++;
+      return [];
+    };
+    const exec: Exec = async (cmd, args) =>
+      cmd === "git" && args.includes("ls-remote")
+        ? { code: 2, stdout: "", stderr: "" }
+        : {
+            code: 0,
+            stdout:
+              '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
+            stderr: "",
+          };
+    const n = recordNotify();
+    const stateDir = mkdtempSync(join(tmpdir(), "tt-loop-target-"));
+    const r = await runOnce(
+      ctx({
+        gh,
+        exec,
+        stateDir,
+        notify: n.port,
+        repo: { ...defaultRepoConfig(), targetBranch: "v2" },
+        targetBranch: "v2",
+      }),
+    );
+    expect(r).toEqual({ didWork: false, action: null });
+    expect(n.parked).toEqual(["target branch v2 not found on origin"]);
+    expect(listed).toBe(0);
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("runOnce before the default branch is known", () => {
+  const okExec: Exec = async () => ({
+    code: 0,
+    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\nToken scopes: \'project\', \'repo\'\n',
+    stderr: "",
+  });
+  it("parks, without reading the board, while the lookup keeps failing", async () => {
+    const { gh } = fakeGh([]);
+    let listed = 0;
+    gh.listIssues = async () => {
+      listed++;
+      return [];
+    };
+    gh.defaultBranch = async () => {
+      throw new Error("gh: rate limited");
+    };
+    const n = recordNotify();
+    const c = ctx({
+      gh,
+      exec: okExec,
+      notify: n.port,
+      targetBranch: "",
+      stateDir: mkdtempSync(join(tmpdir(), "tt-loop-unresolved-")),
+    });
+    expect(await runOnce(c)).toEqual({ didWork: false, action: null });
+    expect(n.parked).toEqual(["could not resolve the default branch"]);
+    expect(listed).toBe(0);
+    expect(c.targetBranch).toBe("");
+  });
+  it("resolves it on the first tick the lookup succeeds, and then never asks again", async () => {
+    const { gh } = fakeGh([]);
+    let asked = 0;
+    gh.defaultBranch = async () => {
+      asked++;
+      return "trunk";
+    };
+    gh.listOpenPRs = async () => [pr({ number: 30, issue: 1, baseRefName: "trunk" })];
+    const n = recordNotify();
+    const c = ctx({
+      gh,
+      exec: okExec,
+      notify: n.port,
+      targetBranch: "",
+      stateDir: mkdtempSync(join(tmpdir(), "tt-loop-resolved-")),
+    });
+    await runOnce(c);
+    expect(c.targetBranch).toBe("trunk");
+    expect(n.parked).toEqual([null]);
+    expect((await buildSnapshot(c)).prs.map((p) => p.number)).toEqual([30]);
+    expect(asked).toBe(1);
+  });
+  it("a configured targetBranch is never looked up", async () => {
+    const { gh } = fakeGh([]);
+    let asked = 0;
+    gh.defaultBranch = async () => {
+      asked++;
+      return "main";
+    };
+    const c = ctx({ gh, targetBranch: "v2", repo: { ...defaultRepoConfig(), targetBranch: "v2" } });
+    await buildSnapshot(c);
+    expect(asked).toBe(0);
   });
 });
 

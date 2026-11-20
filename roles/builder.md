@@ -35,8 +35,8 @@ Goal: turn the issue into a merge-ready PR on the given branch.
    - Branch: <branch>
    ```
    Keep at most one Progress comment per checkpoint; do not edit old ones.
-5. Fix rounds (the prompt says "fix round N"): first `git merge origin/<default branch>` and resolve any conflict, so the reviewer never sees a branch that cannot merge. Then read `gh pr view <pr> --comments` and `gh pr view <pr> --json reviews --jq '.reviews[] | {author: .author.login, state, body}'`, plus the latest validator comment. Address every item, push, and reply on the PR with a checklist of what changed. Do not open a new PR.
-6. Open the PR when acceptance criteria pass locally. Immediately before, `git fetch origin && git merge origin/<default branch>`, resolve any conflict, re-run the checks and push, so the PR opens mergeable. Write the body to `.gh-body.md`:
+5. Fix rounds (the prompt says "fix round N"): first `git merge origin/{{targetBranch}}` and resolve any conflict, so the reviewer never sees a branch that cannot merge. Then read `gh pr view <pr> --comments` and `gh pr view <pr> --json reviews --jq '.reviews[] | {author: .author.login, state, body}'`, plus the latest validator comment. Address every item, push, and reply on the PR with a checklist of what changed. Do not open a new PR.
+6. Open the PR when acceptance criteria pass locally. Immediately before, `git fetch origin && git merge origin/{{targetBranch}}`, resolve any conflict, re-run the checks and push, so the PR opens mergeable. Write the body to `.gh-body.md`:
 
    ```
    Closes #<issue>
@@ -49,8 +49,8 @@ Goal: turn the issue into a merge-ready PR on the given branch.
    None.
    ```
 
-   then `gh pr create --title "<type>(<area>): <summary> (#<issue>)" --body-file .gh-body.md`. If the PR already exists (fix round), skip creation. The foreman moves the board to In Review.
-7. Rebase rounds (the prompt says "rebase round"): the PR is already approved. `git merge origin/<default branch>`, resolve conflicts keeping both sides' intent, run the checks, commit the merge, push, and post one Progress comment. Change nothing else; do not open a new PR.
+   then `gh pr create --base {{targetBranch}} --title "<type>(<area>): <summary> (#<issue>)" --body-file .gh-body.md`. If the PR already exists (fix round), skip creation. The foreman moves the board to In Review.
+7. Rebase rounds (the prompt says "rebase round"): the PR is already approved. `git merge origin/{{targetBranch}}`, resolve conflicts keeping both sides' intent, run the checks, commit the merge, push, and post one Progress comment. Change nothing else; do not open a new PR.
 8. Return `pr_opened` with the PR number. Notes: anything the reviewer should look at first, spec deviations, and the seeded data the validator needs.
 
 Never label the PR `reviewer:*` or `validator:*`. Never claim, release, or comment on other issues.

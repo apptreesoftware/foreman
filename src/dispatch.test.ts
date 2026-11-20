@@ -117,6 +117,12 @@ describe("buildArgs / buildPrompt", () => {
     expect(p).toContain("conflicts with trunk");
     expect(p).not.toContain("origin/main");
   });
+  it("the session header names the branch never to touch", () => {
+    expect(buildPrompt(req, cfg, CHECKS)).toContain("Never touch main.");
+    const p = buildPrompt(req, cfg, CHECKS, "v2");
+    expect(p).toContain("Never touch v2.");
+    expect(p).not.toContain("Never touch main");
+  });
   it("switches to --resume on resume", () => {
     const a = buildArgs({ ...req, resume: true }, cfg).join(" ");
     expect(a).toContain("--resume 33333333-3333-3333-3333-333333333333");
@@ -245,9 +251,23 @@ describe("ensureWorktree", () => {
     await ensureWorktree(cfg, req.issue, req.branch, r.exec, r.exists);
     expect(r.calls).toContain("git -C /repo fetch origin --prune");
     expect(r.calls).toContain(
-      "git -C /repo worktree add -B feat/42-add-thing /work/42 origin/main",
+      "git -C /repo worktree add --no-track -B feat/42-add-thing /work/42 origin/main",
     );
     expect(r.calls.some((c) => c.startsWith("sh -c pnpm install"))).toBe(true);
+  });
+  /**
+   * A new branch made from origin/<target> would otherwise track the target, and a bare
+   * `git push` under `push.default=upstream` would land on it. The builder's first
+   * `git push -u origin <branch>` sets the real upstream.
+   */
+  it("a new branch never tracks the target", async () => {
+    const r = record(false, false);
+    await ensureWorktree(cfg, req.issue, req.branch, r.exec, r.exists, null, "v2");
+    const add = r.calls.find((c) => c.includes("worktree add"));
+    expect(add).toBe(
+      "git -C /repo worktree add --no-track -B feat/42-add-thing /work/42 origin/v2",
+    );
+    expect(r.calls.some((c) => c.includes("set-upstream-to"))).toBe(false);
   });
   it("tracks the remote branch when it exists (resume on another Mac)", async () => {
     const r = record(true, false);
@@ -277,7 +297,7 @@ describe("ensureWorktree", () => {
     const r = record(false, false);
     await ensureWorktree(cfg, req.issue, req.branch, r.exec, r.exists, "pnpm install", "trunk");
     expect(r.calls).toContain(
-      "git -C /repo worktree add -B feat/42-add-thing /work/42 origin/trunk",
+      "git -C /repo worktree add --no-track -B feat/42-add-thing /work/42 origin/trunk",
     );
   });
 });
